@@ -34,11 +34,45 @@ mumble.client:hook(String hook, [ String unique name = "hook"], Function callbac
 -- Gets all registered callbacks
 Table hooks = mumble.client:getHooks()
 
+-- Structure
+Table hooks = {
+	["onServerSync"] = {
+		["hook"] = function: 0xffffffff,
+		["do stuff on connection"] = function: 0xffffffff,
+	},
+	["onServerPing"] = {
+		["hook"] = function: 0xffffffff,
+		["do stuff on ping"] = function: 0xffffffff,
+	}
+}
+
 -- Returns a table of all mumble.users
 Table users = mumble.client:getUsers()
 
+-- Structure
+-- Key:		session number
+-- Value:	mumble.user
+Table users = {
+	[session] = mumble.user,
+	[session] = mumble.user,
+	[session] = mumble.user,
+	[session] = mumble.user,
+	[session] = mumble.user,
+}
+
 -- Returns a table of all mumble.channels
 Table channels = mumble.client:getChannels()
+
+-- Structure
+-- Key:		channel id
+-- Value:	mumble.channel
+Table channels = {
+	[channel_id] = mumble.channel,
+	[channel_id] = mumble.channel,
+	[channel_id] = mumble.channel,
+	[channel_id] = mumble.channel,
+	[channel_id] = mumble.channel,
+}
 
 -- A timestamp in milliseconds
 Number time = mumble.client:gettime()
@@ -67,7 +101,7 @@ mumble.user:mute([ Boolean mute = true ])
 -- If no boolean is passed, it will default to deafening the user
 mumble.user:deafen([ Boolean deaf = true ])
 
--- Attempts to change the users commend
+-- Attempts to change the users comment
 mumble.user:comment(String comment)
 
 -- Attempts to register the users name to the server
@@ -89,4 +123,183 @@ mumble.channel:setDescription(String description)
 
 -- Attempts to remove the channel
 mumble.channel:remove()
+```
+
+### hooks
+
+ - `onServerVersion`
+
+``` lua
+Table event = {
+	["version"]		= Number version,
+	["release"]		= String release,
+	["os"]			= String os,
+	["os_version"]	= String os_version,
+}
+```
+
+ - `onServerPing`
+
+``` lua
+Table event = {
+	["timestamp"]		= Number timestamp,
+	["good"]			= Number good,
+	["late"]			= Number late,
+	["lost"]			= Number lost,
+	["resync"]			= Number resync,
+	["udp_packets"]		= Number udp_packets,
+	["tcp_packets"]		= Number tcp_packets,
+	["udp_ping_avg"]	= Number udp_ping_avg,
+	["udp_ping_var"]	= Number udp_ping_var,
+	["tcp_ping_avg"]	= Number tcp_ping_avg,
+	["tcp_ping_var"]	= Number tcp_ping_var,
+}
+```
+
+ - `onServerReject`
+
+``` lua
+Table event = {
+	["type"]	= mumble.reject type,
+	["reason"]	= String reason,
+}
+```
+
+ - `onServerSync`
+
+``` lua
+Table event = {
+	["user"]			= mumble.user user,
+	["max_bandwidth"]	= Number max_bandwidth,
+	["welcome_text"]	= String welcome_text,
+	["permissions"]		= Number permissions,
+}
+```
+
+ - `onChannelRemove`
+
+``` lua
+Table event = {
+	["channel"]	= mumble.channel channel,
+}
+```
+
+ - `onChannelState`
+
+``` lua
+Table event = {
+	["channel"]				= mumble.channel channel,
+	["parent"]				= mumble.channel parent,
+	["name"]				= String name,
+	["description"]			= String description,
+	["temporary"]			= Boolean temporary,
+	["description_hash"]	= String description_hash,
+}
+```
+
+ - `onUserRemove`
+
+``` lua
+Table event = {
+	["user"]	= mumble.user user,
+	["actor"]	= mumble.user actor,
+	["reason"]	= String reason,
+	["ban"]		= Boolean ban,
+}
+```
+
+ - `onUserState`
+
+``` lua
+Table event = {
+	["actor"]	= mumble.user actor,
+	["user"]	= mumble.user user,
+}
+```
+
+ - `onMessage`
+
+``` lua
+Table event = {
+	["actor"]		= mumble.user actor,
+	["message"]		= String message,
+	["users"]		= Table users,
+	["channels"]	= Table channels
+}
+```
+
+ - `onPermissionDenied`
+
+``` lua
+Table event = {
+	["type"]		= Number type,
+	["permission"]	= Number permission,
+	["channel"]		= mumble.channel channel,
+	["user"]		= mumble.user user,
+	["reason"]		= String reason,
+	["name"]		= String name,
+}
+```
+
+ - `onCodecVersion`
+
+``` lua
+Table event = {
+	["alpha"]			= Number alpha,
+	["beta"]			= Number beta,
+	["prefer_alpha"]	= Boolean prefer_alpha,
+	["opus"]			= Boolean opus,
+}
+```
+
+ - `onUserStats`
+
+``` lua
+Table event = {
+	["user"]				= mumble.user actor,
+	["stats_only"]			= Boolean stats_only,
+	["certificates"]		= Table certificates,
+	["from_client"]			= {
+		["good"]			= Number good,
+		["late"]			= Number late,
+		["lost"]			= Number lost,
+		["resync"]			= Number resync,
+	},
+	["from_server"]			= {
+		["good"]	= Number good,
+		["late"]	= Number late,
+		["lost"]	= Number lost,
+		["resync"]	= Number resync,
+	},
+	["udp_packets"]			= Number udp_packets,
+	["tcp_packets"]			= Number tcp_packets,
+	["udp_ping_avg"]		= Number udp_ping_avg,
+	["udp_ping_var"]		= Number udp_ping_var,
+	["tcp_ping_avg"]		= Number tcp_ping_avg,
+	["tcp_ping_var"]		= Number tcp_ping_var,
+	["version"]				= Number version,
+	["release"]				= String release,
+	["os"]					= String os,
+	["os_version"]			= String os_version,
+	["certificates"]		= Table celt_versions,
+	["address"]				= String address,
+	["bandwidth"]			= Number bandwidth,
+	["onlinesecs"]			= Number onlinesecs,
+	["idlesecs"]			= Number idlesecs,
+	["strong_certificate"]	= Boolean strong_certificate,
+	["opus"]				= Boolean opus,
+}
+```
+
+ - `onServerConfig`
+
+``` lua
+Table event = {
+	["max_bandwidth"]			= Number max_bandwidth,
+	["welcome_text"]			= String welcome_text,
+	["allow_html"]				= Boolean allow_html,
+	["message_length"]			= Number message_length,
+	["image_message_length"]	= Number image_message_length,
+	["max_users"]				= Number max_users,
+}
 ```
