@@ -8,10 +8,10 @@ A lua module to connect to a mumble server and interact with it
 ``` lua
 -- Create a new mumble.client with a certificate and key file
 -- Returns nil and an error string if something went wrong
-mumble.client, [ String error ] = mumble.new(string Certificate File Path, string Key File Path)
+mumble.client, [ String error ] = mumble.new(String certificate file path, String key file path)
 
 -- The client's user
-mumble.user = mumble.me
+mumble.user = mumble.client.me
 ```
 
 #### mumble.client
@@ -260,10 +260,10 @@ Table event = {
 	["stats_only"]			= Boolean stats_only,
 	["certificates"]		= Table certificates,
 	["from_client"]			= {
-		["good"]			= Number good,
-		["late"]			= Number late,
-		["lost"]			= Number lost,
-		["resync"]			= Number resync,
+		["good"]	= Number good,
+		["late"]	= Number late,
+		["lost"]	= Number lost,
+		["resync"]	= Number resync,
 	},
 	["from_server"]			= {
 		["good"]	= Number good,
