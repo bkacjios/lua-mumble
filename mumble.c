@@ -146,8 +146,22 @@ int mumble_isPlaying(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
 	pthread_mutex_lock(&client->lock);
-	lua_pushboolean(l, (client->audiojob != NULL && client->audiojob->done = false));
+	lua_pushboolean(l, (client->audiojob != NULL && client->audiojob->done == false));
 	pthread_mutex_unlock(&client->lock);
+	return 1;
+}
+
+int mumble_setVolume(lua_State *l)
+{
+	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
+	client->volume = luaL_checknumber(l, 2);
+	return 0;
+}
+
+int mumble_getVolume(lua_State *l)
+{
+	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
+	lua_pushnumber(l, client->volume);
 	return 1;
 }
 
@@ -272,6 +286,8 @@ const luaL_reg mumble_client[] = {
 	{"disconnect", mumble_disconnect},
 	{"play", mumble_play},
 	{"isPlaying", mumble_isPlaying},
+	{"setVolume", mumble_setVolume},
+	{"getVolume", mumble_getVolume},
 	{"hook", mumble_hook},
 	{"getHooks", mumble_getHooks},
 	{"getUsers", mumble_getUsers},

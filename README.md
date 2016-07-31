@@ -10,6 +10,10 @@ A lua module to connect to a mumble server and interact with it
 -- Returns nil and an error string if something went wrong
 mumble.client, [ String error ] = mumble.new(String certificate file path, String key file path)
 
+-- Create a new opus encoder
+-- Returns nil and an error string if something went wrong
+mumble.opus, [ String error ] = mumble.encoder([ Number samplerate = 48000 ])
+
 -- The client's user
 mumble.user = mumble.client.me
 ```
@@ -26,6 +30,19 @@ mumble.client:disconnect()
 
 -- Called to process the internal socket and callbacks
 mumble.client:update()
+
+-- Play an ogg audio file
+mumble.client:play(mumble.opus encoder, String ogg file path)
+
+-- Checks if the client is currently playing an audio file
+Boolean playing = mumble.client:isPlaying()
+
+-- Sets the global volume level
+-- Consider this the master volume level
+mumble.client:setVolume(Number volume)
+
+-- Gets the global volume level
+Number volume = mumble.client:getVolume()
 
 -- Adds a callback for a specific event
 -- If no unique name is passed, it will default to "hook"
@@ -123,6 +140,26 @@ mumble.channel:setDescription(String description)
 
 -- Attempts to remove the channel
 mumble.channel:remove()
+```
+
+#### mumble.audio
+
+``` lua
+-- Stops playing the audio
+mumble.audio:stop()
+
+-- Sets the volume level
+mumble.audio:setVolume(Number volume)
+
+-- Gets the volume level
+Number volume = mumble.audio:getVolume()
+```
+
+#### mumble.opus
+
+``` lua
+-- Sends a text message to a user
+mumble.opus:setBitRate(Number bitrate)
 ```
 
 ### hooks
