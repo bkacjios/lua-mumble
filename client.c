@@ -121,11 +121,11 @@ int client_update(lua_State *l)
 	if (client->nextping < curTime) {
 		client->nextping = curTime + PING_TIMEOUT;
 		MumbleProto__Ping ping = MUMBLE_PROTO__PING__INIT;
-		mumble_hook_call(l, "onClientPing", 1, 0);
+		mumble_hook_call(l, "onClientPing", 0);
 		packet_send(client, PACKET_PING, &ping);
 	}
 
-	mumble_hook_call(l, "onTick", 1, 0);
+	mumble_hook_call(l, "onTick", 0);
 
 	static Packet packet_read;
 
@@ -286,7 +286,7 @@ int client_call(lua_State *l)
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	const char* hook = luaL_checkstring(l, 2);
 	int nargs = lua_gettop(l) - 2;
-	mumble_hook_call(l, hook, 2, nargs);
+	mumble_hook_call(l, hook, nargs);
 	return 0;
 }
 

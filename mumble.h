@@ -122,7 +122,7 @@ void mumble_user_get(lua_State *l, uint32_t session);
 void mumble_user_remove(lua_State *l, uint32_t session);
 void mumble_channel_get(lua_State *l, uint32_t channel_id);
 void mumble_channel_remove(lua_State *l, uint32_t channel_id);
-void mumble_hook_call(lua_State *l, const char* hook, int argsStart, int nargs);
+void mumble_hook_call(lua_State *l, const char* hook, int nargs);
 
 void audio_transmission_event(AudioTransmission *sound);
 

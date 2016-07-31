@@ -129,9 +129,14 @@ int mumble_new(lua_State *l)
 	return 1;
 }
 
-void mumble_hook_call(lua_State *l, const char* hook, int argsStart, int nargs)
+static bool erroring = false;
+
+void mumble_hook_call(lua_State *l, const char* hook, int nargs)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+
+	int top = lua_gettop(l);
+	int i;
 
 	// Get hook table
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->hooksref);
@@ -142,14 +147,18 @@ void mumble_hook_call(lua_State *l, const char* hook, int argsStart, int nargs)
 	lua_remove(l, -2);
 
 	if (lua_isnil(l, -1) == 1 || lua_istable(l, -1) == 0) {
+		// Pop the nil
 		lua_pop(l, 1);
+
+		// Remove the arguments anyway despite no hook call
+		for (i = top; i < top + nargs; i++) {
+			lua_remove(l, i);
+		}
 		return;
 	}
 
 	// Push nil, needed for lua_next
 	lua_pushnil(l);
-
-	int i = 1;
 
 	while (lua_next(l, -2)) {
 		// Copy key..
@@ -162,19 +171,35 @@ void mumble_hook_call(lua_State *l, const char* hook, int argsStart, int nargs)
 
 			for (i = 1; i <= nargs; i++) {
 				// Copy number of arguments
-				lua_pushvalue(l, argsStart+i);
+				int pos = top - nargs + i;
+
+				// Push a copy of the argument
+				lua_pushvalue(l, pos);
 			}
 
 			// Call
-			lua_call(l, nargs, 0);
+			if (erroring == true) {
+				// If the user errors within the onError hook, PANIC
+				lua_call(l, nargs, 0);
+			} else if (lua_pcall(l, nargs, 0, 0) != 0) {
+				erroring = true;
+				// Call the onError hook
+				mumble_hook_call(l, "onError", 1);
+				erroring = false;
+			}
 		}
 
-		// Pop off the key and value..
+		// Pop the key and value..
 		lua_pop(l, 2);
 	}
 
-	// Pop off the nil needed for lua_next
+	// Pop the hook table
 	lua_pop(l, 1);
+
+	// Remove the original arguments
+	for (i = top; i < top + nargs; i++) {
+		lua_remove(l, i);
+	}
 }
 
 void mumble_user_get(lua_State *l, uint32_t session)
