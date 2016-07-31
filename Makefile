@@ -1,4 +1,4 @@
-CFLAGS = `pkg-config --libs --cflags libssl luajit libprotobuf-c opus vorbis vorbisfile` -pthread -g -DDEBUG
+CFLAGS = `pkg-config --libs --cflags libssl luajit libprotobuf-c opus vorbis vorbisfile` -lev -pthread
 
 INCLUDES = -I.
 
@@ -10,7 +10,7 @@ clean:
 uninstall:
 	rm /usr/local/lib/lua/5.1/mumble.so
 
-all: proto/Mumble.o mumble.o client.o user.o channel.o packet.o util.o mumble.so
+all: proto/Mumble.o mumble.o client.o user.o channel.o encoder.o audio.o packet.o util.o mumble.so
 
 install: all
 	cp mumble.so /usr/local/lib/lua/5.1/mumble.so
@@ -31,11 +31,17 @@ user.o: user.c
 channel.o: channel.c
 	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
 
+encoder.o: encoder.c
+	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
+
+audio.o: audio.c
+	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
+
 packet.o: packet.c
 	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
 
 util.o: util.c
 	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
 
-mumble.so: proto/Mumble.o mumble.o client.o user.o channel.o packet.o util.o
+mumble.so: proto/Mumble.o mumble.o client.o user.o channel.o encoder.o audio.o packet.o util.o
 	$(CC) -shared -o $@ $^ $(CFLAGS)

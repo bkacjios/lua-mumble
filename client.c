@@ -238,6 +238,17 @@ int mumble_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->hooksref);
+	luaL_unref(l, LUA_REGISTRYINDEX, client->usersref);
+	luaL_unref(l, LUA_REGISTRYINDEX, client->channelsref);
+
+	pthread_mutex_lock(&client->lock);
+	if (client->audiojob != NULL)
+		client->audiojob->done = true;
+	pthread_mutex_unlock(&client->lock);
+	
+	pthread_join(client->audiothread, NULL);
+
+	printf("mumble_gc\n");
 	return 0;
 }
 

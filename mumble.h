@@ -6,11 +6,13 @@
  *
  */
 
+#include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <errno.h>
 
 #include <lua.h>
 #include <lualib.h>
@@ -32,7 +34,7 @@
 
 #include <openssl/ssl.h>
 
-#include <ev.h>
+#include <math.h>
 
 #include <opus/opus.h>
 #include <vorbis/codec.h>
@@ -43,18 +45,24 @@
 #define MODULE_NAME "lua-mumble"
 #define MODULE_VERSION "0.0.1"
 
+#define OPUS_FRAME_SIZE	480
+#define PCM_BUFFER		4096
+
 #define PAYLOAD_SIZE_MAX (1024 * 1024 * 8 - 1)
 
+#ifndef PING_TIMEOUT
 #define PING_TIMEOUT 15.0
+#endif
 
-#define OPUS_FRAME_SIZE 480
-#define PCM_BUFFER 4096
 
 /*
  * Structures
  */
 
-typedef struct {
+typedef struct MumbleClient MumbleClient;
+typedef struct AudioTransmission AudioTransmission;
+
+struct MumbleClient {
 	int			socket;
 	SSL_CTX		*ssl_context;
 	SSL			*ssl;
@@ -67,7 +75,12 @@ typedef struct {
 	int			channelsref;
 	double		nextping;
 	uint32_t	session;
-} MumbleClient;
+	float		volume;
+	pthread_t	audiothread;
+	pthread_mutex_t lock;
+	AudioTransmission* audiojob;
+	//struct ev_loop *ev_loop_main;
+};
 
 typedef struct {
 	uint16_t type;
@@ -75,19 +88,20 @@ typedef struct {
 	uint8_t buffer[PAYLOAD_SIZE_MAX + 6];
 } Packet;
 
-typedef struct {
-	ev_timer ev;
+struct AudioTransmission {
 	FILE *file;
 	lua_State *lua;
 	OggVorbis_File ogg;
 	uint32_t sequence;
 	OpusEncoder *encoder;
+	MumbleClient *client;
 	float volume;
 	struct {
 		char pcm[PCM_BUFFER];
 		int size;
 	} buffer;
-} AudioTransmission;
+	bool done;
+};
 
 typedef struct {
 	uint8_t *buffer;
@@ -111,6 +125,8 @@ void mumble_user_remove(lua_State *l, uint32_t session);
 void mumble_channel_get(lua_State *l, uint32_t channel_id);
 void mumble_channel_remove(lua_State *l, uint32_t channel_id);
 void mumble_hook_call(lua_State *l, const char* hook, int nargs);
+
+void audio_transmission_event(AudioTransmission *sound);
 
 /*--------------------------------
 	MUMBLE CLIENT META METHODS
@@ -158,6 +174,27 @@ int channel_message(lua_State *l);
 int channel_setDescription(lua_State *l);
 int channel_remove(lua_State *l);
 int channel_tostring(lua_State *l);
+
+/*--------------------------------
+	MUMBLE ENCODER META METHODS
+--------------------------------*/
+
+#define METATABLE_ENCODER		"mumble.opus"
+
+int encoder_new(lua_State *l);
+int encoder_setBitRate(lua_State *l);
+int encoder_tostring(lua_State *l);
+
+/*--------------------------------
+	MUMBLE ENCODER META METHODS
+--------------------------------*/
+
+#define METATABLE_AUDIO			"mumble.audio"
+
+int audio_stop(lua_State *l);
+int audio_setVolume(lua_State *l);
+int audio_getVolume(lua_State *l);
+int audio_tostring(lua_State *l);
 
 /*--------------------------------
 	MUMBLE PACKET FUNCTIONS

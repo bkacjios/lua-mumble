@@ -50,7 +50,7 @@ int channel_remove(lua_State *l)
 }
 
 int channel_tostring(lua_State *l)
-{	
+{
 	MumbleClient *client = mumble_check_meta(l, 1, METATABLE_CHAN);
 	lua_pushfstring(l, "%s: %p", METATABLE_CHAN, lua_topointer(l, 1));
 	return 1;
