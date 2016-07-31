@@ -51,6 +51,7 @@ int mumble_new(lua_State *l)
 	luaL_getmetatable(l, METATABLE_CLIENT);
 	lua_setmetatable(l, -2);
 
+	client->nextping = 0;
 	client->volume = 1;
 
 	lua_newtable(l);
