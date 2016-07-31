@@ -247,8 +247,6 @@ int mumble_gc(lua_State *l)
 	pthread_mutex_unlock(&client->lock);
 	
 	pthread_join(client->audiothread, NULL);
-
-	printf("mumble_gc\n");
 	return 0;
 }
 

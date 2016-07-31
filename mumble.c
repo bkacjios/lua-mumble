@@ -7,31 +7,36 @@ static unsigned long long getTime()
 	return (ts.tv_sec + ts.tv_nsec);
 }
 
+static bool thread_isPlaying(MumbleClient *client)
+{
+	bool result;
+	pthread_mutex_lock(&client->lock);
+	AudioTransmission *sound = client->audiojob;
+	result = sound != NULL && sound->done == false;
+	pthread_mutex_unlock(&client->lock);
+	return result;
+}
+
 static void mumble_audiothread(MumbleClient *client)
 {
 	while (true) {
-		pthread_mutex_lock(&client->lock);
+		while (thread_isPlaying(client)) {
+			unsigned long long diff;
+			unsigned long long start, stop;
 
-		AudioTransmission *sound = client->audiojob;
+			start = getTime();
+			pthread_mutex_lock(&client->lock);
+			audio_transmission_event(client->audiojob);
+			pthread_mutex_unlock(&client->lock);
+			stop = getTime();
 
-		if (sound != NULL && sound->done == false) {
-			while (sound->done == false) {
-				unsigned long long diff;
-				unsigned long long start, stop;
+			diff = fabs((double) stop - start);
 
-				start = getTime();
-				audio_transmission_event(sound);
-				stop = getTime();
+			struct timespec sleep;
+			sleep.tv_nsec = 10000000LL - diff;
 
-				diff = fabs((double) stop - start);
-
-				struct timespec sleep;
-				sleep.tv_nsec = 10000000LL - diff;
-
-				nanosleep(&sleep, NULL);
-			}
+			nanosleep(&sleep, NULL);
 		}
-		pthread_mutex_unlock(&client->lock);
 
 		usleep(10000);
 	}
@@ -140,7 +145,9 @@ int mumble_play(lua_State *l)
 int mumble_isPlaying(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_pushboolean(l, client->audiojob != NULL);
+	pthread_mutex_lock(&client->lock);
+	lua_pushboolean(l, (client->audiojob != NULL && client->audiojob->done = false));
+	pthread_mutex_unlock(&client->lock);
 	return 1;
 }
 
