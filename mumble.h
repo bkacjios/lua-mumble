@@ -138,6 +138,7 @@ int client_update(lua_State *l);
 int client_disconnect(lua_State *l);
 int client_play(lua_State *l);
 int client_isPlaying(lua_State *l);
+int client_stopPlaying(lua_State *l);
 int client_setVolume(lua_State *l);
 int client_getVolume(lua_State *l);
 int client_hook(lua_State *l);

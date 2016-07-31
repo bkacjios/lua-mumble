@@ -351,7 +351,6 @@ void packet_user_state(lua_State *l, Packet *packet)
 	}
 
 	lua_newtable(l);
-
 		if (user->has_actor) {
 			mumble_user_get(l, user->actor);
 			lua_setfield(l, -2, "actor");
@@ -364,13 +363,16 @@ void packet_user_state(lua_State *l, Packet *packet)
 				lua_pushstring(l, user->name);
 				lua_setfield(l, -2, "name");
 			}
-			if (user->has_channel_id) {
-				mumble_channel_get(l, user->channel_id);
-				lua_setfield(l, -2, "channel");
-			}
+			
+			lua_getfield(l, -2, "channel");
+			lua_setfield(l, -2, "channel_from");
+
+			mumble_channel_get(l, user->has_channel_id ? user->channel_id : 0);
+			lua_setfield(l, -2, "channel");
+			
 			if (user->has_user_id) {
 				lua_pushinteger(l, user->user_id);
-				lua_setfield(l, -2, "userId");
+				lua_setfield(l, -2, "user_id");
 			}
 			if (user->has_mute) {
 				lua_pushboolean(l, user->mute);

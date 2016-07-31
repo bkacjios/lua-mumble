@@ -234,6 +234,16 @@ int client_isPlaying(lua_State *l)
 	return 1;
 }
 
+int client_stopPlaying(lua_State *l)
+{
+	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
+	pthread_mutex_lock(&client->lock);
+	if (client->audiojob != NULL)
+		client->audiojob->done = true;
+	pthread_mutex_unlock(&client->lock);
+	return 1;
+}
+
 int client_setVolume(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
