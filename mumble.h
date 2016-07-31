@@ -92,12 +92,12 @@ struct AudioTransmission {
 	uint32_t sequence;
 	OpusEncoder *encoder;
 	MumbleClient *client;
+	bool done;
 	float volume;
 	struct {
 		char pcm[PCM_BUFFER];
 		int size;
 	} buffer;
-	bool done;
 };
 
 typedef struct {
@@ -111,6 +111,7 @@ typedef struct {
 --------------------------------*/
 
 double gettime();
+void debugstack(lua_State *l, const char* text);
 MumbleClient* mumble_check_meta(lua_State *L, int i, const char* meta);
 int luaL_checkboolean(lua_State *L, int i);
 int luaL_optboolean(lua_State *L, int i, int d);
@@ -121,7 +122,7 @@ void mumble_user_get(lua_State *l, uint32_t session);
 void mumble_user_remove(lua_State *l, uint32_t session);
 void mumble_channel_get(lua_State *l, uint32_t channel_id);
 void mumble_channel_remove(lua_State *l, uint32_t channel_id);
-void mumble_hook_call(lua_State *l, const char* hook, int nargs);
+void mumble_hook_call(lua_State *l, const char* hook, int argsStart, int nargs);
 
 void audio_transmission_event(AudioTransmission *sound);
 
@@ -131,18 +132,23 @@ void audio_transmission_event(AudioTransmission *sound);
 
 #define METATABLE_CLIENT	"mumble.client"
 
-int mumble_connect(lua_State *l);
-int mumble_auth(lua_State *l);
-int mumble_update(lua_State *l);
-int mumble_disconnect(lua_State *l);
-int mumble_hook(lua_State *l);
-int mumble_getHooks(lua_State *l);
-int mumble_getUsers(lua_State *l);
-int mumble_getChannels(lua_State *l);
-int mumble_gettime(lua_State *l);
-int mumble_gc(lua_State *l);
-int mumble_tostring(lua_State *l);
-int mumble_index(lua_State *l);
+int client_connect(lua_State *l);
+int client_auth(lua_State *l);
+int client_update(lua_State *l);
+int client_disconnect(lua_State *l);
+int client_play(lua_State *l);
+int client_isPlaying(lua_State *l);
+int client_setVolume(lua_State *l);
+int client_getVolume(lua_State *l);
+int client_hook(lua_State *l);
+int client_call(lua_State *l);
+int client_getHooks(lua_State *l);
+int client_getUsers(lua_State *l);
+int client_getChannels(lua_State *l);
+int client_gettime(lua_State *l);
+int client_gc(lua_State *l);
+int client_tostring(lua_State *l);
+int client_index(lua_State *l);
 
 /*--------------------------------
 	MUMBLE USER META METHODS

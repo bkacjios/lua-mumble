@@ -7,6 +7,17 @@ double gettime()
 	return time.tv_sec + time.tv_usec/1.0e6;
 }
 
+void debugstack(lua_State *l, const char* text)
+{
+	for (int i=1; i<=lua_gettop(l); i++)
+	{
+		if (lua_isstring(l, i))
+			printf("%s [%d] = %s (%s)\n", text, i, eztype(l, i), lua_tostring(l, i));
+		else
+			printf("%s [%d] = %s\n", text, i, eztype(l, i));
+	}
+}
+
 MumbleClient* mumble_check_meta(lua_State *L, int i, const char* meta)
 {
 	luaL_checktablemeta(L, i, meta);

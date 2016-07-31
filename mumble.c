@@ -9,10 +9,12 @@ static unsigned long long getTime()
 
 static bool thread_isPlaying(MumbleClient *client)
 {
-	bool result;
+	bool result = false;
 	pthread_mutex_lock(&client->lock);
-	AudioTransmission *sound = client->audiojob;
-	result = sound != NULL && sound->done == false;
+
+	if (client->audiojob != NULL)
+		result = !client->audiojob->done;
+	
 	pthread_mutex_unlock(&client->lock);
 	return result;
 }
@@ -42,6 +44,24 @@ static void mumble_audiothread(MumbleClient *client)
 	}
 }
 
+int mumble_sleep(lua_State *l)
+{
+	double n = luaL_checknumber(l, 1);
+	struct timespec t, r;
+	if (n < 0.0) n = 0.0;
+	if (n > INT_MAX) n = INT_MAX;
+	t.tv_sec = (int) n;
+	n -= t.tv_sec;
+	t.tv_nsec = (int) (n * 1000000000);
+	if (t.tv_nsec >= 1000000000) t.tv_nsec = 999999999;
+	while (nanosleep(&t, &r) != 0) {
+		t.tv_sec = r.tv_sec;
+		t.tv_nsec = r.tv_nsec;
+	}
+	return 0;
+}
+
+
 int mumble_new(lua_State *l)
 {
 	const char* certificate_file = luaL_checkstring(l, 1);
@@ -63,11 +83,22 @@ int mumble_new(lua_State *l)
 	lua_newtable(l);
 	client->channelsref = luaL_ref(l, LUA_REGISTRYINDEX);
 
+	if (pthread_mutex_init(&client->lock , NULL))
+	{
+		lua_pushnil(l);
+		lua_pushstring(l, "could not init mutex");
+		return 2;
+	}
+
 	pthread_mutex_lock(&client->lock);
 	client->audiojob = NULL;
 	pthread_mutex_unlock(&client->lock);
 
-	pthread_create(&client->audiothread, NULL, (void*) mumble_audiothread, client);
+	if (pthread_create(&client->audiothread, NULL, (void*) mumble_audiothread, client)){
+		lua_pushnil(l);
+		lua_pushstring(l, "could not create audio thread");
+		return 2;
+	}
 
 	client->socket = socket(AF_INET, SOCK_STREAM, 0);
 	if (client->socket < 0) {
@@ -98,101 +129,51 @@ int mumble_new(lua_State *l)
 	return 1;
 }
 
-int mumble_play(lua_State *l)
-{
-	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
-	OpusEncoder *encoder	= luaL_checkudata(l, 2, METATABLE_ENCODER);
-	const char* filepath	= luaL_checkstring(l, 3);
-	float volume			= (float) luaL_optnumber(l, 4, 1);
-
-	pthread_mutex_lock(&client->lock);
-	if (client->audiojob != NULL)
-		client->audiojob->done = true;
-	pthread_mutex_unlock(&client->lock);
-
-	AudioTransmission *sound = lua_newuserdata(l, sizeof(AudioTransmission));
-	luaL_getmetatable(l, METATABLE_AUDIO);
-	lua_setmetatable(l, -2);
-
-	sound->client = client;
-	sound->lua = l;
-	sound->encoder = encoder;
-	sound->sequence = 1;
-	sound->buffer.size = 0;
-	sound->volume = volume;
-	sound->file = fopen(filepath, "rb");
-	sound->done = false;
-
-	if (sound->file == NULL) {
-		lua_pushnil(l);
-		lua_pushfstring(l, "error opening file %s: %s", luaL_checkstring(l, 3), strerror(errno));
-		return 2;
-	}
-
-	int error = ov_open_callbacks(sound->file, &sound->ogg, NULL, 0, OV_CALLBACKS_STREAMONLY_NOCLOSE);
-
-	if (error != 0) {
-		lua_pushnil(l);
-		lua_pushfstring(l, "error opening file %s: %s", luaL_checkstring(l, 3), opus_strerror(error));
-		return 2;
-	}
-
-	pthread_mutex_lock(&client->lock);
-	client->audiojob = sound;
-	pthread_mutex_unlock(&client->lock);
-	return 1;
-}
-
-int mumble_isPlaying(lua_State *l)
-{
-	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
-	pthread_mutex_lock(&client->lock);
-	lua_pushboolean(l, (client->audiojob != NULL && client->audiojob->done == false));
-	pthread_mutex_unlock(&client->lock);
-	return 1;
-}
-
-int mumble_setVolume(lua_State *l)
-{
-	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
-	client->volume = luaL_checknumber(l, 2);
-	return 0;
-}
-
-int mumble_getVolume(lua_State *l)
-{
-	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_pushnumber(l, client->volume);
-	return 1;
-}
-
-void mumble_hook_call(lua_State *l, const char* hook, int nargs)
+void mumble_hook_call(lua_State *l, const char* hook, int argsStart, int nargs)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
+	// Get hook table
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->hooksref);
+
+	// Get the table of callbacks
 	lua_getfield(l, -1, hook);
 
-	if (lua_isnil(l, -1) == 0 && lua_istable(l, -1)) {
-		lua_pushnil(l);
+	lua_remove(l, -2);
 
-		int i = 0;
+	if (lua_isnil(l, -1) == 1 || lua_istable(l, -1) == 0) {
+		lua_pop(l, 1);
+		return;
+	}
 
-		while (lua_next(l, -2)) {
+	// Push nil, needed for lua_next
+	lua_pushnil(l);
+
+	int i = 1;
+
+	while (lua_next(l, -2)) {
+		// Copy key..
+		lua_pushvalue(l, -2);
+
+		// Check value
+		if (lua_isfunction(l, -2)) {
+			// Copy function
 			lua_pushvalue(l, -2);
 
-			if (lua_isfunction(l, -2)) {
-				lua_pushvalue(l, -2);
-				for (int i = 0; i < nargs; i++) {
-					lua_pushvalue(l, 2+i);
-				}
-				lua_call(l, 1, 0);
+			for (i = 1; i <= nargs; i++) {
+				// Copy number of arguments
+				lua_pushvalue(l, argsStart+i);
 			}
 
-			lua_pop(l, 2);
+			// Call
+			lua_call(l, nargs, 0);
 		}
-		lua_pop(l, 1);
+
+		// Pop off the key and value..
+		lua_pop(l, 2);
 	}
+
+	// Pop off the nil needed for lua_next
 	lua_pop(l, 1);
 }
 
@@ -222,6 +203,7 @@ void mumble_user_get(lua_State *l, uint32_t session)
 		lua_pushinteger(l, session);
 		lua_gettable(l, -2);
 	}
+
 	lua_remove(l, -2);
 }
 
@@ -254,6 +236,9 @@ void mumble_channel_get(lua_State *l, uint32_t channel_id)
 			lua_pushvalue(l, 1);
 			lua_setfield(l, -2, "client");
 
+			lua_newtable(l);
+			lua_setfield(l, -2, "children");
+
 			luaL_getmetatable(l, METATABLE_CHAN);
 			lua_setmetatable(l, -2);
 		lua_settable(l, -3);
@@ -261,6 +246,7 @@ void mumble_channel_get(lua_State *l, uint32_t channel_id)
 		lua_pushinteger(l, channel_id);
 		lua_gettable(l, -2);
 	}
+	
 	lua_remove(l, -2);
 }
 
@@ -277,26 +263,28 @@ void mumble_channel_remove(lua_State *l, uint32_t channel_id)
 const luaL_reg mumble[] = {
 	{"new", mumble_new},
 	{"encoder", encoder_new},
+	{"sleep", mumble_sleep},
 	{NULL, NULL}
 };
 
 const luaL_reg mumble_client[] = {
-	{"connect", mumble_connect},
-	{"auth", mumble_auth},
-	{"update", mumble_update},
-	{"disconnect", mumble_disconnect},
-	{"play", mumble_play},
-	{"isPlaying", mumble_isPlaying},
-	{"setVolume", mumble_setVolume},
-	{"getVolume", mumble_getVolume},
-	{"hook", mumble_hook},
-	{"getHooks", mumble_getHooks},
-	{"getUsers", mumble_getUsers},
-	{"getChannels", mumble_getChannels},
-	{"gettime", mumble_gettime},
-	{"__gc", mumble_gc},
-	{"__tostring", mumble_tostring},
-	{"__index", mumble_index},
+	{"connect", client_connect},
+	{"auth", client_auth},
+	{"update", client_update},
+	{"disconnect", client_disconnect},
+	{"play", client_play},
+	{"isPlaying", client_isPlaying},
+	{"setVolume", client_setVolume},
+	{"getVolume", client_getVolume},
+	{"hook", client_hook},
+	{"call", client_call},
+	{"getHooks", client_getHooks},
+	{"getUsers", client_getUsers},
+	{"getChannels", client_getChannels},
+	{"gettime", client_gettime},
+	{"__gc", client_gc},
+	{"__tostring", client_tostring},
+	{"__index", client_index},
 	{NULL, NULL}
 };
 
