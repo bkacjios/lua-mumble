@@ -77,7 +77,7 @@ int user_move(lua_State *l)
 	return 0;
 }
 
-int user_mute(lua_State *l)
+int user_setMuted(lua_State *l)
 {
 	MumbleClient *client = mumble_check_meta(l, 1, METATABLE_USER);
 
@@ -94,7 +94,7 @@ int user_mute(lua_State *l)
 	return 0;
 }
 
-int user_deafen(lua_State *l)
+int user_setDeaf(lua_State *l)
 {
 	MumbleClient *client = mumble_check_meta(l, 1, METATABLE_USER);
 	

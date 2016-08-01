@@ -37,6 +37,9 @@ mumble.client:play(mumble.opus encoder, String ogg file path)
 -- Checks if the client is currently playing an audio file
 Boolean playing = mumble.client:isPlaying()
 
+-- Stops playing the current audio
+mumble.client:stopPlaying()
+
 -- Sets the global volume level
 -- Consider this the master volume level
 mumble.client:setVolume(Number volume)
@@ -112,11 +115,11 @@ mumble.user:move(mumble.channel channel)
 
 -- Attempts to mute a user
 -- If no boolean is passed, it will default to muting the user
-mumble.user:mute([ Boolean mute = true ])
+mumble.user:setMuted([ Boolean mute = true ])
 
 -- Attempts to deafen a user
 -- If no boolean is passed, it will default to deafening the user
-mumble.user:deafen([ Boolean deaf = true ])
+mumble.user:setDeaf([ Boolean deaf = true ])
 
 -- Attempts to change the users comment
 mumble.user:comment(String comment)
