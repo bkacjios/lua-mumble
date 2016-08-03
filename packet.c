@@ -299,9 +299,17 @@ void packet_channel_state(lua_State *l, Packet *packet)
 				lua_pushboolean(l, channel->temporary);
 				lua_setfield(l, -2, "temporary");
 			}
+			if (channel->has_position) {
+				lua_pushinteger(l, channel->position);
+				lua_setfield(l, -2, "position");
+			}
 			if (channel->has_description_hash) {
 				lua_pushlstring(l, (char *)channel->description_hash.data, channel->description_hash.len);
 				lua_setfield(l, -2, "description_hash");
+			}
+			if (channel->has_max_users) {
+				lua_pushinteger(l, channel->max_users);
+				lua_setfield(l, -2, "max_users");
 			}
 		lua_setfield(l, -2, "channel");
 	mumble_hook_call(l, "onChannelState", 1);

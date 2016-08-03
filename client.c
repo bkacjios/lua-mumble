@@ -138,7 +138,10 @@ int client_disconnect(lua_State *l)
 int client_isConnected(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	
+	pthread_mutex_lock(&client->lock);
 	lua_pushboolean(l, client->connected);
+	pthread_mutex_unlock(&client->lock);
 	return 1;
 }
 

@@ -103,6 +103,27 @@ Number time = mumble.client:gettime()
 #### mumble.user
 
 ``` lua
+-- Structure
+Table mumble.user = {
+	["session"]				= Number session,
+	["name"]				= String name,
+	["channel"]				= mumble.channel channel,
+	["channel_from"]		= mumble.channel channel_from,
+	["user_id"]				= Number user_id,
+	["mute"]				= Boolean mute,
+	["deaf"]				= Boolean deaf,
+	["self_mute"]			= Boolean self_mute,
+	["self_deaf"]			= Boolean self_deaf,
+	["suppress"]			= Boolean suppress,
+	["comment"]				= String comment,
+	["recording"]			= Boolean recording,
+	["priority_speaker"]	= Boolean priority_speaker,
+	["texture"]				= String texture,
+	["hash"]				= String hash,
+	["comment_hash"]		= String comment_hash,
+	["texture_hash"]		= String texture_hash,
+}
+
 -- Sends a text message to a user
 mumble.user:message(String host)
 
@@ -137,6 +158,18 @@ mumble.user:requestStats([ Boolean statsonly = false ])
 #### mumble.channel
 
 ``` lua
+-- Structure
+Table mumble.channel = {
+	["channel_id"]			= Number channel_id,
+	["parent"]				= mumble.channel parent,
+	["name"]				= String name,
+	["description"]			= String description,
+	["temporary"]			= Boolean temporary,
+	["position"]			= Number position,
+	["description_hash"]	= String description_hash,
+	["max_users"]			= Number max_users,
+}
+
 -- Sends a text message to the entire channel
 mumble.channel:message(String message)
 
@@ -230,12 +263,7 @@ Table event = {
 
 ``` lua
 Table event = {
-	["channel"]				= mumble.channel channel,
-	["parent"]				= mumble.channel parent,
-	["name"]				= String name,
-	["description"]			= String description,
-	["temporary"]			= Boolean temporary,
-	["description_hash"]	= String description_hash,
+	["channel"]	= mumble.channel channel,
 }
 ```
 
