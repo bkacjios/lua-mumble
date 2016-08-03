@@ -6,9 +6,9 @@ A lua module to connect to a mumble server and interact with it
 #### mumble
 
 ``` lua
--- Create a new mumble.client with a certificate and key file
+-- Connect to a mumble server
 -- Returns nil and an error string if something went wrong
-mumble.client, [ String error ] = mumble.new(String certificate file path, String key file path)
+mumble.client, [ String error ] = mumble.connect(String host, Number port, String certificate file path, String key file path)
 
 -- Create a new opus encoder
 -- Returns nil and an error string if something went wrong
@@ -21,9 +21,11 @@ mumble.user = mumble.client.me
 #### mumble.client
 
 ``` lua
--- Connect to a mumble server
--- Returns the current mumble.client userdata if successful, otherwise returns false and an error string
-mumble.client client, [ String error ] = mumble.client:connect(String host, [ Number port = 64738 ])
+-- Authenticate as a user
+mumble.client:auth(String username)
+
+-- Check if the client is connected
+Boolean connected = mumble.client:isConnected()
 
 -- Disconnect from a mumble server
 mumble.client:disconnect()

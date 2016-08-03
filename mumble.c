@@ -12,16 +12,29 @@ static bool thread_isPlaying(MumbleClient *client)
 	bool result = false;
 	pthread_mutex_lock(&client->lock);
 
-	if (client->audiojob != NULL)
+	if (client != NULL && client->audiojob != NULL)
 		result = !client->audiojob->done;
 	
 	pthread_mutex_unlock(&client->lock);
 	return result;
 }
 
+static bool thread_isConnected(MumbleClient *client)
+{
+	bool result = false;
+
+	pthread_mutex_lock(&client->lock);
+
+	if (client != NULL)
+		result = client->connected;
+
+	pthread_mutex_unlock(&client->lock);
+	return result;
+}
+
 static void mumble_audiothread(MumbleClient *client)
 {
-	while (true) {
+	while (thread_isConnected(client)) {
 		while (thread_isPlaying(client)) {
 			unsigned long long diff;
 			unsigned long long start, stop;
@@ -62,10 +75,13 @@ int mumble_sleep(lua_State *l)
 }
 
 
-int mumble_new(lua_State *l)
+int mumble_connect(lua_State *l)
 {
-	const char* certificate_file = luaL_checkstring(l, 1);
-	const char* key_file = luaL_checkstring(l, 2);
+	const char* server_host_str = luaL_checkstring(l, 1);
+	int port = luaL_checkinteger(l, 2);
+
+	const char* certificate_file = luaL_checkstring(l, 3);
+	const char* key_file = luaL_checkstring(l, 4);
 
 	MumbleClient *client = lua_newuserdata(l, sizeof(MumbleClient));
 	luaL_getmetatable(l, METATABLE_CLIENT);
@@ -73,6 +89,8 @@ int mumble_new(lua_State *l)
 
 	client->nextping = 0;
 	client->volume = 1;
+	client->audiojob = NULL;
+	client->connected = false;
 
 	lua_newtable(l);
 	client->hooksref = luaL_ref(l, LUA_REGISTRYINDEX);
@@ -82,23 +100,6 @@ int mumble_new(lua_State *l)
 
 	lua_newtable(l);
 	client->channelsref = luaL_ref(l, LUA_REGISTRYINDEX);
-
-	if (pthread_mutex_init(&client->lock , NULL))
-	{
-		lua_pushnil(l);
-		lua_pushstring(l, "could not init mutex");
-		return 2;
-	}
-
-	pthread_mutex_lock(&client->lock);
-	client->audiojob = NULL;
-	pthread_mutex_unlock(&client->lock);
-
-	if (pthread_create(&client->audiothread, NULL, (void*) mumble_audiothread, client)){
-		lua_pushnil(l);
-		lua_pushstring(l, "could not create audio thread");
-		return 2;
-	}
 
 	client->socket = socket(AF_INET, SOCK_STREAM, 0);
 	if (client->socket < 0) {
@@ -124,6 +125,69 @@ int mumble_new(lua_State *l)
 			lua_pushstring(l, "could not load certificate and/or key file");
 			return 2;
 		}
+	}
+
+	struct hostent *server_host;
+	struct sockaddr_in server_addr;
+
+	memset(&server_addr, 0, sizeof(server_addr));
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_port = htons(port);
+
+	server_host = gethostbyname(server_host_str);
+	if (server_host == NULL || server_host->h_addr_list[0] == NULL || server_host->h_addrtype != AF_INET) {
+		lua_pushnil(l);
+		lua_pushstring(l, "could not parse server address");
+		return 2;
+	}
+	memmove(&server_addr.sin_addr, server_host->h_addr_list[0], server_host->h_length);
+
+	int ret = connect(client->socket, (struct sockaddr *) &server_addr, sizeof(server_addr));
+	if (ret != 0) {
+		lua_pushnil(l);
+		lua_pushfstring(l, "could not connect to server: %s", strerror(errno));
+		return 2;
+	}
+	
+	client->ssl = SSL_new(client->ssl_context);
+
+	if (client->ssl == NULL) {
+		lua_pushnil(l);
+		lua_pushstring(l, "could not create SSL object");
+		return 2;
+	}
+
+	if (SSL_set_fd(client->ssl, client->socket) == 0) {
+		lua_pushnil(l);
+		lua_pushstring(l, "could not set SSL file descriptor");
+		return 2;
+	}
+
+	if (SSL_connect(client->ssl) != 1) {
+		lua_pushnil(l);
+		lua_pushstring(l, "could not create secure connection");
+		return 2;
+	}
+
+	// Non blocking after connect
+	int flags = fcntl(client->socket, F_GETFL, 0);
+	fcntl(client->socket, F_SETFL, flags | O_NONBLOCK);
+
+	if (pthread_mutex_init(&client->lock , NULL))
+	{
+		lua_pushnil(l);
+		lua_pushstring(l, "could not init mutex");
+		return 2;
+	}
+
+	pthread_mutex_lock(&client->lock);
+	client->connected = true;
+	pthread_mutex_unlock(&client->lock);
+	
+	if (pthread_create(&client->audiothread, NULL, (void*) mumble_audiothread, client)){
+		lua_pushnil(l);
+		lua_pushstring(l, "could not create audio thread");
+		return 2;
 	}
 
 	return 1;
@@ -286,17 +350,17 @@ void mumble_channel_remove(lua_State *l, uint32_t channel_id)
 }
 
 const luaL_reg mumble[] = {
-	{"new", mumble_new},
+	{"connect", mumble_connect},
 	{"encoder", encoder_new},
 	{"sleep", mumble_sleep},
 	{NULL, NULL}
 };
 
 const luaL_reg mumble_client[] = {
-	{"connect", client_connect},
 	{"auth", client_auth},
 	{"update", client_update},
 	{"disconnect", client_disconnect},
+	{"isConnected", client_isConnected},
 	{"play", client_play},
 	{"isPlaying", client_isPlaying},
 	{"stopPlaying", client_stopPlaying},

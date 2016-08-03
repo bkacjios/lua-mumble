@@ -63,6 +63,7 @@ struct MumbleClient {
 	int			socket;
 	SSL_CTX		*ssl_context;
 	SSL			*ssl;
+	bool		connected;
 	char*		host;
 	uint16_t	port;
 	char*		username;
@@ -136,6 +137,7 @@ int client_connect(lua_State *l);
 int client_auth(lua_State *l);
 int client_update(lua_State *l);
 int client_disconnect(lua_State *l);
+int client_isConnected(lua_State *l);
 int client_play(lua_State *l);
 int client_isPlaying(lua_State *l);
 int client_stopPlaying(lua_State *l);

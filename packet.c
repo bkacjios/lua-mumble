@@ -277,33 +277,33 @@ void packet_channel_state(lua_State *l, Packet *packet)
 
 	lua_newtable(l);
 		mumble_channel_get(l, channel->channel_id);
+			if (channel->has_parent) {
+				mumble_channel_get(l, channel->parent);
+					if (channel->name != NULL) {
+						lua_getfield(l, -1, "children");
+							mumble_channel_get(l, channel->channel_id);
+							lua_setfield(l, -2, channel->name);
+						lua_pop(l, 1);
+					}
+				lua_setfield(l, -2, "parent");
+			}
+			if (channel->name != NULL) {
+				lua_pushstring(l, channel->name);
+				lua_setfield(l, -2, "name");
+			}
+			if (channel->description != NULL) {
+				lua_pushstring(l, channel->description);
+				lua_setfield(l, -2, "description");
+			}
+			if (channel->has_temporary) {
+				lua_pushboolean(l, channel->temporary);
+				lua_setfield(l, -2, "temporary");
+			}
+			if (channel->has_description_hash) {
+				lua_pushlstring(l, (char *)channel->description_hash.data, channel->description_hash.len);
+				lua_setfield(l, -2, "description_hash");
+			}
 		lua_setfield(l, -2, "channel");
-		if (channel->has_parent) {
-			mumble_channel_get(l, channel->parent);
-				if (channel->name != NULL) {
-					lua_getfield(l, -1, "children");
-						mumble_channel_get(l, channel->channel_id);
-						lua_setfield(l, -2, channel->name);
-					lua_pop(l, 1);
-				}
-			lua_setfield(l, -2, "parent");
-		}
-		if (channel->name != NULL) {
-			lua_pushstring(l, channel->name);
-			lua_setfield(l, -2, "name");
-		}
-		if (channel->description != NULL) {
-			lua_pushstring(l, channel->description);
-			lua_setfield(l, -2, "description");
-		}
-		if (channel->has_temporary) {
-			lua_pushboolean(l, channel->temporary);
-			lua_setfield(l, -2, "temporary");
-		}
-		if (channel->has_description_hash) {
-			lua_pushlstring(l, (char *)channel->description_hash.data, channel->description_hash.len);
-			lua_setfield(l, -2, "description_hash");
-		}
 	mumble_hook_call(l, "onChannelState", 1);
 
 	lua_settop(l, 0);

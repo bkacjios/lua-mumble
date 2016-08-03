@@ -4,62 +4,6 @@
 	MUMBLE CLIENT META METHODS
 --------------------------------*/
 
-int client_connect(lua_State *l)
-{
-	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-
-	const char* server_host_str = luaL_checkstring(l,2);
-	int port = luaL_optnumber(l,3, 64738);
-
-	struct hostent *server_host;
-
-	struct sockaddr_in server_addr;
-
-	memset(&server_addr, 0, sizeof(server_addr));
-	server_addr.sin_family = AF_INET;
-	server_addr.sin_port = htons(port);
-
-	server_host = gethostbyname(server_host_str);
-	if (server_host == NULL || server_host->h_addr_list[0] == NULL || server_host->h_addrtype != AF_INET) {
-		lua_pushboolean(l, false);
-		lua_pushstring(l, "could not parse server address");
-		return 2;
-	}
-	memmove(&server_addr.sin_addr, server_host->h_addr_list[0], server_host->h_length);
-
-	int ret = connect(client->socket, (struct sockaddr *) &server_addr, sizeof(server_addr));
-	if (ret != 0) {
-		lua_pushboolean(l, false);
-		lua_pushstring(l, "could not connect to server");
-		return 2;
-	}
-
-	client->ssl = SSL_new(client->ssl_context);
-
-	if (client->ssl == NULL) {
-		lua_pushboolean(l, false);
-		lua_pushstring(l, "could not create SSL object");
-		return 2;
-	}
-
-	if (SSL_set_fd(client->ssl, client->socket) == 0) {
-		lua_pushboolean(l, false);
-		lua_pushstring(l, "could not set SSL file descriptor");
-		return 2;
-	}
-
-	if (SSL_connect(client->ssl) != 1) {
-		lua_pushboolean(l, false);
-		lua_pushstring(l, "could not create secure connection");
-		return 2;
-	}
-
-	int flags = fcntl(client->socket, F_GETFL, 0);
-	fcntl(client->socket, F_SETFL, flags | O_NONBLOCK);
-
-	return 1;
-}
-
 int client_auth(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
@@ -116,7 +60,14 @@ int client_update(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
+	pthread_mutex_lock(&client->lock);
+	if (!client->connected)
+		return 0;
+	pthread_mutex_unlock(&client->lock);
+
 	double curTime = gettime();
+
+	mumble_hook_call(l, "onTick", 0);
 
 	if (client->nextping < curTime) {
 		client->nextping = curTime + PING_TIMEOUT;
@@ -125,8 +76,6 @@ int client_update(lua_State *l)
 		packet_send(client, PACKET_PING, &ping);
 	}
 
-	mumble_hook_call(l, "onTick", 0);
-
 	static Packet packet_read;
 
 	int total_read = 0;
@@ -134,8 +83,16 @@ int client_update(lua_State *l)
 	int ret = SSL_read(client->ssl, packet_read.buffer, 6);
 
 	if (ret <= 0) {
+		int err = SSL_get_error(client->ssl, ret);
+		if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL) {
+			mumble_hook_call(l, "onDisconnect", 0);
+			pthread_mutex_lock(&client->lock);
+			client->connected = false;
+			pthread_mutex_unlock(&client->lock);
+		}
 		return 0;
 	}
+
 	if (ret != 6) {
 		return 0;
 	}
@@ -176,6 +133,13 @@ int client_disconnect(lua_State *l)
 	SSL_shutdown(client->ssl);
 	close(client->socket);
 	return 0;
+}
+
+int client_isConnected(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	lua_pushboolean(l, client->connected);
+	return 1;
 }
 
 int client_play(lua_State *l)
@@ -330,16 +294,19 @@ int client_gettime(lua_State *l)
 int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+
 	luaL_unref(l, LUA_REGISTRYINDEX, client->hooksref);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->usersref);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->channelsref);
-
-	pthread_mutex_lock(&client->lock);
-	if (client->audiojob != NULL)
-		client->audiojob->done = true;
-	pthread_mutex_unlock(&client->lock);
 	
-	pthread_join(client->audiothread, NULL);
+	if (client->audiothread != 0) {
+		pthread_mutex_lock(&client->lock);
+		if (client->audiojob != NULL)
+			client->audiojob->done = true;
+		pthread_mutex_unlock(&client->lock);
+
+		pthread_join(client->audiothread, NULL);
+	}
 	return 0;
 }
 
