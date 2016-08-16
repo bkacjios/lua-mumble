@@ -148,27 +148,25 @@ int client_isConnected(lua_State *l)
 int client_play(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
-	OpusEncoder *encoder	= luaL_checkudata(l, 2, METATABLE_ENCODER);
-	const char* filepath	= luaL_checkstring(l, 3);
-	float volume			= (float) luaL_optnumber(l, 4, 1);
+	const char* filepath	= luaL_checkstring(l, 2);
+	float volume			= (float) luaL_optnumber(l, 3, 1);
 
 	pthread_mutex_lock(&client->lock);
-	if (client->audiojob != NULL)
-		client->audiojob->done = true;
+	audio_transmission_stop(client);
 	pthread_mutex_unlock(&client->lock);
 
-	AudioTransmission *sound = lua_newuserdata(l, sizeof(AudioTransmission));
-	luaL_getmetatable(l, METATABLE_AUDIO);
-	lua_setmetatable(l, -2);
+	//AudioTransmission *sound = lua_newuserdata(l, sizeof(AudioTransmission));
+	//luaL_getmetatable(l, METATABLE_AUDIO);
+	//lua_setmetatable(l, -2);
+
+	AudioTransmission *sound = malloc(sizeof *sound);
 
 	sound->client = client;
 	sound->lua = l;
-	sound->encoder = encoder;
 	sound->sequence = 1;
 	sound->buffer.size = 0;
 	sound->volume = volume;
 	sound->file = fopen(filepath, "rb");
-	sound->done = false;
 
 	if (sound->file == NULL) {
 		lua_pushnil(l);
