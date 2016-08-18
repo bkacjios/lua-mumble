@@ -95,6 +95,7 @@ int mumble_connect(lua_State *l)
 	client->volume = 1;
 	client->audio_job = NULL;
 	client->connected = false;
+	client->audio_finished = false;
 
 	lua_newtable(l);
 	client->hooksref = luaL_ref(l, LUA_REGISTRYINDEX);

@@ -89,6 +89,11 @@ static void audio_transmission_event_filter(float **pcm, long channels, long sam
 
 void audio_transmission_stop(MumbleClient *client)
 {
+	if (client->audio_job != NULL) {
+		client->audio_job = NULL;
+		client->audio_finished = true;
+	}
+
 	AudioTransmission *sound = client->audio_job;
 
 	if (sound == NULL)
@@ -96,7 +101,7 @@ void audio_transmission_stop(MumbleClient *client)
 	
 	ov_clear(&sound->ogg);
 	fclose(sound->file);
-	client->audio_job = NULL;
+	free(sound);
 }
 
 void audio_transmission_event(MumbleClient *client)

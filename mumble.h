@@ -60,26 +60,26 @@ typedef struct MumbleClient MumbleClient;
 typedef struct AudioTransmission AudioTransmission;
 
 struct MumbleClient {
-	int			socket;
-	SSL_CTX		*ssl_context;
-	SSL			*ssl;
-	bool		connected;
-	char*		host;
-	uint16_t	port;
-	char*		username;
-	char*		password;
-	int			hooksref;
-	int			usersref;
-	int			channelsref;
-	double		nextping;
-	uint32_t	session;
-	float		volume;
-	pthread_t	audio_thread;
-	pthread_mutex_t lock;
-	pthread_cond_t cond;
-	AudioTransmission* audio_job;
-	OpusEncoder*	encoder;
-	//struct ev_loop *ev_loop_main;
+	int					socket;
+	SSL_CTX				*ssl_context;
+	SSL					*ssl;
+	bool				connected;
+	char*				host;
+	uint16_t			port;
+	char*				username;
+	char*				password;
+	int					hooksref;
+	int					usersref;
+	int					channelsref;
+	double				nextping;
+	uint32_t			session;
+	float				volume;
+	pthread_t			audio_thread;
+	pthread_mutex_t		lock;
+	pthread_cond_t		cond;
+	AudioTransmission*	audio_job;
+	bool				audio_finished;
+	OpusEncoder*		encoder;
 };
 
 typedef struct {

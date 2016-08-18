@@ -76,6 +76,13 @@ int client_update(lua_State *l)
 		packet_send(client, PACKET_PING, &ping);
 	}
 
+	pthread_mutex_lock(&client->lock);
+	if (client->audio_finished) {
+		client->audio_finished = false;
+		mumble_hook_call(l, "OnAudioFinished", 0);
+	}
+	pthread_mutex_unlock(&client->lock);
+
 	static Packet packet_read;
 
 	int total_read = 0;
