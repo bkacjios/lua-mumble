@@ -45,8 +45,8 @@
 #define MODULE_NAME "lua-mumble"
 #define MODULE_VERSION "0.0.1"
 
-#define OPUS_FRAME_SIZE	480
-#define PCM_BUFFER		4096
+#define OPUS_FRAME_SIZE 480
+#define PCM_BUFFER 4096
 
 #define PAYLOAD_SIZE_MAX (1024 * 1024 * 8 - 1)
 
@@ -74,9 +74,11 @@ struct MumbleClient {
 	double		nextping;
 	uint32_t	session;
 	float		volume;
-	pthread_t	audiothread;
+	pthread_t	audio_thread;
 	pthread_mutex_t lock;
-	AudioTransmission* audiojob;
+	pthread_cond_t cond;
+	AudioTransmission* audio_job;
+	OpusEncoder*	encoder;
 	//struct ev_loop *ev_loop_main;
 };
 
@@ -91,9 +93,7 @@ struct AudioTransmission {
 	lua_State *lua;
 	OggVorbis_File ogg;
 	uint32_t sequence;
-	OpusEncoder *encoder;
 	MumbleClient *client;
-	bool done;
 	float volume;
 	struct {
 		char pcm[PCM_BUFFER];
@@ -119,13 +119,15 @@ int luaL_optboolean(lua_State *L, int i, int d);
 void luaL_checktablemeta(lua_State *L, int i, const char* m);
 const char* eztype(lua_State *L, int i);
 
+void mumble_disconnect(MumbleClient *client);
 void mumble_user_get(lua_State *l, uint32_t session);
 void mumble_user_remove(lua_State *l, uint32_t session);
 void mumble_channel_get(lua_State *l, uint32_t channel_id);
 void mumble_channel_remove(lua_State *l, uint32_t channel_id);
 void mumble_hook_call(lua_State *l, const char* hook, int nargs);
 
-void audio_transmission_event(AudioTransmission *sound);
+void audio_transmission_event(MumbleClient *client);
+void audio_transmission_stop(MumbleClient *client);
 
 /*--------------------------------
 	MUMBLE CLIENT META METHODS
@@ -148,7 +150,6 @@ int client_call(lua_State *l);
 int client_getHooks(lua_State *l);
 int client_getUsers(lua_State *l);
 int client_getChannels(lua_State *l);
-int client_gettime(lua_State *l);
 int client_gc(lua_State *l);
 int client_tostring(lua_State *l);
 int client_index(lua_State *l);
@@ -190,17 +191,6 @@ int channel_tostring(lua_State *l);
 int encoder_new(lua_State *l);
 int encoder_setBitRate(lua_State *l);
 int encoder_tostring(lua_State *l);
-
-/*--------------------------------
-	MUMBLE ENCODER META METHODS
---------------------------------*/
-
-#define METATABLE_AUDIO			"mumble.audio"
-
-int audio_stop(lua_State *l);
-int audio_setVolume(lua_State *l);
-int audio_getVolume(lua_State *l);
-int audio_tostring(lua_State *l);
 
 /*--------------------------------
 	MUMBLE PACKET FUNCTIONS

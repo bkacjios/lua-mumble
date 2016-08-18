@@ -10,10 +10,6 @@ A lua module to connect to a mumble server and interact with it
 -- Returns nil and an error string if something went wrong
 mumble.client, [ String error ] = mumble.connect(String host, Number port, String certificate file path, String key file path)
 
--- Create a new opus encoder
--- Returns nil and an error string if something went wrong
-mumble.opus, [ String error ] = mumble.encoder([ Number samplerate = 48000 ])
-
 -- The client's user
 mumble.user = mumble.client.me
 ```
@@ -34,7 +30,7 @@ mumble.client:disconnect()
 mumble.client:update()
 
 -- Play an ogg audio file
-mumble.client:play(mumble.opus encoder, String ogg file path)
+mumble.client:play(String ogg file path)
 
 -- Checks if the client is currently playing an audio file
 Boolean playing = mumble.client:isPlaying()
@@ -89,11 +85,11 @@ Table channels = mumble.client:getChannels()
 -- Key:		channel id
 -- Value:	mumble.channel
 Table channels = {
-	[channel_id] = mumble.channel,
-	[channel_id] = mumble.channel,
-	[channel_id] = mumble.channel,
-	[channel_id] = mumble.channel,
-	[channel_id] = mumble.channel,
+	[id] = mumble.channel,
+	[id] = mumble.channel,
+	[id] = mumble.channel,
+	[id] = mumble.channel,
+	[id] = mumble.channel,
 }
 
 -- A timestamp in milliseconds
@@ -109,7 +105,7 @@ Table mumble.user = {
 	["name"]				= String name,
 	["channel"]				= mumble.channel channel,
 	["channel_from"]		= mumble.channel channel_from,
-	["user_id"]				= Number user_id,
+	["id"]					= Number id,
 	["mute"]				= Boolean mute,
 	["deaf"]				= Boolean deaf,
 	["self_mute"]			= Boolean self_mute,
@@ -160,7 +156,7 @@ mumble.user:requestStats([ Boolean statsonly = false ])
 ``` lua
 -- Structure
 Table mumble.channel = {
-	["channel_id"]			= Number channel_id,
+	["id"]					= Number id,
 	["parent"]				= mumble.channel parent,
 	["name"]				= String name,
 	["description"]			= String description,
@@ -193,16 +189,9 @@ mumble.audio:setVolume(Number volume)
 Number volume = mumble.audio:getVolume()
 ```
 
-#### mumble.opus
-
-``` lua
--- Sends a text message to a user
-mumble.opus:setBitRate(Number bitrate)
-```
-
 ### hooks
 
- - `onServerVersion`
+ - `OnServerVersion`
 
 ``` lua
 Table event = {
@@ -213,7 +202,7 @@ Table event = {
 }
 ```
 
- - `onServerPing`
+ - `OnServerPing`
 
 ``` lua
 Table event = {
@@ -231,7 +220,7 @@ Table event = {
 }
 ```
 
- - `onServerReject`
+ - `OnServerReject`
 
 ``` lua
 Table event = {
@@ -240,7 +229,7 @@ Table event = {
 }
 ```
 
- - `onServerSync`
+ - `OnServerSync`
 
 ``` lua
 Table event = {
@@ -251,7 +240,7 @@ Table event = {
 }
 ```
 
- - `onChannelRemove`
+ - `OnChannelRemove`
 
 ``` lua
 Table event = {
@@ -259,7 +248,7 @@ Table event = {
 }
 ```
 
- - `onChannelState`
+ - `OnChannelState`
 
 ``` lua
 Table event = {
@@ -267,7 +256,7 @@ Table event = {
 }
 ```
 
- - `onUserRemove`
+ - `OnUserRemove`
 
 ``` lua
 Table event = {
@@ -278,7 +267,7 @@ Table event = {
 }
 ```
 
- - `onUserState`
+ - `OnUserState`
 
 ``` lua
 Table event = {
@@ -287,7 +276,7 @@ Table event = {
 }
 ```
 
- - `onMessage`
+ - `OnMessage`
 
 ``` lua
 Table event = {
@@ -298,7 +287,7 @@ Table event = {
 }
 ```
 
- - `onPermissionDenied`
+ - `OnPermissionDenied`
 
 ``` lua
 Table event = {
@@ -311,7 +300,7 @@ Table event = {
 }
 ```
 
- - `onCodecVersion`
+ - `OnCodecVersion`
 
 ``` lua
 Table event = {
@@ -322,7 +311,7 @@ Table event = {
 }
 ```
 
- - `onUserStats`
+ - `OnUserStats`
 
 ``` lua
 Table event = {
@@ -361,7 +350,7 @@ Table event = {
 }
 ```
 
- - `onServerConfig`
+ - `OnServerConfig`
 
 ``` lua
 Table event = {

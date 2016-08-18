@@ -69,7 +69,7 @@ int user_move(lua_State *l)
 	msg.has_session = true;
 	msg.session = lua_tointeger(l, -1);
 	
-	lua_getfield(l, 2, "channel_id");
+	lua_getfield(l, 2, "id");
 	msg.has_channel_id = true;
 	msg.channel_id = lua_tointeger(l, -1);
 

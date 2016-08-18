@@ -17,7 +17,6 @@ int encoder_new(lua_State *l)
 	}
 
 	opus_encoder_ctl(encoder, OPUS_SET_VBR(0));
-	
 	opus_encoder_ctl(encoder, OPUS_SET_BITRATE(40000));
 
 	return 1;

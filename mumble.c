@@ -9,39 +9,45 @@ static unsigned long long getTime()
 
 static bool thread_isPlaying(MumbleClient *client)
 {
-	bool result = false;
 	pthread_mutex_lock(&client->lock);
-
-	if (client != NULL && client->audiojob != NULL)
-		result = !client->audiojob->done;
-	
+	bool result = client->audio_job != NULL;
 	pthread_mutex_unlock(&client->lock);
 	return result;
 }
 
 static bool thread_isConnected(MumbleClient *client)
 {
-	bool result = false;
-
-	pthread_mutex_lock(&client->lock);
-
-	if (client != NULL)
-		result = client->connected;
-
+	pthread_mutex_lock(&client->lock);		
+	bool result = client->connected;
 	pthread_mutex_unlock(&client->lock);
 	return result;
 }
 
 static void mumble_audiothread(MumbleClient *client)
 {
+	pthread_mutex_lock(&client->lock);
+	while (!client->connected)
+		pthread_cond_wait(&client->cond, &client->lock);
+	pthread_mutex_unlock(&client->lock);
+
 	while (thread_isConnected(client)) {
+
+		pthread_mutex_lock(&client->lock);
+		while (client->connected && client->audio_job == NULL)
+			pthread_cond_wait(&client->cond, &client->lock);
+		pthread_mutex_unlock(&client->lock);
+
+		// Signal ended up being a disconnect
+		if (!thread_isConnected(client)) {
+			break;
+		}
+
 		while (thread_isPlaying(client)) {
-			unsigned long long diff;
-			unsigned long long start, stop;
+			unsigned long long start, stop, diff;
 
 			start = getTime();
 			pthread_mutex_lock(&client->lock);
-			audio_transmission_event(client->audiojob);
+			audio_transmission_event(client);
 			pthread_mutex_unlock(&client->lock);
 			stop = getTime();
 
@@ -52,8 +58,6 @@ static void mumble_audiothread(MumbleClient *client)
 
 			nanosleep(&sleep, NULL);
 		}
-
-		usleep(10000);
 	}
 }
 
@@ -89,7 +93,7 @@ int mumble_connect(lua_State *l)
 
 	client->nextping = 0;
 	client->volume = 1;
-	client->audiojob = NULL;
+	client->audio_job = NULL;
 	client->connected = false;
 
 	lua_newtable(l);
@@ -100,6 +104,38 @@ int mumble_connect(lua_State *l)
 
 	lua_newtable(l);
 	client->channelsref = luaL_ref(l, LUA_REGISTRYINDEX);
+
+	if (pthread_mutex_init(&client->lock , NULL))
+	{
+		lua_pushnil(l);
+		lua_pushstring(l, "could not init mutex");
+		return 2;
+	}
+
+	if (pthread_cond_init(&client->cond, NULL))
+	{
+		lua_pushnil(l);
+		lua_pushstring(l, "could not init condition");
+		return 2;
+	}
+
+	if (pthread_create(&client->audio_thread, NULL, (void*) mumble_audiothread, client)){
+		lua_pushnil(l);
+		lua_pushstring(l, "could not create audio thread");
+		return 2;
+	}
+
+	int err;
+	client->encoder = opus_encoder_create(48000, 1, OPUS_APPLICATION_AUDIO, &err);
+
+	if (err != OPUS_OK) {
+		lua_pushnil(l);
+		lua_pushfstring(l, "could not initialize the Opus encoder: %s", opus_strerror(err));
+		return 2;
+	}
+
+	opus_encoder_ctl(client->encoder, OPUS_SET_VBR(0));
+	opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(40000));
 
 	client->socket = socket(AF_INET, SOCK_STREAM, 0);
 	if (client->socket < 0) {
@@ -173,23 +209,26 @@ int mumble_connect(lua_State *l)
 	int flags = fcntl(client->socket, F_GETFL, 0);
 	fcntl(client->socket, F_SETFL, flags | O_NONBLOCK);
 
-	if (pthread_mutex_init(&client->lock , NULL))
-	{
-		lua_pushnil(l);
-		lua_pushstring(l, "could not init mutex");
-		return 2;
-	}
-
 	pthread_mutex_lock(&client->lock);
 	client->connected = true;
+	pthread_cond_signal(&client->cond);
 	pthread_mutex_unlock(&client->lock);
-	
-	if (pthread_create(&client->audiothread, NULL, (void*) mumble_audiothread, client)){
-		lua_pushnil(l);
-		lua_pushstring(l, "could not create audio thread");
-		return 2;
-	}
 
+	return 1;
+}
+
+void mumble_disconnect(MumbleClient *client)
+{
+	pthread_mutex_lock(&client->lock);
+	client->connected = false;
+	audio_transmission_stop(client);
+	pthread_cond_signal(&client->cond);
+	pthread_mutex_unlock(&client->lock);
+}
+
+int mumble_gettime(lua_State *l)
+{
+	lua_pushnumber(l, gettime());
 	return 1;
 }
 
@@ -197,6 +236,8 @@ static bool erroring = false;
 
 void mumble_hook_call(lua_State *l, const char* hook, int nargs)
 {
+	//printf("mumble_hook_call(%s)\n", hook);
+
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
 	int top = lua_gettop(l);
@@ -268,6 +309,8 @@ void mumble_hook_call(lua_State *l, const char* hook, int nargs)
 
 void mumble_user_get(lua_State *l, uint32_t session)
 {
+	//printf("mumble_user_get(%d)\n", session);
+
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->usersref);
 
@@ -320,7 +363,7 @@ void mumble_channel_get(lua_State *l, uint32_t channel_id)
 		lua_pushinteger(l, channel_id);
 		lua_newtable(l);
 			lua_pushinteger(l, channel_id);
-			lua_setfield(l, -2, "channel_id");
+			lua_setfield(l, -2, "id");
 
 			lua_pushvalue(l, 1);
 			lua_setfield(l, -2, "client");
@@ -351,8 +394,9 @@ void mumble_channel_remove(lua_State *l, uint32_t channel_id)
 
 const luaL_reg mumble[] = {
 	{"connect", mumble_connect},
-	{"encoder", encoder_new},
+	//{"encoder", encoder_new},
 	{"sleep", mumble_sleep},
+	{"gettime", mumble_gettime},
 	{NULL, NULL}
 };
 
@@ -371,7 +415,6 @@ const luaL_reg mumble_client[] = {
 	{"getHooks", client_getHooks},
 	{"getUsers", client_getUsers},
 	{"getChannels", client_getChannels},
-	{"gettime", client_gettime},
 	{"__gc", client_gc},
 	{"__tostring", client_tostring},
 	{"__index", client_index},
@@ -399,22 +442,15 @@ const luaL_reg mumble_channel[] = {
 	{NULL, NULL}
 };
 
-const luaL_reg mumble_encoder[] = {
+/*const luaL_reg mumble_encoder[] = {
 	{"setBitRate", encoder_setBitRate},
 	{"__tostring", encoder_tostring},
 	{NULL, NULL}
-};
-
-const luaL_reg mumble_audio[] = {
-	{"stop", audio_stop},
-	{"setVolume", audio_setVolume},
-	{"getVolume", audio_getVolume},
-	{"__tostring", audio_tostring},
-	{NULL, NULL}
-};
+};*/
 
 int luaopen_mumble(lua_State *l)
 {
+	signal(SIGPIPE, SIG_IGN);
 	SSL_library_init();
 
 	luaL_register(l, "mumble", mumble);
@@ -451,21 +487,13 @@ int luaopen_mumble(lua_State *l)
 		luaL_register(l, NULL, mumble_channel);
 		lua_setfield(l, -2, "channel");
 
-		luaL_newmetatable(l, METATABLE_ENCODER);
+		/*luaL_newmetatable(l, METATABLE_ENCODER);
 		{
 			lua_pushvalue(l, -1);
 			lua_setfield(l, -2, "__index");
 		}
 		luaL_register(l, NULL, mumble_encoder);
-		lua_setfield(l, -2, "opus");
-
-		luaL_newmetatable(l, METATABLE_AUDIO);
-		{
-			lua_pushvalue(l, -1);
-			lua_setfield(l, -2, "__index");
-		}
-		luaL_register(l, NULL, mumble_audio);
-		lua_setfield(l, -2, "audio");
+		lua_setfield(l, -2, "opus");*/
 	}
 
 	return 0;

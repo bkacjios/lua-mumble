@@ -9,34 +9,6 @@
 
  #include "mumble.h"
 
-int audio_stop(lua_State *l)
-{
-	AudioTransmission *sound = luaL_checkudata(l, 1, METATABLE_AUDIO);
-	sound->done = true;
-	return 0;
-}
-
-int audio_setVolume(lua_State *l)
-{
-	AudioTransmission *sound = luaL_checkudata(l, 1, METATABLE_AUDIO);
-	sound->volume = luaL_checknumber(l, 2);
-	return 0;
-}
-
-int audio_getVolume(lua_State *l)
-{
-	AudioTransmission *sound = luaL_checkudata(l, 1, METATABLE_AUDIO);
-	lua_pushnumber(l, sound->volume);
-	return 1;
-}
-
-int audio_tostring(lua_State *l)
-{
-	AudioTransmission *sound = luaL_checkudata(l, 1, METATABLE_AUDIO);
-	lua_pushfstring(l, "%s: %p", METATABLE_AUDIO, sound);
-	return 0;
-}
-
 int util_set_varint(uint8_t buffer[], const uint64_t value)
 {
 	if (value < 0x80) {
@@ -115,33 +87,25 @@ static void audio_transmission_event_filter(float **pcm, long channels, long sam
 	}
 }
 
-void audioTransmission_stop(AudioTransmission *sound, lua_State *lua)
+void audio_transmission_stop(MumbleClient *client)
 {
-	if (sound == NULL || lua == NULL) {
+	AudioTransmission *sound = client->audio_job;
+
+	if (sound == NULL)
 		return;
-	}
+	
 	ov_clear(&sound->ogg);
 	fclose(sound->file);
+	client->audio_job = NULL;
 }
 
-struct timespec timer_start(){
-    struct timespec start_time;
-    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_time);
-    return start_time;
-}
-
-long timer_end(struct timespec start_time){
-    struct timespec end_time;
-    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time);
-    long diffInNanos = end_time.tv_nsec - start_time.tv_nsec;
-    return diffInNanos;
-}
-
-void audio_transmission_event(AudioTransmission *sound)
+void audio_transmission_event(MumbleClient *client)
 {
+	AudioTransmission *sound = client->audio_job;
+
 	VoicePacket packet;
-	uint8_t packet_buffer[1024];
-	uint8_t output[1024];
+	uint8_t packet_buffer[PCM_BUFFER];
+	uint8_t output[PCM_BUFFER];
 	opus_int32 byte_count;
 	long long_ret;
 
@@ -151,24 +115,22 @@ void audio_transmission_event(AudioTransmission *sound)
 	while (sound->buffer.size < OPUS_FRAME_SIZE * sizeof(opus_int16)) {
 		long_ret = ov_read_filter(&sound->ogg, sound->buffer.pcm + sound->buffer.size, PCM_BUFFER - sound->buffer.size, 0, 2, 1, NULL, audio_transmission_event_filter, sound);
 		if (long_ret <= 0) {
-			sound->done = true;
-			audioTransmission_stop(sound, sound->lua);
+			audio_transmission_stop(client);
 			return;
 		}
 		sound->buffer.size += long_ret;
 	}
 
-	byte_count = opus_encode(sound->encoder, (opus_int16 *)sound->buffer.pcm, OPUS_FRAME_SIZE, output, sizeof(output));
+	byte_count = opus_encode(client->encoder, (opus_int16 *)sound->buffer.pcm, OPUS_FRAME_SIZE, output, sizeof(output));
 	if (byte_count < 0) {
-		sound->done = true;
-		audioTransmission_stop(sound, sound->lua);
+		audio_transmission_stop(client);
 		return;
 	}
 	sound->buffer.size -= OPUS_FRAME_SIZE * sizeof(opus_int16);
 	memmove(sound->buffer.pcm, sound->buffer.pcm + OPUS_FRAME_SIZE * sizeof(opus_int16), sound->buffer.size);
 	voicepacket_setframe(&packet, byte_count, output);
 
-	packet_sendex(sound->client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
+	packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
 
-	sound->sequence = (sound->sequence + 1) % 10000;
+	sound->sequence = (sound->sequence + 1) % 100000;
 }
