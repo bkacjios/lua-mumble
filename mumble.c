@@ -285,12 +285,12 @@ void mumble_hook_call(lua_State *l, const char* hook, int nargs)
 
 			// Call
 			if (erroring == true) {
-				// If the user errors within the onError hook, PANIC
+				// If the user errors within the OnError hook, PANIC
 				lua_call(l, nargs, 0);
 			} else if (lua_pcall(l, nargs, 0, 0) != 0) {
 				erroring = true;
 				// Call the onError hook
-				mumble_hook_call(l, "onError", 1);
+				mumble_hook_call(l, "OnError", 1);
 				erroring = false;
 			}
 		}
@@ -395,7 +395,7 @@ void mumble_channel_remove(lua_State *l, uint32_t channel_id)
 
 const luaL_reg mumble[] = {
 	{"connect", mumble_connect},
-	//{"encoder", encoder_new},
+	{"encoder", encoder_new},
 	{"sleep", mumble_sleep},
 	{"gettime", mumble_gettime},
 	{NULL, NULL}
@@ -443,11 +443,11 @@ const luaL_reg mumble_channel[] = {
 	{NULL, NULL}
 };
 
-/*const luaL_reg mumble_encoder[] = {
+const luaL_reg mumble_encoder[] = {
 	{"setBitRate", encoder_setBitRate},
 	{"__tostring", encoder_tostring},
 	{NULL, NULL}
-};*/
+};
 
 int luaopen_mumble(lua_State *l)
 {
@@ -488,13 +488,13 @@ int luaopen_mumble(lua_State *l)
 		luaL_register(l, NULL, mumble_channel);
 		lua_setfield(l, -2, "channel");
 
-		/*luaL_newmetatable(l, METATABLE_ENCODER);
+		luaL_newmetatable(l, METATABLE_ENCODER);
 		{
 			lua_pushvalue(l, -1);
 			lua_setfield(l, -2, "__index");
 		}
 		luaL_register(l, NULL, mumble_encoder);
-		lua_setfield(l, -2, "opus");*/
+		lua_setfield(l, -2, "opus");
 	}
 
 	return 0;
