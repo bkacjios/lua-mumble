@@ -229,6 +229,21 @@ int client_getVolume(lua_State *l)
 	return 1;
 }
 
+int client_setComment(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	
+	MumbleProto__UserState msg = MUMBLE_PROTO__USER_STATE__INIT;
+
+	msg.has_session = true;
+	msg.session = client->session;
+
+	msg.comment = (char*) luaL_checkstring(l, 2);
+
+	packet_send(client, PACKET_USERSTATE, &msg);
+	return 0;
+}
+
 int client_hook(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
@@ -295,15 +310,14 @@ int client_getChannels(lua_State *l)
 int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	
+	pthread_mutex_lock(&client->lock);
+	audio_transmission_stop(client);
+	pthread_mutex_unlock(&client->lock);
 
 	luaL_unref(l, LUA_REGISTRYINDEX, client->hooksref);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->usersref);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->channelsref);
-	
-	pthread_mutex_lock(&client->lock);
-	if (client->audio_job != NULL)
-		client->audio_job = NULL;
-	pthread_mutex_unlock(&client->lock);
 
 	pthread_mutex_destroy(&client->lock);
 

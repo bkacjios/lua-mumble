@@ -45,6 +45,9 @@ mumble.client:setVolume(Number volume)
 -- Gets the global volume level
 Number volume = mumble.client:getVolume()
 
+-- Attempts to change the bots comment
+mumble.client:setComment(String comment)
+
 -- Adds a callback for a specific event
 -- If no unique name is passed, it will default to "hook"
 mumble.client:hook(String hook, [ String unique name = "hook"], Function callback)
@@ -139,9 +142,6 @@ mumble.user:setMuted([ Boolean mute = true ])
 -- Attempts to deafen a user
 -- If no boolean is passed, it will default to deafening the user
 mumble.user:setDeaf([ Boolean deaf = true ])
-
--- Attempts to change the users comment
-mumble.user:comment(String comment)
 
 -- Attempts to register the users name to the server
 mumble.user:register()

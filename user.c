@@ -104,24 +104,11 @@ int user_setDeaf(lua_State *l)
 	msg.has_session = true;
 	msg.session = lua_tointeger(l, -1);
 
+	msg.has_mute = true;
+	msg.mute = lua_toboolean(l, 2);
+	
 	msg.has_deaf = true;
 	msg.deaf = lua_toboolean(l, 2);
-
-	packet_send(client, PACKET_USERSTATE, &msg);
-	return 0;
-}
-
-int user_comment(lua_State *l)
-{
-	MumbleClient *client = mumble_check_meta(l, 1, METATABLE_USER);
-	
-	MumbleProto__UserState msg = MUMBLE_PROTO__USER_STATE__INIT;
-
-	lua_getfield(l, 1, "session");
-	msg.has_session = true;
-	msg.session = lua_tointeger(l, -1);
-
-	msg.comment = (char*) luaL_checkstring(l, 2);
 
 	packet_send(client, PACKET_USERSTATE, &msg);
 	return 0;

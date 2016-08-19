@@ -409,6 +409,7 @@ const luaL_reg mumble_client[] = {
 	{"play", client_play},
 	{"isPlaying", client_isPlaying},
 	{"stopPlaying", client_stopPlaying},
+	{"setComment", client_setComment},
 	{"setVolume", client_setVolume},
 	{"getVolume", client_getVolume},
 	{"hook", client_hook},
@@ -429,7 +430,6 @@ const luaL_reg mumble_user[] = {
 	{"move", user_move},
 	{"setMuted", user_setMuted},
 	{"setDeaf", user_setDeaf},
-	{"comment", user_comment},
 	{"requestStats", user_request_stats},
 	{"__tostring", user_tostring},
 	{NULL, NULL}
