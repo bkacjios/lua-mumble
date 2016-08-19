@@ -328,6 +328,12 @@ int client_index(lua_State *l)
 		lua_gettable(l, -2);
 		lua_remove(l, -2);
 		return 1;
+	} else if (strcmp(lua_tostring(l, 2), "host") == 0) {
+		lua_pushstring(l, client->host);
+		return 1;
+	} else if (strcmp(lua_tostring(l, 2), "port") == 0) {
+		lua_pushinteger(l, client->port);
+		return 1;
 	}
 
 	lua_getmetatable(l, 1);
