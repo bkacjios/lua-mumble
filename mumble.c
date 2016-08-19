@@ -91,7 +91,7 @@ int mumble_connect(lua_State *l)
 	luaL_getmetatable(l, METATABLE_CLIENT);
 	lua_setmetatable(l, -2);
 
-	client->nextping = 0;
+	client->nextping = gettime() + PING_TIMEOUT;
 	client->volume = 1;
 	client->audio_job = NULL;
 	client->connected = false;
