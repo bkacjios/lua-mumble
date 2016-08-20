@@ -257,26 +257,14 @@ Table event = {
 ```
 ___
 
-### `OnChannelRemove (Table event)`
+### `OnChannelRemove (mumble.channel channel)`
 
 `Called when a mumble.channel is removed.`
-
-``` lua
-Table event = {
-	["channel"]	= mumble.channel channel,
-}
-```
 ___
 
-### `OnChannelState (Table event)`
+### `OnChannelState (mumble.channel channel)`
 
 `Called when a mumble.channel state has changed.. Like updating the name, description, position, comment, etc..`
-
-``` lua
-Table event = {
-	["channel"]	= mumble.channel channel,
-}
-```
 ___
 
 ### `OnUserRemove (Table event)`
@@ -396,7 +384,10 @@ ___
 
 ### `OnServerConfig (Table event)`
 
-`Called when the servers settings are received.`
+```
+Called when the servers settings are received.
+Usually called after OnServerSync
+```
 
 ``` lua
 Table event = {
