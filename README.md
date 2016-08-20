@@ -3,7 +3,7 @@ A lua module to connect to a mumble server and interact with it
 
 ## Usage
 
-#### mumble
+### mumble
 
 ``` lua
 -- Connect to a mumble server
@@ -14,7 +14,7 @@ mumble.client, [ String error ] = mumble.connect(String host, Number port, Strin
 mumble.user = mumble.client.me
 ```
 
-#### mumble.client
+### mumble.client
 
 ``` lua
 -- Authenticate as a user
@@ -99,7 +99,7 @@ Table channels = {
 Number time = mumble.client:gettime()
 ```
 
-#### mumble.user
+### mumble.user
 
 ``` lua
 -- Structure
@@ -151,7 +151,7 @@ mumble.user:register()
 mumble.user:requestStats([ Boolean statsonly = false ])
 ```
 
-#### mumble.channel
+### mumble.channel
 
 ``` lua
 -- Structure
@@ -176,7 +176,7 @@ mumble.channel:setDescription(String description)
 mumble.channel:remove()
 ```
 
-#### mumble.audio
+### mumble.audio
 
 ``` lua
 -- Stops playing the audio
@@ -189,9 +189,13 @@ mumble.audio:setVolume(Number volume)
 Number volume = mumble.audio:getVolume()
 ```
 
-### hooks
+## hooks
 
- - `OnServerVersion`
+___
+
+### `OnServerVersion (Table event)`
+
+`Called when the server version information is recieved.`
 
 ``` lua
 Table event = {
@@ -201,8 +205,14 @@ Table event = {
 	["os_version"]	= String os_version,
 }
 ```
+___
 
- - `OnServerPing`
+### `OnServerPing (Table event)`
+
+```
+Called when the server sends a responce to a ping request.
+The mumble.client will automatically ping the server every 15 seconds within mumble.client:update()
+```
 
 ``` lua
 Table event = {
@@ -219,8 +229,11 @@ Table event = {
 	["tcp_ping_var"]	= Number tcp_ping_var,
 }
 ```
+___
 
- - `OnServerReject`
+### `OnServerReject (Table event)`
+
+`Called when you are rejected from connecting to the server.`
 
 ``` lua
 Table event = {
@@ -228,8 +241,11 @@ Table event = {
 	["reason"]	= String reason,
 }
 ```
+___
 
- - `OnServerSync`
+### `OnServerSync (Table event)`
+
+`Called after the bot has recieved all the mumble.user and mumble.channel states.`
 
 ``` lua
 Table event = {
@@ -239,24 +255,33 @@ Table event = {
 	["permissions"]		= Number permissions,
 }
 ```
+___
 
- - `OnChannelRemove`
+### `OnChannelRemove (Table event)`
 
-``` lua
-Table event = {
-	["channel"]	= mumble.channel channel,
-}
-```
-
- - `OnChannelState`
+`Called when a mumble.channel is removed.`
 
 ``` lua
 Table event = {
 	["channel"]	= mumble.channel channel,
 }
 ```
+___
 
- - `OnUserRemove`
+### `OnChannelState (Table event)`
+
+`Called when a mumble.channel state has changed.. Like updating the name, description, position, comment, etc..`
+
+``` lua
+Table event = {
+	["channel"]	= mumble.channel channel,
+}
+```
+___
+
+### `OnUserRemove (Table event)`
+
+`Called when a mumble.user disconnects or is kicked from the server`
 
 ``` lua
 Table event = {
@@ -266,8 +291,11 @@ Table event = {
 	["ban"]		= Boolean ban,
 }
 ```
+___
 
- - `OnUserState`
+### `OnUserState (Table event)`
+
+`Called when a mumble.user state has changed.. Like updating their comment, moving channels, muted, deafened, etc..`
 
 ``` lua
 Table event = {
@@ -275,8 +303,11 @@ Table event = {
 	["user"]	= mumble.user user,
 }
 ```
+___
 
- - `OnMessage`
+### `OnMessage (Table event)`
+
+`Called when the bot receives a text message`
 
 ``` lua
 Table event = {
@@ -286,8 +317,11 @@ Table event = {
 	["channels"]	= Table channels
 }
 ```
+___
 
- - `OnPermissionDenied`
+### `OnPermissionDenied (Table event)`
+
+`Called when an action is performed that you don't have permission to do`
 
 ``` lua
 Table event = {
@@ -299,8 +333,11 @@ Table event = {
 	["name"]		= String name,
 }
 ```
+___
 
- - `OnCodecVersion`
+### `OnCodecVersion (Table event)`
+
+`Called when the bot recieves the codec info from the server.`
 
 ``` lua
 Table event = {
@@ -310,8 +347,14 @@ Table event = {
 	["opus"]			= Boolean opus,
 }
 ```
+___
 
- - `OnUserStats`
+### `OnUserStats (Table event)`
+
+```
+Called when the mumble.user's detailed statistics are received from the server.
+Only sent if mumble.user:requestStats() is called.
+```
 
 ``` lua
 Table event = {
@@ -349,8 +392,11 @@ Table event = {
 	["opus"]				= Boolean opus,
 }
 ```
+___
 
- - `OnServerConfig`
+### `OnServerConfig (Table event)`
+
+`Called when the servers settings are received.`
 
 ``` lua
 Table event = {
@@ -362,3 +408,27 @@ Table event = {
 	["max_users"]				= Number max_users,
 }
 ```
+___
+
+### `OnError (String error)`
+
+```
+Called when a hook is erroring.
+WARNING: Erroring within this hook will cause the script to exit!
+```
+___
+
+### `OnTick ()`
+
+`Called whenever mumble.client:update() is called.`
+___
+
+### `OnClientPing ()`
+
+`Called just before a ping is sent to the server.`
+___
+
+### `OnAudioFinished ()`
+
+`Called when a sound file has finished playing.`
+___
