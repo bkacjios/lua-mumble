@@ -1,4 +1,5 @@
 # lua-mumble
+
 A lua module to connect to a mumble server and interact with it
 
 ## Usage
@@ -191,11 +192,9 @@ Number volume = mumble.audio:getVolume()
 
 ## hooks
 
-___
-
 ### `OnServerVersion (Table event)`
 
-`Called when the server version information is recieved.`
+Called when the server version information is recieved.
 
 ``` lua
 Table event = {
@@ -209,10 +208,8 @@ ___
 
 ### `OnServerPing (Table event)`
 
-```
 Called when the server sends a responce to a ping request.
 The mumble.client will automatically ping the server every 15 seconds within mumble.client:update()
-```
 
 ``` lua
 Table event = {
@@ -233,7 +230,7 @@ ___
 
 ### `OnServerReject (Table event)`
 
-`Called when you are rejected from connecting to the server.`
+Called when you are rejected from connecting to the server.
 
 ``` lua
 Table event = {
@@ -245,7 +242,7 @@ ___
 
 ### `OnServerSync (Table event)`
 
-`Called after the bot has recieved all the mumble.user and mumble.channel states.`
+Called after the bot has recieved all the mumble.user and mumble.channel states.
 
 ``` lua
 Table event = {
@@ -259,17 +256,17 @@ ___
 
 ### `OnChannelRemove (mumble.channel channel)`
 
-`Called when a mumble.channel is removed.`
+Called when a mumble.channel is removed.
 ___
 
 ### `OnChannelState (mumble.channel channel)`
 
-`Called when a mumble.channel state has changed.. Like updating the name, description, position, comment, etc..`
+Called when a mumble.channel state has changed.. Like updating the name, description, position, comment, etc..
 ___
 
 ### `OnUserRemove (Table event)`
 
-`Called when a mumble.user disconnects or is kicked from the server`
+Called when a mumble.user disconnects or is kicked from the server
 
 ``` lua
 Table event = {
@@ -283,7 +280,7 @@ ___
 
 ### `OnUserState (Table event)`
 
-`Called when a mumble.user state has changed.. Like updating their comment, moving channels, muted, deafened, etc..`
+Called when a mumble.user state has changed.. Like updating their comment, moving channels, muted, deafened, etc..
 
 ``` lua
 Table event = {
@@ -295,7 +292,7 @@ ___
 
 ### `OnMessage (Table event)`
 
-`Called when the bot receives a text message`
+Called when the bot receives a text message
 
 ``` lua
 Table event = {
@@ -309,7 +306,7 @@ ___
 
 ### `OnPermissionDenied (Table event)`
 
-`Called when an action is performed that you don't have permission to do`
+Called when an action is performed that you don't have permission to do
 
 ``` lua
 Table event = {
@@ -325,7 +322,7 @@ ___
 
 ### `OnCodecVersion (Table event)`
 
-`Called when the bot recieves the codec info from the server.`
+Called when the bot recieves the codec info from the server.
 
 ``` lua
 Table event = {
@@ -339,10 +336,8 @@ ___
 
 ### `OnUserStats (Table event)`
 
-```
 Called when the mumble.user's detailed statistics are received from the server.
 Only sent if mumble.user:requestStats() is called.
-```
 
 ``` lua
 Table event = {
@@ -384,10 +379,8 @@ ___
 
 ### `OnServerConfig (Table event)`
 
-```
 Called when the servers settings are received.
 Usually called after OnServerSync
-```
 
 ``` lua
 Table event = {
@@ -403,23 +396,21 @@ ___
 
 ### `OnError (String error)`
 
-```
 Called when a hook is erroring.
 WARNING: Erroring within this hook will cause the script to exit!
-```
 ___
 
 ### `OnTick ()`
 
-`Called whenever mumble.client:update() is called.`
+Called whenever mumble.client:update() is called.
 ___
 
 ### `OnClientPing ()`
 
-`Called just before a ping is sent to the server.`
+Called just before a ping is sent to the server.
 ___
 
 ### `OnAudioFinished ()`
 
-`Called when a sound file has finished playing.`
+Called when a sound file has finished playing.
 ___

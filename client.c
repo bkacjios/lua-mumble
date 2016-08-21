@@ -320,8 +320,11 @@ int client_gc(lua_State *l)
 	luaL_unref(l, LUA_REGISTRYINDEX, client->channelsref);
 
 	pthread_mutex_destroy(&client->lock);
+	pthread_cond_destroy(&client->cond);
 
 	pthread_join(client->audio_thread, NULL);
+
+	opus_encoder_destroy(client->encoder);
 	return 0;
 }
 
