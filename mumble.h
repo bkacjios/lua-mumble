@@ -56,10 +56,25 @@
  * Structures
  */
 
+typedef struct Node {
+	uint32_t	key;
+	void		*value;
+	struct Node	*next;
+	struct Node *prev;
+} Node;
+
+Node* node_new();
+void node_insert(Node* current, uint32_t key, void *value);
+void* node_get_value(Node* current, uint32_t key);
+void* node_remove(Node* current, uint32_t key);
+
 typedef struct MumbleClient MumbleClient;
 typedef struct AudioTransmission AudioTransmission;
+typedef struct MumbleChannel MumbleChannel;
+typedef struct MumbleUser MumbleUser;
 
 struct MumbleClient {
+	lua_State*			l;
 	int					socket;
 	SSL_CTX				*ssl_context;
 	SSL					*ssl;
@@ -71,6 +86,8 @@ struct MumbleClient {
 	int					hooksref;
 	int					usersref;
 	int					channelsref;
+	Node*				users;
+	Node*				channels;
 	double				nextping;
 	uint32_t			session;
 	float				volume;
@@ -80,6 +97,40 @@ struct MumbleClient {
 	AudioTransmission*	audio_job;
 	bool				audio_finished;
 	OpusEncoder*		encoder;
+};
+
+struct MumbleChannel {
+	MumbleClient*	client;
+	char*			name;
+	uint32_t		channel_id;
+	uint32_t		parent;
+	char*			description;
+	char*			description_hash;
+	bool			temporary;
+	int32_t			position;
+	uint32_t		max_users;
+};
+
+struct MumbleUser
+{
+	MumbleClient*	client;
+	int				dataref;
+	uint32_t		session;
+	uint32_t		user_id;
+	char*			name;
+	MumbleChannel*	channel;
+	bool			mute;
+	bool			deaf;
+	bool			self_mute;
+	bool			self_deaf;
+	bool			suppress;
+	char*			comment;
+	char*			comment_hash;
+	bool			recording;
+	bool			priority_speaker;
+	char*			texture;
+	char*			texture_hash;
+	char*			hash;
 };
 
 typedef struct {
@@ -120,10 +171,14 @@ void luaL_checktablemeta(lua_State *L, int i, const char* m);
 const char* eztype(lua_State *L, int i);
 
 void mumble_disconnect(MumbleClient *client);
-void mumble_user_get(lua_State *l, uint32_t session);
-void mumble_user_remove(lua_State *l, uint32_t session);
+
+MumbleUser* mumble_user_get(MumbleClient* client, uint32_t session);
+void mumble_user_push(MumbleClient* client, uint32_t session);
+void mumble_user_remove(MumbleClient* client, uint32_t session);
+
 void mumble_channel_get(lua_State *l, uint32_t channel_id);
 void mumble_channel_remove(lua_State *l, uint32_t channel_id);
+
 void mumble_hook_call(lua_State *l, const char* hook, int nargs);
 
 void audio_transmission_event(MumbleClient *client);
@@ -215,6 +270,6 @@ enum {
 #define packet_send(client, type, message) packet_sendex(client, type, message, 0)
 int packet_sendex(MumbleClient* client, const int type, const void *message, const int length);
 
-typedef void (*Packet_Handler_Func)(lua_State *lua, Packet *packet);
+typedef void (*Packet_Handler_Func)(MumbleClient *client, lua_State *lua, Packet *packet);
 
 extern const Packet_Handler_Func packet_handler[26];

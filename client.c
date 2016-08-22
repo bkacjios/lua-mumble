@@ -126,7 +126,7 @@ int client_update(lua_State *l)
 	Packet_Handler_Func handler = packet_handler[packet_read.type];
 
 	if (handler != NULL) {
-		handler(l, &packet_read);
+		handler(client, l, &packet_read);
 	}
 
 	return 0;
@@ -296,14 +296,26 @@ int client_getHooks(lua_State *l)
 int client_getUsers(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->usersref);
+
+	lua_newtable(l);
+
+	Node* current = client->users;
+
+	while (current->value != NULL) {
+		lua_pushlightuserdata(client->l, current->value);
+		luaL_getmetatable(client->l, METATABLE_USER);
+		lua_setmetatable(client->l, -2);
+		current = current->next;
+	}
+
+	//lua_rawgeti(l, LUA_REGISTRYINDEX, client->usersref);
 	return 1;
 }
 
 int client_getChannels(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channelsref);
+	//lua_rawgeti(l, LUA_REGISTRYINDEX, client->channelsref);
 	return 1;
 }
 
@@ -316,8 +328,6 @@ int client_gc(lua_State *l)
 	pthread_mutex_unlock(&client->lock);
 
 	luaL_unref(l, LUA_REGISTRYINDEX, client->hooksref);
-	luaL_unref(l, LUA_REGISTRYINDEX, client->usersref);
-	luaL_unref(l, LUA_REGISTRYINDEX, client->channelsref);
 
 	pthread_mutex_destroy(&client->lock);
 	pthread_cond_destroy(&client->cond);
@@ -340,10 +350,7 @@ int client_index(lua_State *l)
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
 	if (strcmp(lua_tostring(l, 2), "me") == 0 && client->session) {
-		lua_rawgeti(l, LUA_REGISTRYINDEX, client->usersref);
-		lua_pushinteger(l, client->session);
-		lua_gettable(l, -2);
-		lua_remove(l, -2);
+		mumble_user_push(client, client->session);
 		return 1;
 	} else if (strcmp(lua_tostring(l, 2), "host") == 0) {
 		lua_pushstring(l, client->host);

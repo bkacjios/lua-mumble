@@ -86,14 +86,13 @@ int mumble_connect(lua_State *l)
 	luaL_getmetatable(l, METATABLE_CLIENT);
 	lua_setmetatable(l, -2);
 
+	client->l = l;
+
 	lua_newtable(l);
 	client->hooksref = luaL_ref(l, LUA_REGISTRYINDEX);
 
-	lua_newtable(l);
-	client->usersref = luaL_ref(l, LUA_REGISTRYINDEX);
-
-	lua_newtable(l);
-	client->channelsref = luaL_ref(l, LUA_REGISTRYINDEX);
+	client->users = node_new();
+	client->channels = node_new();
 
 	client->nextping = gettime() + PING_TIMEOUT;
 	client->volume = 1;
@@ -298,46 +297,42 @@ void mumble_hook_call(lua_State *l, const char* hook, int nargs)
 	}
 }
 
-void mumble_user_get(lua_State *l, uint32_t session)
-{
-	//printf("mumble_user_get(%d)\n", session);
+MumbleUser* mumble_user_get(MumbleClient* client, uint32_t session) {
+	MumbleUser* user = node_get_value(client->users, session);
 
-	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->usersref);
+	if (user == NULL) {
+		user = malloc(sizeof *user);
+		user->client = client;
+		user->session = session;
+		
+		node_insert(client->users, session, user);
 
-	lua_pushinteger(l, session);
-	lua_gettable(l, -2);
-
-	if (lua_istable(l, -1) == 0) {
-		lua_pop(l, 1);
-
-		lua_pushinteger(l, session);
-		lua_newtable(l);
-			lua_pushinteger(l, session);
-			lua_setfield(l, -2, "session");
-
-			lua_pushvalue(l, 1);
-			lua_setfield(l, -2, "client");
-
-			luaL_getmetatable(l, METATABLE_USER);
-			lua_setmetatable(l, -2);
-		lua_settable(l, -3);
-
-		lua_pushinteger(l, session);
-		lua_gettable(l, -2);
+		lua_newtable(client->l);
+		user->dataref = luaL_ref(client->l, LUA_REGISTRYINDEX);
 	}
 
-	lua_remove(l, -2);
+	return user;
 }
 
-void mumble_user_remove(lua_State *l, uint32_t session)
-{
-	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->usersref);
-		lua_pushinteger(l, session);
-		lua_pushnil(l);
-		lua_settable(l, -3);
-	lua_pop(l, 1);
+void mumble_user_push(MumbleClient* client, uint32_t session) {
+	MumbleUser* user = node_get_value(client->users, session);
+	
+	if (user == NULL) {
+		lua_pushnil(client->l);
+		return;
+	}
+
+	lua_pushlightuserdata(client->l, user);
+	luaL_getmetatable(client->l, METATABLE_USER);
+	lua_setmetatable(client->l, -2);
+}
+
+void mumble_user_remove(MumbleClient* client, uint32_t session) {
+	MumbleUser* user = node_remove(client->users, session);
+	if (user != NULL) {
+		luaL_unref(client->l, LUA_REGISTRYINDEX, user->dataref);
+		free(user);
+	}
 }
 
 void mumble_channel_get(lua_State *l, uint32_t channel_id)

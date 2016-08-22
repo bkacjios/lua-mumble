@@ -111,7 +111,7 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 	return SSL_write(client->ssl, packet_out.buffer, total_size) == total_size ? 0 : 3;
 }
 
-void packet_server_version(lua_State *l, Packet *packet)
+void packet_server_version(MumbleClient *client, lua_State *l, Packet *packet)
 {
 	MumbleProto__Version *version =  mumble_proto__version__unpack(NULL, packet->length, packet->buffer);
 	if (version == NULL) {
@@ -136,7 +136,7 @@ void packet_server_version(lua_State *l, Packet *packet)
 	mumble_proto__version__free_unpacked(version, NULL);
 }
 
-void packet_server_ping(lua_State *l, Packet *packet)
+void packet_server_ping(MumbleClient *client, lua_State *l, Packet *packet)
 {
 	MumbleProto__Ping *ping = mumble_proto__ping__unpack(NULL, packet->length, packet->buffer);
 	if (ping == NULL) {
@@ -195,7 +195,7 @@ void packet_server_ping(lua_State *l, Packet *packet)
 	mumble_proto__ping__free_unpacked(ping, NULL);
 }
 
-void packet_server_reject(lua_State *l, Packet *packet)
+void packet_server_reject(MumbleClient *client, lua_State *l, Packet *packet)
 {
 	MumbleProto__Reject *reject = mumble_proto__reject__unpack(NULL, packet->length, packet->buffer);
 	if (reject == NULL) {
@@ -216,10 +216,8 @@ void packet_server_reject(lua_State *l, Packet *packet)
 	mumble_proto__reject__free_unpacked(reject, NULL);
 }
 
-void packet_server_sync(lua_State *l, Packet *packet)
+void packet_server_sync(MumbleClient *client, lua_State *l, Packet *packet)
 {
-	MumbleClient *client = luaL_checkudata(l, 1, "mumble.client");
-
 	MumbleProto__ServerSync *sync = mumble_proto__server_sync__unpack(NULL, packet->length, packet->buffer);
 	if (sync == NULL) {
 		return;
@@ -228,7 +226,7 @@ void packet_server_sync(lua_State *l, Packet *packet)
 	lua_newtable(l);
 		if (sync->has_session) {
 			client->session = sync->session;
-			mumble_user_get(l, sync->session);
+			mumble_user_push(client, sync->session);
 			lua_setfield(l, -2, "user");
 		}
 		if (sync->has_max_bandwidth) {
@@ -247,7 +245,7 @@ void packet_server_sync(lua_State *l, Packet *packet)
 
 	mumble_proto__server_sync__free_unpacked(sync, NULL);
 }
-void packet_channel_remove(lua_State *l, Packet *packet)
+void packet_channel_remove(MumbleClient *client, lua_State *l, Packet *packet)
 {
 	MumbleProto__ChannelRemove *channel = mumble_proto__channel_remove__unpack(NULL, packet->length, packet->buffer);
 	if (channel == NULL) {
@@ -262,7 +260,7 @@ void packet_channel_remove(lua_State *l, Packet *packet)
 	mumble_proto__channel_remove__free_unpacked(channel, NULL);
 }
 
-void packet_channel_state(lua_State *l, Packet *packet)
+void packet_channel_state(MumbleClient *client, lua_State *l, Packet *packet)
 {
 	MumbleProto__ChannelState *channel = mumble_proto__channel_state__unpack(NULL, packet->length, packet->buffer);
 	if (channel == NULL) {
@@ -314,7 +312,7 @@ void packet_channel_state(lua_State *l, Packet *packet)
 	mumble_proto__channel_state__free_unpacked(channel, NULL);
 }
 
-void packet_user_remove(lua_State *l, Packet *packet)
+void packet_user_remove(MumbleClient *client, lua_State *l, Packet *packet)
 {
 	MumbleProto__UserRemove *user = mumble_proto__user_remove__unpack(NULL, packet->length, packet->buffer);
 	if (user == NULL) {
@@ -322,10 +320,10 @@ void packet_user_remove(lua_State *l, Packet *packet)
 	}
 
 	lua_newtable(l);
-		mumble_user_get(l, user->session);
+		mumble_user_push(client, user->session);
 		lua_setfield(l, -2, "user");
 		if (user->has_actor) {
-			mumble_user_get(l, user->actor);
+			mumble_user_push(client, user->actor);
 			lua_setfield(l, -2, "actor");
 		}
 		if (user->reason != NULL) {
@@ -337,105 +335,92 @@ void packet_user_remove(lua_State *l, Packet *packet)
 			lua_setfield(l, -2, "ban");
 		}
 	mumble_hook_call(l, "OnUserRemove", 1);
-	mumble_user_remove(l, user->session);
+
+	mumble_user_remove(client, user->session);
 
 	lua_settop(l, 0);
 	mumble_proto__user_remove__free_unpacked(user, NULL);
 }
 
-void packet_user_state(lua_State *l, Packet *packet)
+void packet_user_state(MumbleClient *client, lua_State *l, Packet *packet)
 {
-	MumbleProto__UserState *user = mumble_proto__user_state__unpack(NULL, packet->length, packet->buffer);
-	if (user == NULL) {
+	MumbleProto__UserState *state = mumble_proto__user_state__unpack(NULL, packet->length, packet->buffer);
+	if (state == NULL) {
 		return;
 	}
-	if (!user->has_session) {
-		mumble_proto__user_state__free_unpacked(user, NULL);
+	if (!state->has_session) {
+		mumble_proto__user_state__free_unpacked(state, NULL);
 		return;
 	}
+
+	MumbleUser* user = mumble_user_get(client, state->session);
 
 	lua_newtable(l);
-		if (user->has_actor) {
-			mumble_user_get(l, user->actor);
+		if (state->has_actor) {
+			mumble_user_push(client, state->actor);
 			lua_setfield(l, -2, "actor");
 		}
-		mumble_user_get(l, user->session);
-			lua_pushinteger(l, user->session);
-			lua_setfield(l, -2, "session");
-			if (user->name != NULL) {
-				lua_pushstring(l, user->name);
-				lua_setfield(l, -2, "name");
-			}
-			if (user->has_channel_id) {
-				lua_getfield(l, -1, "channel");
-				lua_setfield(l, -2, "channel_from");
+		mumble_user_push(client, state->session);
+			user->session = state->session;
 
-				mumble_channel_get(l, user->channel_id);
-				lua_setfield(l, -2, "channel");
+			if (state->name != NULL) {
+				user->name = state->name;
+			}
+			if (state->has_channel_id) {
+				// TODO
 			} else {
-				lua_pushnil(l);
-				lua_setfield(l, -2, "channel_from");
+				// TODO channel_from
 			}
-			if (user->has_user_id) {
-				lua_pushinteger(l, user->user_id);
-				lua_setfield(l, -2, "id");
+			if (state->has_user_id) {
+				user->user_id = state->user_id;
 			}
-			if (user->has_mute) {
-				lua_pushboolean(l, user->mute);
-				lua_setfield(l, -2, "mute");
+			if (state->has_mute) {
+				user->mute = state->mute;
 			}
-			if (user->has_deaf) {
-				lua_pushboolean(l, user->deaf);
-				lua_setfield(l, -2, "deaf");
+			if (state->has_deaf) {
+				user->deaf = state->deaf;
 			}
-			if (user->has_self_mute) {
-				lua_pushboolean(l, user->self_mute);
-				lua_setfield(l, -2, "self_mute");
+			if (state->has_self_mute) {
+				user->self_mute = state->self_mute;
 			}
-			if (user->has_self_deaf) {
-				lua_pushboolean(l, user->self_deaf);
-				lua_setfield(l, -2, "self_deaf");
+			if (state->has_self_deaf) {
+				user->self_deaf = state->self_deaf;
 			}
-			if (user->has_suppress) {
-				lua_pushboolean(l, user->suppress);
-				lua_setfield(l, -2, "suppress");
+			if (state->has_suppress) {
+				user->suppress = state->suppress;
 			}
-			if (user->comment != NULL) {
-				lua_pushstring(l, user->comment);
-				lua_setfield(l, -2, "comment");
+			if (state->comment != NULL) {
+				user->comment = state->comment;
 			}
-			if (user->has_recording) {
-				lua_pushboolean(l, user->recording);
-				lua_setfield(l, -2, "recording");
+			if (state->has_recording) {
+				user->recording = state->recording;
 			}
-			if (user->has_priority_speaker) {
-				lua_pushboolean(l, user->priority_speaker);
-				lua_setfield(l, -2, "priority_speaker");
+			if (state->has_priority_speaker) {
+				user->priority_speaker = state->priority_speaker;
 			}
-			if (user->has_texture) {
-				lua_pushlstring(l, (char *)user->texture.data, user->texture.len);
-				lua_setfield(l, -2, "texture");
+			if (state->has_texture) {
+				//lua_pushlstring(l, (char *)state->texture.data, state->texture.len);
+				//lua_setfield(l, -2, "texture");
 			}
-			if (user->hash != NULL) {
-				lua_pushstring(l, user->hash);
-				lua_setfield(l, -2, "hash");
+			if (state->hash != NULL) {
+				user->hash = state->hash;
 			}
-			if (user->has_comment_hash) {
-				lua_pushlstring(l, (char *)user->comment_hash.data, user->comment_hash.len);
-				lua_setfield(l, -2, "comment_hash");
+			if (state->has_comment_hash) {
+				//lua_pushlstring(l, (char *)state->comment_hash.data, state->comment_hash.len);
+				//lua_setfield(l, -2, "comment_hash");
 			}
-			if (user->has_texture_hash) {
-				lua_pushlstring(l, (char *)user->texture_hash.data, user->texture_hash.len);
-				lua_setfield(l, -2, "texture_hash");
+			if (state->has_texture_hash) {
+				//lua_pushlstring(l, (char *)state->texture_hash.data, state->texture_hash.len);
+				//lua_setfield(l, -2, "texture_hash");
 			}
 		lua_setfield(l, -2, "user");
 	mumble_hook_call(l, "OnUserState", 1);
 
 	lua_settop(l, 0);
-	mumble_proto__user_state__free_unpacked(user, NULL);
+	mumble_proto__user_state__free_unpacked(state, NULL);
 }
 
-void packet_text_message(lua_State *l, Packet *packet)
+void packet_text_message(MumbleClient *client, lua_State *l, Packet *packet)
 {
 	MumbleProto__TextMessage *msg = mumble_proto__text_message__unpack(NULL, packet->length, packet->buffer);
 	if (msg == NULL) {
@@ -444,7 +429,7 @@ void packet_text_message(lua_State *l, Packet *packet)
 
 	lua_newtable(l);
 		if (msg->has_actor) {
-			mumble_user_get(l, msg->actor);
+			mumble_user_push(client, msg->actor);
 			lua_setfield(l, -2, "actor");
 		}
 		if (msg->message != NULL) {
@@ -456,7 +441,7 @@ void packet_text_message(lua_State *l, Packet *packet)
 			lua_newtable(l);
 			for (i = 0; i < msg->n_session; i++) {
 				lua_pushinteger(l, i);
-				mumble_user_get(l, msg->session[i]);
+				mumble_user_push(client, msg->session[i]);
 				lua_settable(l, -3);
 			}
 			lua_setfield(l, -2, "users");
@@ -477,7 +462,7 @@ void packet_text_message(lua_State *l, Packet *packet)
 	mumble_proto__text_message__free_unpacked(msg, NULL);
 }
 
-void packet_permissiondenied(lua_State *l, Packet *packet)
+void packet_permissiondenied(MumbleClient *client, lua_State *l, Packet *packet)
 {
 	MumbleProto__PermissionDenied *proto = mumble_proto__permission_denied__unpack(NULL, packet->length, packet->buffer);
 	if (proto == NULL) {
@@ -498,7 +483,7 @@ void packet_permissiondenied(lua_State *l, Packet *packet)
 			lua_setfield(l, -2, "channel");
 		}
 		if (proto->has_session) {
-			mumble_user_get(l, proto->session);
+			mumble_user_push(client, proto->session);
 			lua_setfield(l, -2, "user");
 		}
 		if (proto->reason != NULL) {
@@ -515,7 +500,7 @@ void packet_permissiondenied(lua_State *l, Packet *packet)
 	mumble_proto__permission_denied__free_unpacked(proto, NULL);
 }
 
-void packet_codec_version(lua_State *l, Packet *packet)
+void packet_codec_version(MumbleClient *client, lua_State *l, Packet *packet)
 {
 	MumbleProto__CodecVersion *codec = mumble_proto__codec_version__unpack(NULL, packet->length, packet->buffer);
 	if (codec == NULL) {
@@ -539,7 +524,7 @@ void packet_codec_version(lua_State *l, Packet *packet)
 	mumble_proto__codec_version__free_unpacked(codec, NULL);
 }
 
-void packet_user_stats(lua_State *l, Packet *packet)
+void packet_user_stats(MumbleClient *client, lua_State *l, Packet *packet)
 {
 	MumbleProto__UserStats *stats = mumble_proto__user_stats__unpack(NULL, packet->length, packet->buffer);
 	if (stats == NULL) {
@@ -548,7 +533,7 @@ void packet_user_stats(lua_State *l, Packet *packet)
 
 	lua_newtable(l);
 		if (stats->has_session) {
-			mumble_user_get(l, stats->session);
+			mumble_user_push(client, stats->session);
 			lua_setfield(l, -2, "user");
 		}
 		if (stats->has_stats_only) {
@@ -704,7 +689,7 @@ void packet_user_stats(lua_State *l, Packet *packet)
 	mumble_proto__user_stats__free_unpacked(stats, NULL);
 }
 
-void packet_server_config(lua_State *l, Packet *packet)
+void packet_server_config(MumbleClient *client, lua_State *l, Packet *packet)
 {
 	MumbleProto__ServerConfig *config = mumble_proto__server_config__unpack(NULL, packet->length, packet->buffer);
 	if (config == NULL) {
