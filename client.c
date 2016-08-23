@@ -296,26 +296,14 @@ int client_getHooks(lua_State *l)
 int client_getUsers(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-
-	lua_newtable(l);
-
-	Node* current = client->users;
-
-	while (current->value != NULL) {
-		lua_pushlightuserdata(client->l, current->value);
-		luaL_getmetatable(client->l, METATABLE_USER);
-		lua_setmetatable(client->l, -2);
-		current = current->next;
-	}
-
-	//lua_rawgeti(l, LUA_REGISTRYINDEX, client->usersref);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
 	return 1;
 }
 
 int client_getChannels(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	//lua_rawgeti(l, LUA_REGISTRYINDEX, client->channelsref);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
 	return 1;
 }
 
@@ -350,7 +338,10 @@ int client_index(lua_State *l)
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
 	if (strcmp(lua_tostring(l, 2), "me") == 0 && client->session) {
-		mumble_user_push(client, client->session);
+		lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
+		lua_pushinteger(l, client->session);
+		lua_gettable(l, -2);
+		lua_remove(l, -2);
 		return 1;
 	} else if (strcmp(lua_tostring(l, 2), "host") == 0) {
 		lua_pushstring(l, client->host);

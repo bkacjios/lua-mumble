@@ -226,7 +226,7 @@ void packet_server_sync(MumbleClient *client, lua_State *l, Packet *packet)
 	lua_newtable(l);
 		if (sync->has_session) {
 			client->session = sync->session;
-			mumble_user_push(client, sync->session);
+			mumble_user_get(client, sync->session);
 			lua_setfield(l, -2, "user");
 		}
 		if (sync->has_max_bandwidth) {
@@ -320,10 +320,10 @@ void packet_user_remove(MumbleClient *client, lua_State *l, Packet *packet)
 	}
 
 	lua_newtable(l);
-		mumble_user_push(client, user->session);
+		mumble_user_get(client, user->session);
 		lua_setfield(l, -2, "user");
 		if (user->has_actor) {
-			mumble_user_push(client, user->actor);
+			mumble_user_get(client, user->actor);
 			lua_setfield(l, -2, "actor");
 		}
 		if (user->reason != NULL) {
@@ -335,7 +335,6 @@ void packet_user_remove(MumbleClient *client, lua_State *l, Packet *packet)
 			lua_setfield(l, -2, "ban");
 		}
 	mumble_hook_call(l, "OnUserRemove", 1);
-
 	mumble_user_remove(client, user->session);
 
 	lua_settop(l, 0);
@@ -357,10 +356,10 @@ void packet_user_state(MumbleClient *client, lua_State *l, Packet *packet)
 
 	lua_newtable(l);
 		if (state->has_actor) {
-			mumble_user_push(client, state->actor);
+			mumble_user_get(client, state->actor);
 			lua_setfield(l, -2, "actor");
 		}
-		mumble_user_push(client, state->session);
+		mumble_user_get(client, state->session);
 			user->session = state->session;
 
 			if (state->name != NULL) {
@@ -429,7 +428,7 @@ void packet_text_message(MumbleClient *client, lua_State *l, Packet *packet)
 
 	lua_newtable(l);
 		if (msg->has_actor) {
-			mumble_user_push(client, msg->actor);
+			mumble_user_get(client, msg->actor);
 			lua_setfield(l, -2, "actor");
 		}
 		if (msg->message != NULL) {
@@ -441,7 +440,7 @@ void packet_text_message(MumbleClient *client, lua_State *l, Packet *packet)
 			lua_newtable(l);
 			for (i = 0; i < msg->n_session; i++) {
 				lua_pushinteger(l, i);
-				mumble_user_push(client, msg->session[i]);
+				mumble_user_get(client, msg->session[i]);
 				lua_settable(l, -3);
 			}
 			lua_setfield(l, -2, "users");
@@ -483,7 +482,7 @@ void packet_permissiondenied(MumbleClient *client, lua_State *l, Packet *packet)
 			lua_setfield(l, -2, "channel");
 		}
 		if (proto->has_session) {
-			mumble_user_push(client, proto->session);
+			mumble_user_get(client, proto->session);
 			lua_setfield(l, -2, "user");
 		}
 		if (proto->reason != NULL) {
@@ -533,7 +532,7 @@ void packet_user_stats(MumbleClient *client, lua_State *l, Packet *packet)
 
 	lua_newtable(l);
 		if (stats->has_session) {
-			mumble_user_push(client, stats->session);
+			mumble_user_get(client, stats->session);
 			lua_setfield(l, -2, "user");
 		}
 		if (stats->has_stats_only) {

@@ -56,18 +56,6 @@
  * Structures
  */
 
-typedef struct Node {
-	uint32_t	key;
-	void		*value;
-	struct Node	*next;
-	struct Node *prev;
-} Node;
-
-Node* node_new();
-void node_insert(Node* current, uint32_t key, void *value);
-void* node_get_value(Node* current, uint32_t key);
-void* node_remove(Node* current, uint32_t key);
-
 typedef struct MumbleClient MumbleClient;
 typedef struct AudioTransmission AudioTransmission;
 typedef struct MumbleChannel MumbleChannel;
@@ -84,10 +72,8 @@ struct MumbleClient {
 	char*				username;
 	char*				password;
 	int					hooksref;
-	int					usersref;
-	int					channelsref;
-	Node*				users;
-	Node*				channels;
+	int					users;
+	int					channels;
 	double				nextping;
 	uint32_t			session;
 	float				volume;
@@ -114,7 +100,7 @@ struct MumbleChannel {
 struct MumbleUser
 {
 	MumbleClient*	client;
-	int				dataref;
+	int				data;
 	uint32_t		session;
 	uint32_t		user_id;
 	char*			name;
@@ -173,7 +159,6 @@ const char* eztype(lua_State *L, int i);
 void mumble_disconnect(MumbleClient *client);
 
 MumbleUser* mumble_user_get(MumbleClient* client, uint32_t session);
-void mumble_user_push(MumbleClient* client, uint32_t session);
 void mumble_user_remove(MumbleClient* client, uint32_t session);
 
 void mumble_channel_get(lua_State *l, uint32_t channel_id);
@@ -225,6 +210,8 @@ int user_setDeaf(lua_State *l);
 int user_register(lua_State *l);
 int user_request_stats(lua_State *l);
 int user_tostring(lua_State *l);
+int user_newindex(lua_State *l);
+int user_index(lua_State *l);
 
 /*--------------------------------
 	MUMBLE CHANNEL META METHODS
