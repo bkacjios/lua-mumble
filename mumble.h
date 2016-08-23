@@ -68,9 +68,9 @@ struct MumbleClient {
 	uint16_t			port;
 	char*				username;
 	char*				password;
-	int					hooksref;
-	int					usersref;
-	int					channelsref;
+	int					hooks;
+	int					users;
+	int					channels;
 	double				nextping;
 	uint32_t			session;
 	float				volume;

@@ -87,13 +87,13 @@ int mumble_connect(lua_State *l)
 	lua_setmetatable(l, -2);
 
 	lua_newtable(l);
-	client->hooksref = luaL_ref(l, LUA_REGISTRYINDEX);
+	client->hooks = luaL_ref(l, LUA_REGISTRYINDEX);
 
 	lua_newtable(l);
-	client->usersref = luaL_ref(l, LUA_REGISTRYINDEX);
+	client->users = luaL_ref(l, LUA_REGISTRYINDEX);
 
 	lua_newtable(l);
-	client->channelsref = luaL_ref(l, LUA_REGISTRYINDEX);
+	client->channels = luaL_ref(l, LUA_REGISTRYINDEX);
 
 	client->nextping = gettime() + PING_TIMEOUT;
 	client->volume = 1;
@@ -235,7 +235,7 @@ void mumble_hook_call(lua_State *l, const char* hook, int nargs)
 	int i;
 
 	// Get hook table
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->hooksref);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->hooks);
 
 	// Get the table of callbacks
 	lua_getfield(l, -1, hook);
@@ -303,7 +303,7 @@ void mumble_user_get(lua_State *l, uint32_t session)
 	//printf("mumble_user_get(%d)\n", session);
 
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->usersref);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
 
 	lua_pushinteger(l, session);
 	lua_gettable(l, -2);
@@ -333,7 +333,7 @@ void mumble_user_get(lua_State *l, uint32_t session)
 void mumble_user_remove(lua_State *l, uint32_t session)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->usersref);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
 		lua_pushinteger(l, session);
 		lua_pushnil(l);
 		lua_settable(l, -3);
@@ -343,7 +343,7 @@ void mumble_user_remove(lua_State *l, uint32_t session)
 void mumble_channel_get(lua_State *l, uint32_t channel_id)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channelsref);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
 
 	lua_pushinteger(l, channel_id);
 	lua_gettable(l, -2);
@@ -376,7 +376,7 @@ void mumble_channel_get(lua_State *l, uint32_t channel_id)
 void mumble_channel_remove(lua_State *l, uint32_t channel_id)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channelsref);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
 		lua_pushinteger(l, channel_id);
 		lua_pushnil(l);
 		lua_settable(l, -3);
