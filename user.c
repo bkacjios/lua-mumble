@@ -157,10 +157,38 @@ int user_getID(lua_State *l)
 	return 1;
 }
 
-int user_getMute(lua_State *l)
+int user_isMute(lua_State *l)
 {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushboolean(l, user->mute);
+	return 1;
+}
+
+int user_isDeaf(lua_State *l)
+{
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+	lua_pushboolean(l, user->deaf);
+	return 1;
+}
+
+int user_isSelfMute(lua_State *l)
+{
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+	lua_pushboolean(l, user->self_mute);
+	return 1;
+}
+
+int user_isSelfDeaf(lua_State *l)
+{
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+	lua_pushboolean(l, user->self_deaf);
+	return 1;
+}
+
+int user_isSuppressed(lua_State *l)
+{
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+	lua_pushboolean(l, user->suppress);
 	return 1;
 }
 

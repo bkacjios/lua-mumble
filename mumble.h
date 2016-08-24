@@ -209,6 +209,16 @@ int user_setMuted(lua_State *l);
 int user_setDeaf(lua_State *l);
 int user_register(lua_State *l);
 int user_request_stats(lua_State *l);
+
+int user_getSession(lua_State *l);
+int user_getName(lua_State *l);
+int user_getID(lua_State *l);
+int user_isMute(lua_State *l);
+int user_isDeaf(lua_State *l);
+int user_isSelfMute(lua_State *l);
+int user_isSelfDeaf(lua_State *l);
+int user_isSuppressed(lua_State *l);
+
 int user_tostring(lua_State *l);
 int user_newindex(lua_State *l);
 int user_index(lua_State *l);
