@@ -94,6 +94,7 @@ struct MumbleChannel {
 	uint32_t		parent;
 	char*			description;
 	char*			description_hash;
+	size_t			description_hash_len;
 	bool			temporary;
 	int32_t			position;
 	uint32_t		max_users;
@@ -113,11 +114,13 @@ struct MumbleUser
 	bool			self_deaf;
 	bool			suppress;
 	char*			comment;
-	char*			comment_hash;
+	uint8_t*		comment_hash;
+	size_t			comment_hash_len;
 	bool			recording;
 	bool			priority_speaker;
 	char*			texture;
-	char*			texture_hash;
+	uint8_t*		texture_hash;
+	size_t			texture_hash_len;
 	char*			hash;
 };
 
@@ -153,6 +156,9 @@ typedef struct {
 int MUMBLE_CONNECTIONS;
 
 double gettime();
+
+void bin_to_strhex(uint8_t *bin, size_t binsz, char **result);
+
 void debugstack(lua_State *l, const char* text);
 int luaL_checkboolean(lua_State *L, int i);
 int luaL_optboolean(lua_State *L, int i, int d);
@@ -231,6 +237,7 @@ int user_isPrioritySpeaker(lua_State *l);
 int user_getTexture(lua_State *l);
 int user_getTextureHash(lua_State *l);
 int user_getHash(lua_State *l);
+int user_setTexture(lua_State *l);
 
 int user_tostring(lua_State *l);
 int user_newindex(lua_State *l);

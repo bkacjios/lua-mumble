@@ -276,12 +276,10 @@ void packet_channel_state(MumbleClient *client, lua_State *l, Packet *packet)
 			channel->parent = state->parent;
 		}
 		if (state->name != NULL) {
-			channel->name = malloc(strlen(state->name) + 1);
-			strcpy(channel->name, state->name);
+			channel->name = strdup(state->name);
 		}
 		if (state->description != NULL) {
-			channel->description = malloc(strlen(state->description));
-			strcpy(channel->description, state->description);
+			channel->description = strdup(state->description);
 		}
 		if (state->has_temporary) {
 			channel->temporary = state->temporary;
@@ -290,8 +288,8 @@ void packet_channel_state(MumbleClient *client, lua_State *l, Packet *packet)
 			channel->position = state->position;
 		}
 		if (state->has_description_hash) {
-			channel->description_hash = malloc(state->description_hash.len);
-			strcpy(channel->description_hash, state->description_hash.data);
+			channel->description_hash = strdup(state->description_hash.data);
+			channel->description_hash_len = state->description_hash.len;
 		}
 		if (state->has_max_users) {
 			channel->max_users = state->max_users;
@@ -352,8 +350,7 @@ void packet_user_state(MumbleClient *client, lua_State *l, Packet *packet)
 		mumble_user_raw_get(client, state->session);
 			user->session = state->session;
 			if (state->name != NULL) {
-				user->name = malloc(strlen(state->name) + 1);
-				strcpy(user->name, state->name);
+				user->name = strdup(state->name);
 			}
 			if (state->has_channel_id) {
 				if (user->channel_id != state->channel_id) {
@@ -391,7 +388,7 @@ void packet_user_state(MumbleClient *client, lua_State *l, Packet *packet)
 				user->suppress = state->suppress;
 			}
 			if (state->comment != NULL) {
-				user->comment = state->comment;
+				user->comment = strdup(state->comment);
 			}
 			if (state->has_recording) {
 				user->recording = state->recording;
@@ -400,20 +397,18 @@ void packet_user_state(MumbleClient *client, lua_State *l, Packet *packet)
 				user->priority_speaker = state->priority_speaker;
 			}
 			if (state->has_texture) {
-				user->texture = malloc(state->texture.len);
-				strcpy(user->texture, state->texture.data);
+				user->texture = strdup(state->texture.data);
 			}
 			if (state->hash != NULL) {
-				user->hash = malloc(strlen(state->hash) + 1);
-				strcpy(user->hash, state->hash);
+				user->hash = strdup(state->hash);
 			}
 			if (state->has_comment_hash) {
-				user->comment_hash = malloc(state->comment_hash.len);
-				strcpy(user->comment_hash, state->comment_hash.data);
+				user->comment_hash = strdup(state->comment_hash.data);
+				user->comment_hash_len = state->comment_hash.len;
 			}
 			if (state->has_texture_hash) {
-				user->texture_hash = malloc(state->texture_hash.len);
-				strcpy(user->texture_hash, state->texture_hash.data);
+				user->texture_hash = strdup(state->texture_hash.data);
+				user->texture_hash_len = state->texture_hash.len;
 			}
 		lua_setfield(l, -2, "user");
 	mumble_hook_call(l, "OnUserState", 1);

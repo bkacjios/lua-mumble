@@ -216,7 +216,9 @@ int user_getComment(lua_State *l)
 int user_getCommentHash(lua_State *l)
 {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
-	lua_pushstring(l, user->comment_hash);
+	char* result;
+	bin_to_strhex(user->comment_hash, user->comment_hash_len, &result);
+	lua_pushstring(l, result);
 	return 1;
 }
 
@@ -244,7 +246,9 @@ int user_getTexture(lua_State *l)
 int user_getTextureHash(lua_State *l)
 {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
-	lua_pushstring(l, user->texture_hash);
+	char* result;
+	bin_to_strhex(user->texture_hash, user->texture_hash_len, &result);
+	lua_pushstring(l, result);
 	return 1;
 }
 
@@ -253,6 +257,22 @@ int user_getHash(lua_State *l)
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushstring(l, user->hash);
 	return 1;
+}
+
+int user_setTexture(lua_State *l)
+{
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+
+	MumbleProto__UserState msg = MUMBLE_PROTO__USER_STATE__INIT;
+
+	msg.has_session = true;
+	msg.session = user->session;
+	
+	msg.has_texture = true;
+	msg.texture.data = (uint8_t *) luaL_checklstring(l, 2, &msg.texture.len);
+
+	packet_send(user->client, PACKET_USERSTATE, &msg);
+	return 0;
 }
 
 int user_tostring(lua_State *l)

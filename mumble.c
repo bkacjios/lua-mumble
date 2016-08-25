@@ -334,9 +334,27 @@ MumbleUser* mumble_user_get(MumbleClient* client, uint32_t session) {
 			lua_setmetatable(l, -2);
 
 			user->client = client;
-			user->session = session;
+
 			lua_newtable(l);
 			user->data = luaL_ref(l, LUA_REGISTRYINDEX);
+			user->session = session;
+			user->user_id = 0;
+			user->channel_id = 0;
+			user->name = "";
+			user->mute = false;
+			user->deaf = false;
+			user->self_mute = false;
+			user->self_deaf = false;
+			user->suppress = false;
+			user->comment = "";
+			user->comment_hash = "";
+			user->comment_hash_len = 0;
+			user->recording = false;
+			user->priority_speaker = false;
+			user->texture = "";
+			user->texture_hash = "";
+			user->texture_hash_len = 0;
+			user->hash = "";
 		}
 		lua_settable(l, -3);
 
@@ -399,9 +417,17 @@ MumbleChannel* mumble_channel_get(MumbleClient* client, uint32_t channel_id)
 			lua_setmetatable(l, -2);
 
 			channel->client = client;
-			channel->channel_id = channel_id;
+
 			lua_newtable(l);
 			channel->data = luaL_ref(l, LUA_REGISTRYINDEX);
+			channel->name = "";
+			channel->channel_id = channel_id;
+			channel->parent = 0;
+			channel->description = "";
+			channel->description_hash = "";
+			channel->temporary = false;
+			channel->position = 0;
+			channel->max_users = 0;
 		}
 		lua_settable(l, -3);
 
@@ -480,6 +506,7 @@ const luaL_reg mumble_user[] = {
 	{"getTexture", user_getTexture},
 	{"getTextureHash", user_getTextureHash},
 	{"getHash", user_getHash},
+	{"setTexture", user_setTexture},
 
 	{"__tostring", user_tostring},
 	{"__newindex", user_newindex},

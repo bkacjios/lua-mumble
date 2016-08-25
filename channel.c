@@ -69,6 +69,13 @@ int channel_getID(lua_State *l)
 int channel_getParent(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+
+	// This should only happen on the root channel
+	if (channel->channel_id == channel->parent) {
+		lua_pushnil(l);
+		return 1;
+	}
+	
 	mumble_channel_raw_get(channel->client, channel->parent);
 	return 1;
 }
@@ -83,7 +90,9 @@ int channel_getDescription(lua_State *l)
 int channel_getDescriptionHash(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
-	lua_pushstring(l, channel->description_hash);
+	char* result;
+	bin_to_strhex(channel->description_hash, channel->description_hash_len, &result);
+	lua_pushstring(l, result);
 	return 1;
 }
 

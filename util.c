@@ -7,6 +7,24 @@ double gettime()
 	return time.tv_sec + time.tv_usec/1.0e6;
 }
 
+void bin_to_strhex(uint8_t *bin, size_t binsz, char **result)
+{
+	char hex_str[]= "0123456789abcdef";
+	size_t i;
+
+	*result = (char *)malloc(binsz * 2 + 1);
+	(*result)[binsz * 2] = 0;
+
+	if (!binsz)
+		return;
+
+	for (i = 0; i < binsz; i++)
+	{
+		(*result)[i * 2 + 0] = hex_str[(bin[i] >> 4) & 0x0F];
+		(*result)[i * 2 + 1] = hex_str[(bin[i]     ) & 0x0F];
+	}
+}
+
 void debugstack(lua_State *l, const char* text)
 {
 	for (int i=1; i<=lua_gettop(l); i++)
