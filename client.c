@@ -261,7 +261,7 @@ int client_hook(lua_State *l)
 
 	luaL_checktype(l, funcIndex, LUA_TFUNCTION);
 
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->hooksref);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->hooks);
 	lua_getfield(l, -1, hook);
 
 	if (lua_istable(l, -1) == 0) {
@@ -289,7 +289,7 @@ int client_call(lua_State *l)
 int client_getHooks(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->hooksref);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->hooks);
 	return 1;
 }
 
@@ -315,7 +315,10 @@ int client_gc(lua_State *l)
 	audio_transmission_stop(client);
 	pthread_mutex_unlock(&client->lock);
 
-	luaL_unref(l, LUA_REGISTRYINDEX, client->hooksref);
+	luaL_unref(l, LUA_REGISTRYINDEX, client->self);
+	luaL_unref(l, LUA_REGISTRYINDEX, client->hooks);
+	luaL_unref(l, LUA_REGISTRYINDEX, client->users);
+	luaL_unref(l, LUA_REGISTRYINDEX, client->channels);
 
 	pthread_mutex_destroy(&client->lock);
 	pthread_cond_destroy(&client->cond);
@@ -338,10 +341,7 @@ int client_index(lua_State *l)
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
 	if (strcmp(lua_tostring(l, 2), "me") == 0 && client->session) {
-		lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
-		lua_pushinteger(l, client->session);
-		lua_gettable(l, -2);
-		lua_remove(l, -2);
+		mumble_user_raw_get(client, client->session);
 		return 1;
 	} else if (strcmp(lua_tostring(l, 2), "host") == 0) {
 		lua_pushstring(l, client->host);
