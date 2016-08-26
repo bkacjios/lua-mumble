@@ -360,12 +360,12 @@ void packet_user_state(MumbleClient *client, lua_State *l, Packet *packet)
 							lua_setfield(l, -2, "actor");
 						}
 						mumble_channel_raw_get(client, user->channel_id);
-						lua_setfield(l, -2, "channel_from");
+						lua_setfield(l, -2, "from");
 						mumble_channel_raw_get(client, state->channel_id);
-						lua_setfield(l, -2, "channel_to");
+						lua_setfield(l, -2, "to");
 						mumble_user_raw_get(client, state->session);
 						lua_setfield(l, -2, "user");
-					mumble_hook_call(l, "OnUserChangedChannel", 1);
+					mumble_hook_call(l, "OnUserChannel", 1);
 				}
 				user->channel_id = state->channel_id;
 			}

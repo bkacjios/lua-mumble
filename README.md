@@ -320,6 +320,19 @@ ___
 Called when a mumble.channel state has changed.. Like updating the name, description, position, comment, etc..
 ___
 
+### `OnUserChannel (Table event)`
+
+Called when a mumble.user changes their channel
+
+``` lua
+Table event = {
+	["user"]	= mumble.user user,
+	["actor"]	= mumble.user actor,
+	["from"]	= mumble.channel from,
+	["to"]		= mumble.channel to,
+}
+```
+
 ### `OnUserRemove (Table event)`
 
 Called when a mumble.user disconnects or is kicked from the server

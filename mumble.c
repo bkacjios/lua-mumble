@@ -240,8 +240,6 @@ static bool erroring = false;
 
 void mumble_hook_call(lua_State *l, const char* hook, int nargs)
 {
-	//printf("mumble_hook_call(%s)\n", hook);
-
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
 	int top = lua_gettop(l);
