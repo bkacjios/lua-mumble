@@ -7,6 +7,24 @@ double gettime()
 	return time.tv_sec + time.tv_usec/1.0e6;
 }
 
+void bin_to_strhex(uint8_t *bin, size_t binsz, char **result)
+{
+	char hex_str[]= "0123456789abcdef";
+	size_t i;
+
+	*result = (char *)malloc(binsz * 2 + 1);
+	(*result)[binsz * 2] = 0;
+
+	if (!binsz)
+		return;
+
+	for (i = 0; i < binsz; i++)
+	{
+		(*result)[i * 2 + 0] = hex_str[(bin[i] >> 4) & 0x0F];
+		(*result)[i * 2 + 1] = hex_str[(bin[i]     ) & 0x0F];
+	}
+}
+
 void debugstack(lua_State *l, const char* text)
 {
 	for (int i=1; i<=lua_gettop(l); i++)
@@ -16,27 +34,6 @@ void debugstack(lua_State *l, const char* text)
 		else
 			printf("%s [%d] = %s\n", text, i, eztype(l, i));
 	}
-}
-
-MumbleClient* mumble_check_meta(lua_State *L, int i, const char* meta)
-{
-	luaL_checktablemeta(L, i, meta);
-
-	lua_getfield(L, i, "client");
-
-	MumbleClient *client = lua_touserdata(L, -1);
-
-	if (client != NULL) {
-		lua_getmetatable(L, -1);
-		lua_getfield(L, LUA_REGISTRYINDEX, METATABLE_CLIENT);
-		if (lua_rawequal(L, -1, -2)) {
-			lua_pop(L, 3);
-			return client;
-		}
-	}
-
-	luaL_error(L, "%s does not have a %s", meta, METATABLE_CLIENT);
-	return NULL;
 }
 
 int luaL_checkboolean(lua_State *L, int i){
@@ -50,22 +47,6 @@ int luaL_optboolean(lua_State *L, int i, int d){
 		return d;
 	else
 		return luaL_checkboolean(L, i);
-}
-
-void luaL_checktablemeta(lua_State *L, int i, const char* m)
-{
-	luaL_checktype(L, i, LUA_TTABLE);
-
-	lua_getmetatable(L, i);
-	luaL_getmetatable(L, m);
-
-	int ret = lua_equal(L, -1, -2);
-
-	lua_pop(L, 2);
-
-	if (ret == 0) {
-		luaL_typerror(L, i, m);
-	}
 }
 
 const char* eztype(lua_State *L, int i)

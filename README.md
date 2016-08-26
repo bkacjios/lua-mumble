@@ -103,27 +103,6 @@ Number time = mumble.client:gettime()
 ### mumble.user
 
 ``` lua
--- Structure
-Table mumble.user = {
-	["session"]				= Number session,
-	["name"]				= String name,
-	["channel"]				= mumble.channel channel,
-	["channel_from"]		= mumble.channel channel_from,
-	["id"]					= Number id,
-	["mute"]				= Boolean mute,
-	["deaf"]				= Boolean deaf,
-	["self_mute"]			= Boolean self_mute,
-	["self_deaf"]			= Boolean self_deaf,
-	["suppress"]			= Boolean suppress,
-	["comment"]				= String comment,
-	["recording"]			= Boolean recording,
-	["priority_speaker"]	= Boolean priority_speaker,
-	["texture"]				= String texture,
-	["hash"]				= String hash,
-	["comment_hash"]		= String comment_hash,
-	["texture_hash"]		= String texture_hash,
-}
-
 -- Sends a text message to a user
 mumble.user:message(String host)
 
@@ -150,23 +129,66 @@ mumble.user:register()
 -- Requests the users information statistics from the server
 -- If no boolean is passed, it will default to requesting ALL statistics
 mumble.user:requestStats([ Boolean statsonly = false ])
+
+-- Gets the current mumble.client this user is a part of
+mumble.client client = mumble.user:getClient()
+
+-- Gets the current session number
+Number session = mumble.user:getSession()
+
+-- Gets the name of the user
+String name = mumble.user:getName()
+
+-- Gets the channel of the user
+mumble.channel channel = mumble.user:getChannel()
+
+-- Gets the registered ID of the user
+-- Is 0 for unregistered users
+Number userid = mumble.user:getID()
+
+-- Returns if the user is muted or not
+Boolean muted = mumble.user:isMuted()
+
+-- Returns if the user is deaf or not
+Boolean deaf = mumble.user:isDeaf()
+
+-- Returns if the user is muted or not
+Boolean muted = mumble.user:isSelfMute()
+
+-- Returns if the user is deaf or not
+Boolean deaf = mumble.user:isSelfDeaf()
+
+-- Returns if the user is suppressed by the server
+Boolean suppressed = mumble.user:isSuppressed()
+
+-- Returns the comment string of the users comment
+String comment = mumble.user:getComment()
+
+-- Returns the comments SHA1 hash
+String hash = mumble.user:getCommentHash()
+
+-- Returns if the user is recording or not
+Boolean recording = mumble.user:isRecording()
+
+-- Returns if the user is a priority speaker or not
+Boolean priority = mumble.user:isPrioritySpeaker()
+
+-- Returns the users avatar as a string of bytes
+String texture = mumble.user:getTexture()
+
+-- Returns the users avatar as a SHA1 hash
+String hash = mumble.user:getTextureHash()
+
+-- Returns the users username SHA1 hash
+String hash = mumble.user:getHash()
+
+-- Sets the users avatar image using a string of bytes
+mumble.user:setTexure(String bytes)
 ```
 
 ### mumble.channel
 
 ``` lua
--- Structure
-Table mumble.channel = {
-	["id"]					= Number id,
-	["parent"]				= mumble.channel parent,
-	["name"]				= String name,
-	["description"]			= String description,
-	["temporary"]			= Boolean temporary,
-	["position"]			= Number position,
-	["description_hash"]	= String description_hash,
-	["max_users"]			= Number max_users,
-}
-
 -- Sends a text message to the entire channel
 mumble.channel:message(String message)
 
@@ -175,6 +197,34 @@ mumble.channel:setDescription(String description)
 
 -- Attempts to remove the channel
 mumble.channel:remove()
+
+-- Gets the current mumble.client this channel is a part of
+mumble.client client = mumble.channel:getClient()
+
+-- Gets the channels name
+String name = mumble.channel:getName()
+
+-- Gets the channel ID
+Number id = mumble.channel:getID()
+
+-- Gets the parent channel
+-- Returns nil on root channel
+mumble.channel channel = mumble.channel:getParent()
+
+-- Gets the channels description
+String description = mumble.channel:getDescription()
+
+-- Gets the channels description SHA1 hash
+String hash = mumble.channel:getDescriptionHash()
+
+-- Returns if the channel is temporary or not
+Boolean temporary = mumble.channel:isTemporary()
+
+-- Returns the channels position
+Number position = mumble.channel:getPosition()
+
+-- Gets the max number of users allowed in this channel
+Number max = mumble.channel:getMaxUsers()
 ```
 
 ### mumble.audio

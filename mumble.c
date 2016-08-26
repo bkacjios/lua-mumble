@@ -73,7 +73,6 @@ int mumble_sleep(lua_State *l)
 	return 0;
 }
 
-
 int mumble_connect(lua_State *l)
 {
 	const char* server_host_str = luaL_checkstring(l, 1);
@@ -85,6 +84,14 @@ int mumble_connect(lua_State *l)
 	MumbleClient *client = lua_newuserdata(l, sizeof(MumbleClient));
 	luaL_getmetatable(l, METATABLE_CLIENT);
 	lua_setmetatable(l, -2);
+
+	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CONNECTIONS);
+	lua_pushvalue(l, -2);
+
+	client->self = luaL_ref(l, -2);
+	lua_pop(l, 1);
+
+	client->l = l;
 
 	lua_newtable(l);
 	client->hooks = luaL_ref(l, LUA_REGISTRYINDEX);
@@ -217,9 +224,15 @@ void mumble_disconnect(MumbleClient *client)
 	pthread_mutex_unlock(&client->lock);
 }
 
-int mumble_gettime(lua_State *l)
+static int mumble_gettime(lua_State *l)
 {
 	lua_pushnumber(l, gettime());
+	return 1;
+}
+
+static int mumble_getConnections(lua_State *l)
+{
+	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CONNECTIONS);
 	return 1;
 }
 
@@ -298,41 +311,72 @@ void mumble_hook_call(lua_State *l, const char* hook, int nargs)
 	}
 }
 
-void mumble_user_get(lua_State *l, uint32_t session)
-{
-	//printf("mumble_user_get(%d)\n", session);
+MumbleUser* mumble_user_get(MumbleClient* client, uint32_t session) {
+	MumbleUser* user = NULL;
 
-	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	lua_State* l = client->l;
+
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
 
 	lua_pushinteger(l, session);
 	lua_gettable(l, -2);
 
-	if (lua_istable(l, -1) == 0) {
+	if (lua_isuserdata(l, -1) == 1) {
+		user = lua_touserdata(l, -1);
+	} else {
 		lua_pop(l, 1);
 
 		lua_pushinteger(l, session);
-		lua_newtable(l);
-			lua_pushinteger(l, session);
-			lua_setfield(l, -2, "session");
 
-			lua_pushvalue(l, 1);
-			lua_setfield(l, -2, "client");
-
+		user = lua_newuserdata(l, sizeof(MumbleUser));
+		{
 			luaL_getmetatable(l, METATABLE_USER);
 			lua_setmetatable(l, -2);
+
+			user->client = client;
+
+			lua_newtable(l);
+			user->data = luaL_ref(l, LUA_REGISTRYINDEX);
+			user->session = session;
+			user->user_id = 0;
+			user->channel_id = 0;
+			user->name = "";
+			user->mute = false;
+			user->deaf = false;
+			user->self_mute = false;
+			user->self_deaf = false;
+			user->suppress = false;
+			user->comment = "";
+			user->comment_hash = "";
+			user->comment_hash_len = 0;
+			user->recording = false;
+			user->priority_speaker = false;
+			user->texture = "";
+			user->texture_hash = "";
+			user->texture_hash_len = 0;
+			user->hash = "";
+		}
 		lua_settable(l, -3);
 
 		lua_pushinteger(l, session);
 		lua_gettable(l, -2);
 	}
+	
+	lua_remove(l, -2);
+	return user;
+}
 
+void mumble_user_raw_get(MumbleClient* client, uint32_t session)
+{
+	lua_State* l = client->l;
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
+	lua_pushinteger(l, session);
+	lua_gettable(l, -2);
 	lua_remove(l, -2);
 }
 
-void mumble_user_remove(lua_State *l, uint32_t session)
-{
-	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+void mumble_user_remove(MumbleClient* client, uint32_t session) {
+	lua_State* l = client->l;
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
 		lua_pushinteger(l, session);
 		lua_pushnil(l);
@@ -340,30 +384,51 @@ void mumble_user_remove(lua_State *l, uint32_t session)
 	lua_pop(l, 1);
 }
 
-void mumble_channel_get(lua_State *l, uint32_t channel_id)
+void mumble_channel_raw_get(MumbleClient* client, uint32_t channel_id)
 {
-	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	lua_State* l = client->l;
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
+	lua_pushinteger(l, channel_id);
+	lua_gettable(l, -2);
+	lua_remove(l, -2);
+}
+
+MumbleChannel* mumble_channel_get(MumbleClient* client, uint32_t channel_id)
+{
+	MumbleChannel* channel = NULL;
+
+	lua_State* l = client->l;
+
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
 
 	lua_pushinteger(l, channel_id);
 	lua_gettable(l, -2);
 
-	if (lua_istable(l, -1) == 0) {
+	if (lua_isuserdata(l, -1) == 1) {
+		channel = lua_touserdata(l, -1);
+	} else {
 		lua_pop(l, 1);
 
 		lua_pushinteger(l, channel_id);
-		lua_newtable(l);
-			lua_pushinteger(l, channel_id);
-			lua_setfield(l, -2, "id");
 
-			lua_pushvalue(l, 1);
-			lua_setfield(l, -2, "client");
-
-			lua_newtable(l);
-			lua_setfield(l, -2, "children");
-
+		channel = lua_newuserdata(l, sizeof(MumbleChannel));
+		{
 			luaL_getmetatable(l, METATABLE_CHAN);
 			lua_setmetatable(l, -2);
+
+			channel->client = client;
+
+			lua_newtable(l);
+			channel->data = luaL_ref(l, LUA_REGISTRYINDEX);
+			channel->name = "";
+			channel->channel_id = channel_id;
+			channel->parent = 0;
+			channel->description = "";
+			channel->description_hash = "";
+			channel->temporary = false;
+			channel->position = 0;
+			channel->max_users = 0;
+		}
 		lua_settable(l, -3);
 
 		lua_pushinteger(l, channel_id);
@@ -371,11 +436,12 @@ void mumble_channel_get(lua_State *l, uint32_t channel_id)
 	}
 	
 	lua_remove(l, -2);
+	return channel;
 }
 
-void mumble_channel_remove(lua_State *l, uint32_t channel_id)
+void mumble_channel_remove(MumbleClient* client, uint32_t channel_id)
 {
-	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	lua_State* l = client->l;
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
 		lua_pushinteger(l, channel_id);
 		lua_pushnil(l);
@@ -388,6 +454,7 @@ const luaL_reg mumble[] = {
 	{"encoder", encoder_new},
 	{"sleep", mumble_sleep},
 	{"gettime", mumble_gettime},
+	{"getConnections", mumble_getConnections},
 	{NULL, NULL}
 };
 
@@ -421,7 +488,29 @@ const luaL_reg mumble_user[] = {
 	{"setMuted", user_setMuted},
 	{"setDeaf", user_setDeaf},
 	{"requestStats", user_request_stats},
+
+	{"getClient", user_getClient},
+	{"getSession", user_getSession},
+	{"getName", user_getName},
+	{"getChannel", user_getChannel},
+	{"getID", user_getID},
+	{"isMute", user_isMute},
+	{"isDeaf", user_isDeaf},
+	{"isSelfMute", user_isSelfMute},
+	{"isSelfDeaf", user_isSelfDeaf},
+	{"isSuppressed", user_isSuppressed},
+	{"getComment", user_getComment},
+	{"getCommentHash", user_getCommentHash},
+	{"isRecording", user_isRecording},
+	{"isPrioritySpeaker", user_isPrioritySpeaker},
+	{"getTexture", user_getTexture},
+	{"getTextureHash", user_getTextureHash},
+	{"getHash", user_getHash},
+	{"setTexture", user_setTexture},
+
 	{"__tostring", user_tostring},
+	{"__newindex", user_newindex},
+	{"__index", user_index},
 	{NULL, NULL}
 };
 
@@ -429,6 +518,17 @@ const luaL_reg mumble_channel[] = {
 	{"message", channel_message},
 	{"setDescription", channel_setDescription},
 	{"remove", channel_remove},
+
+	{"getClient", channel_getClient},
+	{"getName", channel_getName},
+	{"getID", channel_getID},
+	{"getParent", channel_getParent},
+	{"getDescription", channel_getDescription},
+	{"getDescriptionHash", channel_getDescriptionHash},
+	{"isTemporary", channel_isTemporary},
+	{"getPosition", channel_getPosition},
+	{"getMaxUsers", channel_getMaxUsers},
+
 	{"__tostring", channel_tostring},
 	{NULL, NULL}
 };
@@ -486,6 +586,9 @@ int luaopen_mumble(lua_State *l)
 		luaL_register(l, NULL, mumble_encoder);
 		lua_setfield(l, -2, "opus");
 	}
+
+	lua_newtable(l);
+	MUMBLE_CONNECTIONS = luaL_ref(l, LUA_REGISTRYINDEX);
 
 	return 0;
 }
