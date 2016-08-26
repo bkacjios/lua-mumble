@@ -211,6 +211,12 @@ Number id = mumble.channel:getID()
 -- Returns nil on root channel
 mumble.channel channel = mumble.channel:getParent()
 
+-- Returns the channels that are parented to the channel
+Table children = mumble.channel:getChildren()
+
+-- Returns the users that are currently within the channel
+Table users = mumble.channel:getUsers()
+
 -- Gets the channels description
 String description = mumble.channel:getDescription()
 

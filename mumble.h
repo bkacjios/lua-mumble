@@ -257,6 +257,8 @@ int channel_getClient(lua_State *l);
 int channel_getName(lua_State *l);
 int channel_getID(lua_State *l);
 int channel_getParent(lua_State *l);
+int channel_getChildren(lua_State *l);
+int channel_getUsers(lua_State *l);
 int channel_getDescription(lua_State *l);
 int channel_getDescriptionHash(lua_State *l);
 int channel_isTemporary(lua_State *l);
@@ -264,6 +266,9 @@ int channel_getPosition(lua_State *l);
 int channel_getMaxUsers(lua_State *l);
 
 int channel_tostring(lua_State *l);
+int channel_newindex(lua_State *l);
+int channel_index(lua_State *l);
+
 
 /*--------------------------------
 	MUMBLE ENCODER META METHODS

@@ -523,6 +523,8 @@ const luaL_reg mumble_channel[] = {
 	{"getName", channel_getName},
 	{"getID", channel_getID},
 	{"getParent", channel_getParent},
+	{"getChildren", channel_getChildren},
+	{"getUsers", channel_getUsers},
 	{"getDescription", channel_getDescription},
 	{"getDescriptionHash", channel_getDescriptionHash},
 	{"isTemporary", channel_isTemporary},
@@ -530,6 +532,8 @@ const luaL_reg mumble_channel[] = {
 	{"getMaxUsers", channel_getMaxUsers},
 
 	{"__tostring", channel_tostring},
+	{"__newindex", channel_newindex},
+	{"__index", channel_index},
 	{NULL, NULL}
 };
 
