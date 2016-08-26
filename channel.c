@@ -93,6 +93,7 @@ int channel_getDescriptionHash(lua_State *l)
 	char* result;
 	bin_to_strhex(channel->description_hash, channel->description_hash_len, &result);
 	lua_pushstring(l, result);
+	free(result);
 	return 1;
 }
 
@@ -120,7 +121,7 @@ int channel_getMaxUsers(lua_State *l)
 int channel_tostring(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
-	lua_pushfstring(l, "%s: %p", METATABLE_CHAN, channel);
+	lua_pushfstring(l, "%s [%d][%s]", METATABLE_CHAN, channel->channel_id, channel->name);
 	return 1;
 }
 

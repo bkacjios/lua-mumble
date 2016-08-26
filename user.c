@@ -219,6 +219,7 @@ int user_getCommentHash(lua_State *l)
 	char* result;
 	bin_to_strhex(user->comment_hash, user->comment_hash_len, &result);
 	lua_pushstring(l, result);
+	free(result);
 	return 1;
 }
 
@@ -249,6 +250,7 @@ int user_getTextureHash(lua_State *l)
 	char* result;
 	bin_to_strhex(user->texture_hash, user->texture_hash_len, &result);
 	lua_pushstring(l, result);
+	free(result);
 	return 1;
 }
 
@@ -278,7 +280,7 @@ int user_setTexture(lua_State *l)
 int user_tostring(lua_State *l)
 {	
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
-	lua_pushfstring(l, "%s: %p", METATABLE_USER, user);
+	lua_pushfstring(l, "%s [%d][%s]", METATABLE_USER, user->session, user->name);
 	return 1;
 }
 
