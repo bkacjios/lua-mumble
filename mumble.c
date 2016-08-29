@@ -238,6 +238,12 @@ static int mumble_getConnections(lua_State *l)
 
 static bool erroring = false;
 
+static int traceback(lua_State *l)
+{
+	luaL_traceback(l, l, lua_tostring(l, 1), 1);
+	return 1;
+}
+
 void mumble_hook_call(lua_State *l, const char* hook, int nargs)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
@@ -288,11 +294,17 @@ void mumble_hook_call(lua_State *l, const char* hook, int nargs)
 			if (erroring == true) {
 				// If the user errors within the OnError hook, PANIC
 				lua_call(l, nargs, 0);
-			} else if (lua_pcall(l, nargs, 0, 0) != 0) {
-				erroring = true;
-				// Call the OnError hook
-				mumble_hook_call(l, "OnError", 1);
-				erroring = false;
+			} else {
+				int base = lua_gettop(l) - nargs;
+				lua_pushcfunction(l, traceback);
+				lua_insert(l, base);
+				if (lua_pcall(l, nargs, 0, base) != 0) {
+					// Call the OnError hook
+					erroring = true;
+					mumble_hook_call(l, "OnError", 1);
+					erroring = false;
+				}
+				lua_remove(l, base);
 			}
 		}
 
