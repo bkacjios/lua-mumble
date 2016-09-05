@@ -307,6 +307,49 @@ int client_getChannels(lua_State *l)
 	return 1;
 }
 
+int client_registerVoiceTarget(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+
+	MumbleProto__VoiceTarget msg = MUMBLE_PROTO__VOICE_TARGET__INIT;
+
+	msg.has_id = true;
+	msg.id = luaL_optinteger(l, 2, 0);
+
+	int n_targets = lua_gettop(l) - 2;
+
+	msg.n_targets = n_targets;
+
+	msg.targets = malloc(sizeof(MumbleProto__VoiceTarget__Target) * n_targets);
+
+	for (int i=0; i < n_targets; i++) {
+		msg.targets[i] = luaL_checkudata(l, i + 3, METATABLE_VOICETARGET);
+	}
+
+	packet_send(client, PACKET_VOICETARGET, &msg);
+
+	free(msg.targets);
+	return 0;
+}
+
+int client_setVoiceTarget(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	pthread_mutex_lock(&client->lock);
+	client->audio_target = luaL_optinteger(l, 2, 0);
+	pthread_mutex_unlock(&client->lock);
+	return 0;
+}
+
+int client_getVoiceTarget(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	pthread_mutex_lock(&client->lock);
+	lua_pushinteger(l, client->audio_target);
+	pthread_mutex_unlock(&client->lock);
+	return 1;
+}
+
 int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
@@ -343,10 +386,10 @@ int client_index(lua_State *l)
 	if (strcmp(lua_tostring(l, 2), "me") == 0 && client->session) {
 		mumble_user_raw_get(client, client->session);
 		return 1;
-	} else if (strcmp(lua_tostring(l, 2), "host") == 0) {
+	} else if (strcmp(lua_tostring(l, 2), "host") == 0&& client->host) {
 		lua_pushstring(l, client->host);
 		return 1;
-	} else if (strcmp(lua_tostring(l, 2), "port") == 0) {
+	} else if (strcmp(lua_tostring(l, 2), "port") == 0&& client->port) {
 		lua_pushinteger(l, client->port);
 		return 1;
 	}

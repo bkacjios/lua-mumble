@@ -13,6 +13,8 @@ mumble.client, [ String error ] = mumble.connect(String host, Number port, Strin
 
 -- The client's user
 mumble.user = mumble.client.me
+
+mumble.voicetarget = mumble.voicetarget()
 ```
 
 ### mumble.client
@@ -55,6 +57,17 @@ mumble.client:hook(String hook, [ String unique name = "hook"], Function callbac
 
 -- Gets all registered callbacks
 Table hooks = mumble.client:getHooks()
+
+-- Register a mumble.voicetarget to the server
+-- Accepts multiple mumble.voicetarget objects that will all be assigned to the given ID
+mumble.client:registerVoiceTarget(Number id, mumble.voicetarget ...)
+
+-- Set the current voice target that mumble.client:play() will abide by
+-- Defaults to 0, the default voice target
+mumble.client:setVoiceTarget(Number id)
+
+-- Get the current voice target
+Number id = mumble.client:getVoiceTarget()
 
 -- Structure
 Table hooks = {
@@ -233,17 +246,26 @@ Number position = mumble.channel:getPosition()
 Number max = mumble.channel:getMaxUsers()
 ```
 
-### mumble.audio
+### mumble.voicetarget
 
 ``` lua
--- Stops playing the audio
-mumble.audio:stop()
+-- Add a user to whisper to
+mumble.voicetarget:addUser(mumble.user user)
 
--- Sets the volume level
-mumble.audio:setVolume(Number volume)
+-- Sets the channel that is be shouted to
+mumble.voicetarget:setChannel(mumble.channel channel)
 
--- Gets the volume level
-Number volume = mumble.audio:getVolume()
+-- Gets the channel that is shouted to
+mumble.voicetarget:getChannel()
+
+-- Sets the specific user group to whisper to
+mumble.voicetarget:setGroup(String group)
+
+-- Shout to the linked channels of the set channel
+mumble.voicetarget:setLinks(Boolean followlinks)
+
+-- Shout to the children of the set channel
+mumble.voicetarget:setChildren(Boolean followchildren)
 ```
 
 ## hooks

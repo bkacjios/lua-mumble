@@ -68,10 +68,10 @@ struct MumbleClient {
 	SSL_CTX				*ssl_context;
 	SSL					*ssl;
 	bool				connected;
-	char*				host;
+	const char*			host;
 	uint16_t			port;
-	char*				username;
-	char*				password;
+	const char*			username;
+	const char*			password;
 	int					hooks;
 	int					users;
 	int					channels;
@@ -84,6 +84,7 @@ struct MumbleClient {
 	AudioTransmission*	audio_job;
 	bool				audio_finished;
 	OpusEncoder*		encoder;
+	uint8_t				audio_target;
 };
 
 struct MumbleChannel {
@@ -201,6 +202,9 @@ int client_call(lua_State *l);
 int client_getHooks(lua_State *l);
 int client_getUsers(lua_State *l);
 int client_getChannels(lua_State *l);
+int client_registerVoiceTarget(lua_State *l);
+int client_setVoiceTarget(lua_State *l);
+int client_getVoiceTarget(lua_State *l);
 int client_gc(lua_State *l);
 int client_tostring(lua_State *l);
 int client_index(lua_State *l);
@@ -269,16 +273,31 @@ int channel_tostring(lua_State *l);
 int channel_newindex(lua_State *l);
 int channel_index(lua_State *l);
 
-
 /*--------------------------------
 	MUMBLE ENCODER META METHODS
 --------------------------------*/
 
-#define METATABLE_ENCODER		"mumble.opus"
+#define METATABLE_ENCODER		"mumble.encoder"
 
 int encoder_new(lua_State *l);
 int encoder_setBitRate(lua_State *l);
 int encoder_tostring(lua_State *l);
+
+/*--------------------------------
+	MUMBLE TARGET META METHODS
+--------------------------------*/
+
+#define METATABLE_VOICETARGET	"mumble.voicetarget"
+
+int target_new(lua_State *l);
+int target_addUser(lua_State *l);
+int target_setChannel(lua_State *l);
+int target_getChannel(lua_State *l);
+int target_setGroup(lua_State *l);
+int target_setLinks(lua_State *l);
+int target_setChildren(lua_State *l);
+int target_tostring(lua_State *l);
+int target_gc(lua_State *l);
 
 /*--------------------------------
 	MUMBLE PACKET FUNCTIONS

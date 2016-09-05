@@ -10,7 +10,7 @@ clean:
 uninstall:
 	rm /usr/local/lib/lua/5.1/mumble.so
 
-all: proto/Mumble.o mumble.o client.o user.o channel.o encoder.o audio.o packet.o util.o mumble.so
+all: proto/Mumble.o mumble.o client.o user.o channel.o encoder.o audio.o packet.o target.o util.o mumble.so
 
 install: all
 	cp mumble.so /usr/local/lib/lua/5.1/mumble.so
@@ -40,8 +40,11 @@ audio.o: audio.c
 packet.o: packet.c
 	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
 
+target.o: target.c
+	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
+
 util.o: util.c
 	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
 
-mumble.so: proto/Mumble.o mumble.o client.o user.o channel.o encoder.o audio.o packet.o util.o
+mumble.so: proto/Mumble.o mumble.o client.o user.o channel.o encoder.o audio.o packet.o target.o util.o
 	$(CC) -shared -o $@ $^ $(CFLAGS)

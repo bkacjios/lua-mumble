@@ -102,18 +102,21 @@ int mumble_connect(lua_State *l)
 	lua_newtable(l);
 	client->channels = luaL_ref(l, LUA_REGISTRYINDEX);
 
+	client->host = server_host_str;
+	client->port = port;
 	client->nextping = gettime() + PING_TIMEOUT;
 	client->volume = 1;
 	client->audio_job = NULL;
 	client->connected = true;
 	client->audio_finished = false;
+	client->audio_target = 0;
 
 	int err;
 	client->encoder = opus_encoder_create(48000, 1, OPUS_APPLICATION_AUDIO, &err);
 
 	if (err != OPUS_OK) {
 		lua_pushnil(l);
-		lua_pushfstring(l, "could not initialize the Opus encoder: %s", opus_strerror(err));
+		lua_pushfstring(l, "could not initialize encoder: %s", opus_strerror(err));
 		return 2;
 	}
 
@@ -123,7 +126,7 @@ int mumble_connect(lua_State *l)
 	client->socket = socket(AF_INET, SOCK_STREAM, 0);
 	if (client->socket < 0) {
 		lua_pushnil(l);
-		lua_pushstring(l, "could not create socket");
+		lua_pushfstring(l, "could not create socket: %s", strerror(errno));
 		return 2;
 	}
 
@@ -161,8 +164,7 @@ int mumble_connect(lua_State *l)
 	}
 	memmove(&server_addr.sin_addr, server_host->h_addr_list[0], server_host->h_length);
 
-	int ret = connect(client->socket, (struct sockaddr *) &server_addr, sizeof(server_addr));
-	if (ret != 0) {
+	if (connect(client->socket, (struct sockaddr *) &server_addr, sizeof(server_addr)) != 0) {
 		lua_pushnil(l);
 		lua_pushfstring(l, "could not connect to server: %s", strerror(errno));
 		return 2;
@@ -182,9 +184,9 @@ int mumble_connect(lua_State *l)
 		return 2;
 	}
 
-	if (SSL_connect(client->ssl) != 1) {
+	if (err = SSL_connect(client->ssl) != 1) {
 		lua_pushnil(l);
-		lua_pushstring(l, "could not create secure connection");
+		lua_pushfstring(l, "could not create secure connection: %s", SSL_get_error(client->ssl, err));
 		return 2;
 	}
 
@@ -192,15 +194,13 @@ int mumble_connect(lua_State *l)
 	int flags = fcntl(client->socket, F_GETFL, 0);
 	fcntl(client->socket, F_SETFL, flags | O_NONBLOCK);
 
-	if (pthread_mutex_init(&client->lock , NULL))
-	{
+	if (pthread_mutex_init(&client->lock , NULL)) {
 		lua_pushnil(l);
 		lua_pushstring(l, "could not init mutex");
 		return 2;
 	}
 
-	if (pthread_cond_init(&client->cond, NULL))
-	{
+	if (pthread_cond_init(&client->cond, NULL)) {
 		lua_pushnil(l);
 		lua_pushstring(l, "could not init condition");
 		return 2;
@@ -461,7 +461,6 @@ void mumble_channel_remove(MumbleClient* client, uint32_t channel_id)
 
 const luaL_reg mumble[] = {
 	{"connect", mumble_connect},
-	{"encoder", encoder_new},
 	{"sleep", mumble_sleep},
 	{"gettime", mumble_gettime},
 	{"getConnections", mumble_getConnections},
@@ -484,6 +483,9 @@ const luaL_reg mumble_client[] = {
 	{"getHooks", client_getHooks},
 	{"getUsers", client_getUsers},
 	{"getChannels", client_getChannels},
+	{"registerVoiceTarget", client_registerVoiceTarget},
+	{"setVoiceTarget", client_setVoiceTarget},
+	{"getVoiceTarget", client_getVoiceTarget},
 	{"__gc", client_gc},
 	{"__tostring", client_tostring},
 	{"__index", client_index},
@@ -553,6 +555,18 @@ const luaL_reg mumble_encoder[] = {
 	{NULL, NULL}
 };
 
+const luaL_reg mumble_target[] = {
+	{"addUser", target_addUser},
+	{"setChannel", target_setChannel},
+	{"getChannel", target_getChannel},
+	{"setGroup", target_setGroup},
+	{"setLinks", target_setLinks},
+	{"setChildren", target_setChildren},
+	{"__tostring", target_tostring},
+	{"__gc", target_gc},
+	{NULL, NULL}
+};
+
 int luaopen_mumble(lua_State *l)
 {
 	signal(SIGPIPE, SIG_IGN);
@@ -598,7 +612,27 @@ int luaopen_mumble(lua_State *l)
 			lua_setfield(l, -2, "__index");
 		}
 		luaL_register(l, NULL, mumble_encoder);
-		lua_setfield(l, -2, "opus");
+		lua_newtable(l);
+		{
+			lua_pushcfunction(l, encoder_new);
+			lua_setfield(l, -2, "__call");
+		}
+		lua_setmetatable(l, -2);
+		lua_setfield(l, -2, "encoder");
+
+		luaL_newmetatable(l, METATABLE_VOICETARGET);
+		{
+			lua_pushvalue(l, -1);
+			lua_setfield(l, -2, "__index");
+		}
+		luaL_register(l, NULL, mumble_target);
+		lua_newtable(l);
+		{
+			lua_pushcfunction(l, target_new);
+			lua_setfield(l, -2, "__call");
+		}
+		lua_setmetatable(l, -2);
+		lua_setfield(l, -2, "voicetarget");
 	}
 
 	lua_newtable(l);

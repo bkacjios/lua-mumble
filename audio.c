@@ -115,7 +115,7 @@ void audio_transmission_event(MumbleClient *client)
 	long long_ret;
 
 	voicepacket_init(&packet, packet_buffer);
-	voicepacket_setheader(&packet, VOICEPACKET_OPUS, VOICEPACKET_NORMAL, sound->sequence);
+	voicepacket_setheader(&packet, VOICEPACKET_OPUS, client->audio_target, sound->sequence);
 
 	while (sound->buffer.size < OPUS_FRAME_SIZE * sizeof(opus_int16)) {
 		long_ret = ov_read_filter(&sound->ogg, sound->buffer.pcm + sound->buffer.size, PCM_BUFFER - sound->buffer.size, 0, 2, 1, NULL, audio_transmission_event_filter, sound);

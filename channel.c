@@ -12,9 +12,12 @@ int channel_message(lua_State *l)
 
 	msg.message = (char*) luaL_checkstring(l, 2);
 	msg.n_channel_id = 1;
-	msg.channel_id = &channel->channel_id;
+	msg.channel_id = malloc(sizeof(uint32_t));
+	msg.channel_id[0] = channel->channel_id;
 
 	packet_send(channel->client, PACKET_TEXTMESSAGE, &msg);
+
+	free(msg.channel_id);
 	return 0;
 }
 

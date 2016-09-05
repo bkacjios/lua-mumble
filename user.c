@@ -11,10 +11,13 @@ int user_message(lua_State *l)
 	MumbleProto__TextMessage msg = MUMBLE_PROTO__TEXT_MESSAGE__INIT;
 
 	msg.n_session = 1;
-	msg.session = &user->session;
+	msg.session = malloc(sizeof(uint32_t));
+	msg.session[0] = user->session;
 	msg.message = (char*) luaL_checkstring(l, 2);
 
 	packet_send(user->client, PACKET_TEXTMESSAGE, &msg);
+
+	free(msg.session);
 	return 0;
 }
 
