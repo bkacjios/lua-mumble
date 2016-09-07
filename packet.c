@@ -643,15 +643,41 @@ void packet_user_stats(MumbleClient *client, lua_State *l, Packet *packet)
 		lua_setfield(l, -2, "celt_versions");
 
 		if (stats->has_address) {
-			//lua_pushlstring(l, (char *)stats->address.data, stats->address.len);
-
 			lua_newtable(l);
-				int k;
-				for (k=0; k < stats->address.len; k++) {
-					lua_pushinteger(l, k);
-					lua_pushinteger(l, stats->address.data[k]);
-					lua_settable(l, -3);
+				uint8_t* bytes = (uint8_t*) stats->address.data;
+				uint64_t* addr = (uint64_t*) stats->address.data;
+				uint16_t* shorts = (uint16_t*) stats->address.data;
+
+				if (addr[0] != 0ULL || shorts[4] != 0 || shorts[5] != 0xFFFF) {
+					char ipv6[40];
+					sprintf(ipv6,"%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+						bytes[0], bytes[1], bytes[2], bytes[3],
+						bytes[4], bytes[5], bytes[5], bytes[7],
+						bytes[8], bytes[9], bytes[10], bytes[11],
+						bytes[12], bytes[13], bytes[14], bytes[15]);
+
+					lua_pushboolean(l, true);
+					lua_setfield(l, -2, "ipv6");
+					lua_pushstring(l, ipv6);
+					lua_setfield(l, -2, "string");
+				} else {
+					char ipv4[16];
+					sprintf(ipv4, "%d.%d.%d.%d", bytes[12], bytes[13], bytes[14], bytes[15]);
+					
+					lua_pushboolean(l, true);
+					lua_setfield(l, -2, "ipv4");
+					lua_pushstring(l, ipv4);
+					lua_setfield(l, -2, "string");
 				}
+
+				lua_newtable(l);
+					int k;
+					for (k=0; k < stats->address.len; k++) {
+						lua_pushinteger(l, k+1);
+						lua_pushinteger(l, stats->address.data[k]);
+						lua_settable(l, -3);
+					}
+				lua_setfield(l, -2, "data");
 			lua_setfield(l, -2, "address");
 		}
 
