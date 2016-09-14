@@ -282,6 +282,8 @@ void mumble_hook_call(lua_State *l, const char* hook, int nargs)
 			// Copy function
 			lua_pushvalue(l, -2);
 
+			//mumble_client_raw_get(client);
+
 			for (i = 1; i <= nargs; i++) {
 				// Copy number of arguments
 				int pos = top - nargs + i;
@@ -376,8 +378,15 @@ MumbleUser* mumble_user_get(MumbleClient* client, uint32_t session) {
 	return user;
 }
 
-void mumble_user_raw_get(MumbleClient* client, uint32_t session)
-{
+void mumble_client_raw_get(MumbleClient* client) {
+	lua_State* l = client->l;
+	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CONNECTIONS);
+	lua_pushinteger(l, client->self);
+	lua_gettable(l, -2);
+	lua_remove(l, -2);
+}
+
+void mumble_user_raw_get(MumbleClient* client, uint32_t session) {
 	lua_State* l = client->l;
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
 	lua_pushinteger(l, session);

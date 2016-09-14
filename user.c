@@ -141,8 +141,7 @@ int user_request_stats(lua_State *l)
 int user_getClient(lua_State *l)
 {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
-	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CONNECTIONS);
-	lua_rawgeti(l, -1, user->client->self);
+	mumble_client_raw_get(user->client);
 	return 1;
 }
 

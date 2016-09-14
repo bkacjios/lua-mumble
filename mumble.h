@@ -167,6 +167,7 @@ const char* eztype(lua_State *L, int i);
 
 void mumble_disconnect(MumbleClient *client);
 
+void mumble_client_raw_get(MumbleClient* client);
 MumbleUser* mumble_user_get(MumbleClient* client, uint32_t session);
 void mumble_user_raw_get(MumbleClient* client, uint32_t session);
 void mumble_user_remove(MumbleClient* client, uint32_t session);

@@ -50,8 +50,7 @@ int channel_remove(lua_State *l)
 int channel_getClient(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
-	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CONNECTIONS);
-	lua_rawgeti(l, -1, channel->client->self);
+	mumble_client_raw_get(channel->client);
 	return 1;
 }
 

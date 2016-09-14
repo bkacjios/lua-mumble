@@ -458,7 +458,12 @@ Table event = {
 	["os"]					= String os,
 	["os_version"]			= String os_version,
 	["certificates"]		= Table celt_versions,
-	["address"]				= String address,
+	["address"]				= {
+		["string"]	= String ipaddress,
+		["ipv4"]	= Boolean isipv4,
+		["ipv6"]	= Boolean isipv6,
+		["data"]	= Table raw,
+	},
 	["bandwidth"]			= Number bandwidth,
 	["onlinesecs"]			= Number onlinesecs,
 	["idlesecs"]			= Number idlesecs,
