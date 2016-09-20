@@ -372,6 +372,17 @@ Table event = {
 ```
 ___
 
+### `OnUserConnected (Table event)`
+
+Called when a mumble.user has connected to the server
+
+``` lua
+Table event = {
+	["user"]	= mumble.user user,
+}
+```
+___
+
 ### `OnUserState (Table event)`
 
 Called when a mumble.user state has changed.. Like updating their comment, moving channels, muted, deafened, etc..

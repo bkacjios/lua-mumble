@@ -106,6 +106,7 @@ struct MumbleUser
 {
 	MumbleClient*	client;
 	int				data;
+	bool			connected;
 	uint32_t		session;
 	uint32_t		user_id;
 	char*			name;

@@ -365,6 +365,7 @@ MumbleUser* mumble_user_get(MumbleClient* client, uint32_t session) {
 
 			lua_newtable(l);
 			user->data = luaL_ref(l, LUA_REGISTRYINDEX);
+			user->connected = false;
 			user->session = session;
 			user->user_id = 0;
 			user->channel_id = 0;

@@ -413,6 +413,12 @@ void packet_user_state(MumbleClient *client, lua_State *l, Packet *packet)
 				user->texture_hash_len = state->texture_hash.len;
 			}
 		lua_setfield(l, -2, "user");
+
+		if (user->connected == false && client->synced == true) {
+			user->connected = true;
+			lua_pushvalue(l, -1);
+			mumble_hook_call(l, "OnUserConnected", 1);
+		}
 	mumble_hook_call(l, "OnUserState", 1);
 
 	lua_settop(l, 0);
