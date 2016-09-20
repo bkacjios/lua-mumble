@@ -223,6 +223,8 @@ void packet_server_sync(MumbleClient *client, lua_State *l, Packet *packet)
 		return;
 	}
 
+	client->synced = true;
+
 	lua_newtable(l);
 		if (sync->has_session) {
 			client->session = sync->session;

@@ -41,17 +41,22 @@ static void mumble_audiothread(MumbleClient *client)
 			unsigned long long start, stop, diff;
 
 			start = getNanoTime();
+
 			pthread_mutex_lock(&client->lock);
 			audio_transmission_event(client);
 			pthread_mutex_unlock(&client->lock);
+
+			struct timespec sleep, remain;
+			
 			stop = getNanoTime();
 
 			diff = fabs((double) stop - start);
-
-			struct timespec sleep;
 			sleep.tv_nsec = 10000000LL - diff;
 
-			nanosleep(&sleep, NULL);
+			while (nanosleep(&sleep, &remain) != 0) {
+				sleep.tv_sec = remain.tv_sec;
+				sleep.tv_nsec = remain.tv_nsec;
+			}
 		}
 	}
 }
@@ -108,6 +113,7 @@ int mumble_connect(lua_State *l)
 	client->volume = 1;
 	client->audio_job = NULL;
 	client->connected = true;
+	client->synced = false;
 	client->audio_finished = false;
 	client->audio_target = 0;
 
@@ -127,6 +133,16 @@ int mumble_connect(lua_State *l)
 	if (client->socket < 0) {
 		lua_pushnil(l);
 		lua_pushfstring(l, "could not create socket: %s", strerror(errno));
+		return 2;
+	}
+
+	struct timeval timeout;
+	timeout.tv_sec = 5;
+	timeout.tv_usec = 0;
+
+	if (setsockopt(client->socket, SOL_SOCKET, (SO_RCVTIMEO | SO_SNDTIMEO), (char *)&timeout, sizeof(timeout)) < 0) {
+		lua_pushnil(l);
+		lua_pushfstring(l, "setsockopt failed: %s", strerror(errno));
 		return 2;
 	}
 
@@ -481,6 +497,7 @@ const luaL_reg mumble_client[] = {
 	{"update", client_update},
 	{"disconnect", client_disconnect},
 	{"isConnected", client_isConnected},
+	{"isSynced", client_isSynced},
 	{"play", client_play},
 	{"isPlaying", client_isPlaying},
 	{"stopPlaying", client_stopPlaying},

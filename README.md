@@ -26,6 +26,9 @@ mumble.client:auth(String username)
 -- Check if the client is connected
 Boolean connected = mumble.client:isConnected()
 
+-- Check if the client has fully synced all users and channels
+Boolean synced = mumble.client:isSynced()
+
 -- Disconnect from a mumble server
 mumble.client:disconnect()
 

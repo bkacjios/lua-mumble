@@ -50,7 +50,7 @@
 
 #define PAYLOAD_SIZE_MAX (1024 * 1024 * 8 - 1)
 
-#define PING_TIMEOUT 15
+#define PING_TIMEOUT 10
 
 /*
  * Structures
@@ -68,6 +68,7 @@ struct MumbleClient {
 	SSL_CTX				*ssl_context;
 	SSL					*ssl;
 	bool				connected;
+	bool				synced;
 	const char*			host;
 	uint16_t			port;
 	const char*			username;
@@ -191,6 +192,7 @@ int client_connect(lua_State *l);
 int client_auth(lua_State *l);
 int client_update(lua_State *l);
 int client_disconnect(lua_State *l);
+int client_isSynced(lua_State *l);
 int client_isConnected(lua_State *l);
 int client_play(lua_State *l);
 int client_isPlaying(lua_State *l);

@@ -151,6 +151,13 @@ int client_isConnected(lua_State *l)
 	return 1;
 }
 
+int client_isSynced(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	lua_pushboolean(l, client->synced);
+	return 1;
+}
+
 int client_play(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
