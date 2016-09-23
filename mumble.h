@@ -61,6 +61,12 @@ typedef struct AudioTransmission AudioTransmission;
 typedef struct MumbleChannel MumbleChannel;
 typedef struct MumbleUser MumbleUser;
 
+struct MumbleData
+{
+	char* data;
+	size_t len;
+};
+
 struct MumbleClient {
 	lua_State*			l;
 	int					self;
@@ -77,6 +83,7 @@ struct MumbleClient {
 	int					users;
 	int					channels;
 	double				nextping;
+	double				time;
 	uint32_t			session;
 	float				volume;
 	pthread_t			audio_thread;
@@ -95,7 +102,7 @@ struct MumbleChannel {
 	uint32_t		channel_id;
 	uint32_t		parent;
 	char*			description;
-	char*			description_hash;
+	uint8_t*		description_hash;
 	size_t			description_hash_len;
 	bool			temporary;
 	int32_t			position;
@@ -175,7 +182,7 @@ void mumble_user_raw_get(MumbleClient* client, uint32_t session);
 void mumble_user_remove(MumbleClient* client, uint32_t session);
 
 MumbleChannel* mumble_channel_get(MumbleClient* client, uint32_t channel_id);
-void mumble_channel_raw_get(MumbleClient* client, uint32_t channel_id);
+MumbleChannel* mumble_channel_raw_get(MumbleClient* client, uint32_t channel_id);
 void mumble_channel_remove(MumbleClient* client, uint32_t channel_id);
 
 void mumble_hook_call(lua_State *l, const char* hook, int nargs);
@@ -206,9 +213,11 @@ int client_call(lua_State *l);
 int client_getHooks(lua_State *l);
 int client_getUsers(lua_State *l);
 int client_getChannels(lua_State *l);
+int client_getChannel(lua_State *l);
 int client_registerVoiceTarget(lua_State *l);
 int client_setVoiceTarget(lua_State *l);
 int client_getVoiceTarget(lua_State *l);
+int client_getUpTime(lua_State *l);
 int client_gc(lua_State *l);
 int client_tostring(lua_State *l);
 int client_index(lua_State *l);
@@ -273,6 +282,7 @@ int channel_isTemporary(lua_State *l);
 int channel_getPosition(lua_State *l);
 int channel_getMaxUsers(lua_State *l);
 
+int channel_call(lua_State *l);
 int channel_tostring(lua_State *l);
 int channel_newindex(lua_State *l);
 int channel_index(lua_State *l);

@@ -110,6 +110,7 @@ int mumble_connect(lua_State *l)
 	client->host = server_host_str;
 	client->port = port;
 	client->nextping = gettime() + PING_TIMEOUT;
+	client->time = gettime();
 	client->volume = 1;
 	client->audio_job = NULL;
 	client->connected = true;
@@ -365,7 +366,7 @@ MumbleUser* mumble_user_get(MumbleClient* client, uint32_t session) {
 
 			lua_newtable(l);
 			user->data = luaL_ref(l, LUA_REGISTRYINDEX);
-			user->connected = false;
+			user->connected = client->synced ? false : true;
 			user->session = session;
 			user->user_id = 0;
 			user->channel_id = 0;
@@ -420,13 +421,14 @@ void mumble_user_remove(MumbleClient* client, uint32_t session) {
 	lua_pop(l, 1);
 }
 
-void mumble_channel_raw_get(MumbleClient* client, uint32_t channel_id)
+MumbleChannel* mumble_channel_raw_get(MumbleClient* client, uint32_t channel_id)
 {
 	lua_State* l = client->l;
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
 	lua_pushinteger(l, channel_id);
 	lua_gettable(l, -2);
 	lua_remove(l, -2);
+	return lua_touserdata(l, -1);
 }
 
 MumbleChannel* mumble_channel_get(MumbleClient* client, uint32_t channel_id)
@@ -510,9 +512,11 @@ const luaL_reg mumble_client[] = {
 	{"getHooks", client_getHooks},
 	{"getUsers", client_getUsers},
 	{"getChannels", client_getChannels},
+	{"getChannel", client_getChannel},
 	{"registerVoiceTarget", client_registerVoiceTarget},
 	{"setVoiceTarget", client_setVoiceTarget},
 	{"getVoiceTarget", client_getVoiceTarget},
+	{"getUpTime", client_getUpTime},
 	{"__gc", client_gc},
 	{"__tostring", client_tostring},
 	{"__index", client_index},
@@ -570,6 +574,7 @@ const luaL_reg mumble_channel[] = {
 	{"getPosition", channel_getPosition},
 	{"getMaxUsers", channel_getMaxUsers},
 
+	{"__call", channel_call},
 	{"__tostring", channel_tostring},
 	{"__newindex", channel_newindex},
 	{"__index", channel_index},

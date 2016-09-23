@@ -14,7 +14,11 @@ mumble.client, [ String error ] = mumble.connect(String host, Number port, Strin
 -- The client's user
 mumble.user = mumble.client.me
 
+-- A new voicetarget object
 mumble.voicetarget = mumble.voicetarget()
+
+-- A timestamp in milliseconds
+Number time = mumble.gettime()
 ```
 
 ### mumble.client
@@ -61,17 +65,6 @@ mumble.client:hook(String hook, [ String unique name = "hook"], Function callbac
 -- Gets all registered callbacks
 Table hooks = mumble.client:getHooks()
 
--- Register a mumble.voicetarget to the server
--- Accepts multiple mumble.voicetarget objects that will all be assigned to the given ID
-mumble.client:registerVoiceTarget(Number id, mumble.voicetarget ...)
-
--- Set the current voice target that mumble.client:play() will abide by
--- Defaults to 0, the default voice target
-mumble.client:setVoiceTarget(Number id)
-
--- Get the current voice target
-Number id = mumble.client:getVoiceTarget()
-
 -- Structure
 Table hooks = {
 	["onServerSync"] = {
@@ -83,6 +76,20 @@ Table hooks = {
 		["do stuff on ping"] = function: 0xffffffff,
 	}
 }
+
+-- Register a mumble.voicetarget to the server
+-- Accepts multiple mumble.voicetarget objects that will all be assigned to the given ID
+mumble.client:registerVoiceTarget(Number id, mumble.voicetarget ...)
+
+-- Set the current voice target that mumble.client:play() will abide by
+-- Defaults to 0, the default voice target
+mumble.client:setVoiceTarget(Number id)
+
+-- Get the current voice target
+Number id = mumble.client:getVoiceTarget()
+
+-- Get the uptime of the current client
+Number time = mumble.client:getUpTime()
 
 -- Returns a table of all mumble.users
 Table users = mumble.client:getUsers()
@@ -101,6 +108,8 @@ Table users = {
 -- Returns a table of all mumble.channels
 Table channels = mumble.client:getChannels()
 
+mumble.channel channel = mumble.client:getChannel(String path)
+
 -- Structure
 -- Key:		channel id
 -- Value:	mumble.channel
@@ -111,9 +120,6 @@ Table channels = {
 	[id] = mumble.channel,
 	[id] = mumble.channel,
 }
-
--- A timestamp in milliseconds
-Number time = mumble.client:gettime()
 ```
 
 ### mumble.user
@@ -205,6 +211,9 @@ mumble.user:setTexure(String bytes)
 ### mumble.channel
 
 ``` lua
+-- Gets a channel relative to the current
+mumble.channel channel = mumble.channel(String path)
+
 -- Sends a text message to the entire channel
 mumble.channel:message(String message)
 

@@ -10,39 +10,6 @@ local afk = {
 	message = "You have been idle for %i minutes..</br>You will be moved to <i>%s</i> in %i minutes!",
 }
 
-function mumble.client:getChannel(path)
-	if self:getChannels()[0] == nil then
-		return nil
-	end
-	return self:getChannels()[0](path)
-end
-
-function mumble.channel:__call(path)
-	assert(self ~= nil, "self cannot be nil")
-
-	if path == nil then
-		return self
-	end
-
-	local channel = self
-
-	for k in path:gmatch("([^/]+)") do
-		local current
-		if k == "." then
-			current = channel
-		elseif k == ".." then
-			current = channel:getParent()
-		else
-			current = channel:getChildren()[k]
-		end
-		if current == nil then
-			return nil
-		end
-		channel = current
-	end
-	return channel
-end
-
 function afk.checkStats(event)
 	local user = event.user
 	local afkchannel = client:getChannel(afk.channel)

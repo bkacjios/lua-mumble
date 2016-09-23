@@ -95,7 +95,7 @@ int channel_getChildren(lua_State *l)
 		if (lua_isuserdata(l, -1)) {
 			MumbleChannel *chan = lua_touserdata(l, -1);
 			if (chan->channel_id != chan->parent && chan->parent == channel->channel_id) {
-				lua_pushstring(l, chan->name);
+				lua_pushinteger(l, chan->channel_id);
 				lua_pushvalue(l, -2);
 				lua_settable(l, -6);
 			}
@@ -174,8 +174,47 @@ int channel_getMaxUsers(lua_State *l)
 
 int channel_call(lua_State *l)
 {
-	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+	MumbleChannel *self = luaL_checkudata(l, 1, METATABLE_CHAN);
+	char* path = (char*) luaL_checkstring(l, 2);
 
+	MumbleChannel *channel = self;
+	char *pch = strtok(path, "/\\");
+
+	while (pch != NULL)
+	{
+		MumbleChannel *current = NULL;
+
+		if (strcmp(pch, ".") == 0) {
+			current = channel;
+		} else if(strcmp(pch, "..") == 0) {
+			current = mumble_channel_raw_get(channel->client, channel->parent);
+		} else {
+			lua_rawgeti(l, LUA_REGISTRYINDEX, self->client->channels);
+			lua_pushnil(l);
+
+			while (lua_next(l, -2)) {
+				if (lua_isuserdata(l, -1)) {
+					MumbleChannel *chan = lua_touserdata(l, -1);
+					if (chan->channel_id != chan->parent && chan->parent == channel->channel_id && strcmp(pch, chan->name) == 0) {
+						current = chan;
+					}
+				}
+				lua_pop(l, 1);
+			}
+
+			lua_pop(l, 1);
+		}
+
+		if (current == NULL) {
+			lua_pushnil(l);
+			return 1;
+		}
+
+		channel = current;
+		pch = strtok(NULL, "/\\");
+	}
+
+	mumble_channel_raw_get(channel->client, channel->channel_id);
 	return 1;
 }
 
