@@ -264,32 +264,80 @@ void packet_channel_state(MumbleClient *client, lua_State *l, Packet *packet)
 	}
 
 	MumbleChannel* channel = mumble_channel_get(client, state->channel_id);
-		if (state->has_parent) {
-			channel->parent = state->parent;
+	if (state->has_parent) {
+		channel->parent = state->parent;
+	}
+	if (state->name != NULL) {
+		channel->name = strdup(state->name);
+	}
+	if (state->description != NULL) {
+		channel->description = strdup(state->description);
+	}
+	if (state->has_temporary) {
+		channel->temporary = state->temporary;
+	}
+	if (state->has_position) {
+		channel->position = state->position;
+	}
+	if (state->has_description_hash) {
+		channel->description_hash = strdup(state->description_hash.data);
+		channel->description_hash_len = state->description_hash.len;
+	}
+	if (state->has_max_users) {
+		channel->max_users = state->max_users;
+	}
+	if (state->n_links_add != 0) {
+		// Save how many links the channel has for later..
+		uint32_t starting = channel->n_links;
+
+		// Adjust link size to fit additions
+		channel->n_links = (channel->n_links + state->n_links_add);
+
+		// Reallocate memory
+		channel->links = realloc(channel->links, sizeof(uint32_t) * channel->n_links);
+
+		// Add the new entries to the end of the array
+		for (int i=0; i<state->n_links_add; i++) {
+			channel->links[starting + i] = state->links_add[i];
 		}
-		if (state->name != NULL) {
-			channel->name = strdup(state->name);
+	}
+	if (state->n_links_remove != 0) {
+
+		int i = 0;
+
+		for (int j=0; j<channel->n_links; j++) {
+			for (int k=0; k<state->n_links_remove; k++) {
+				// If the channel in the linked array is not in the list of channels to be removed..
+				if (channel->links[j] != state->links_remove[k]) {
+					// Add it back to the array
+					channel->links[i] = channel->links[j];
+					i++;
+				}
+			}
 		}
-		if (state->description != NULL) {
-			channel->description = strdup(state->description);
+
+		// Adjust link size to fit removals
+		channel->n_links = (channel->n_links - state->n_links_remove);
+
+		// Reallocate memory
+		channel->links = realloc(channel->links, sizeof(uint32_t) * channel->n_links);
+	}
+	if (state->n_links != 0) {
+		// Free up the previous list..
+		if (channel->links != NULL)
+			free(channel->links);
+
+		// Store how many links the channel has
+		channel->n_links = state->n_links;
+
+		// Create the array
+		channel->links = malloc(sizeof(uint32_t) * state->n_links);
+
+		// Store links in new array
+		for (int i=0; i<state->n_links; i++) {
+			channel->links[i] = state->links[i];
 		}
-		if (state->has_temporary) {
-			channel->temporary = state->temporary;
-		}
-		if (state->has_position) {
-			channel->position = state->position;
-		}
-		if (state->has_description_hash) {
-			channel->description_hash = strdup(state->description_hash.data);
-			channel->description_hash_len = state->description_hash.len;
-		}
-		if (state->has_max_users) {
-			channel->max_users = state->max_users;
-		}
-		if (state->links != NULL) {
-			channel->n_links = state->n_links;
-			channel->links = state->links;
-		}
+	}
 	mumble_hook_call(l, "OnChannelState", 1);
 
 	lua_settop(l, 0);
