@@ -183,7 +183,7 @@ int client_play(lua_State *l)
 
 	if (sound->file == NULL) {
 		lua_pushnil(l);
-		lua_pushfstring(l, "error opening file %s: %s", luaL_checkstring(l, 3), strerror(errno));
+		lua_pushfstring(l, "error opening file %s: %s", filepath, strerror(errno));
 		return 2;
 	}
 
@@ -191,7 +191,7 @@ int client_play(lua_State *l)
 
 	if (error != 0) {
 		lua_pushnil(l);
-		lua_pushfstring(l, "error opening file %s: %s", luaL_checkstring(l, 3), opus_strerror(error));
+		lua_pushfstring(l, "error opening file %s: %s", filepath, opus_strerror(error));
 		return 2;
 	}
 

@@ -44,8 +44,6 @@
 
 #define PING_TIMEOUT 10
 
-#define luaL_Reg     luaL_Reg
-
 /*
  * Structures
  */
