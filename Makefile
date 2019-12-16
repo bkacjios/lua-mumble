@@ -1,4 +1,4 @@
-CFLAGS = `pkg-config --libs --cflags libssl luajit libprotobuf-c opus vorbis vorbisfile` -lev -pthread -g -DDEBUG
+CFLAGS = `pkg-config --libs --cflags libssl luajit libprotobuf-c opus vorbis vorbisfile` -pthread -g -DDEBUG
 
 INCLUDES = -I.
 

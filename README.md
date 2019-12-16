@@ -2,6 +2,12 @@
 
 A lua module to connect to a mumble server and interact with it
 
+## Build requirements
+
+```
+sudo apt-get install libluajit-5.1-dev protobuf-c libprotobuf-c-dev libssl-dev libopus-dev libvorbis-dev 
+```
+
 ## Usage
 
 ### mumble
@@ -256,6 +262,15 @@ Number position = mumble.channel:getPosition()
 
 -- Gets the max number of users allowed in this channel
 Number max = mumble.channel:getMaxUsers()
+
+-- Returns a table of all linked channels
+Number linked = mumble.channel:getLinked()
+
+-- Attempts to link channel(s)
+mumble.channel:link(mumble.channel ...)
+
+-- Attempts to unlink channel(s)
+mumble.channel:link(mumble.channel ...)
 ```
 
 ### mumble.voicetarget

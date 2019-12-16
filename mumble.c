@@ -466,6 +466,8 @@ MumbleChannel* mumble_channel_get(MumbleClient* client, uint32_t channel_id)
 			channel->temporary = false;
 			channel->position = 0;
 			channel->max_users = 0;
+			channel->n_links = 0;
+			channel->links = 0;
 		}
 		lua_settable(l, -3);
 
@@ -487,7 +489,7 @@ void mumble_channel_remove(MumbleClient* client, uint32_t channel_id)
 	lua_pop(l, 1);
 }
 
-const luaL_reg mumble[] = {
+const luaL_Reg mumble[] = {
 	{"connect", mumble_connect},
 	{"sleep", mumble_sleep},
 	{"gettime", mumble_gettime},
@@ -495,7 +497,7 @@ const luaL_reg mumble[] = {
 	{NULL, NULL}
 };
 
-const luaL_reg mumble_client[] = {
+const luaL_Reg mumble_client[] = {
 	{"auth", client_auth},
 	{"update", client_update},
 	{"disconnect", client_disconnect},
@@ -523,7 +525,7 @@ const luaL_reg mumble_client[] = {
 	{NULL, NULL}
 };
 
-const luaL_reg mumble_user[] = {
+const luaL_Reg mumble_user[] = {
 	{"message", user_message},
 	{"kick", user_kick},
 	{"ban", user_ban},
@@ -557,7 +559,7 @@ const luaL_reg mumble_user[] = {
 	{NULL, NULL}
 };
 
-const luaL_reg mumble_channel[] = {
+const luaL_Reg mumble_channel[] = {
 	{"message", channel_message},
 	{"setDescription", channel_setDescription},
 	{"remove", channel_remove},
@@ -573,6 +575,9 @@ const luaL_reg mumble_channel[] = {
 	{"isTemporary", channel_isTemporary},
 	{"getPosition", channel_getPosition},
 	{"getMaxUsers", channel_getMaxUsers},
+	{"link", channel_link},
+	{"unlink", channel_unlink},
+	{"getLinks", channel_getLinks},
 
 	{"__call", channel_call},
 	{"__tostring", channel_tostring},
@@ -581,13 +586,13 @@ const luaL_reg mumble_channel[] = {
 	{NULL, NULL}
 };
 
-const luaL_reg mumble_encoder[] = {
+const luaL_Reg mumble_encoder[] = {
 	{"setBitRate", encoder_setBitRate},
 	{"__tostring", encoder_tostring},
 	{NULL, NULL}
 };
 
-const luaL_reg mumble_target[] = {
+const luaL_Reg mumble_target[] = {
 	{"addUser", target_addUser},
 	{"setChannel", target_setChannel},
 	{"getChannel", target_getChannel},

@@ -1,13 +1,4 @@
-/*
- * piepie - bot framework for Mumble
- *
- * Author: Tim Cooper <tim.cooper@layeh.com>
- * License: MIT (see LICENSE)
- *
- * This file contains utility functions.
- */
-
- #include "mumble.h"
+#include "mumble.h"
 
 int util_set_varint(uint8_t buffer[], const uint64_t value)
 {

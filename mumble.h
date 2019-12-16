@@ -1,11 +1,3 @@
-/*
- * piepie - bot framework for Mumble
- *
- * Author: Tim Cooper <tim.cooper@layeh.com>
- * License: MIT (see LICENSE)
- *
- */
-
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -51,6 +43,8 @@
 #define PAYLOAD_SIZE_MAX (1024 * 1024 * 8 - 1)
 
 #define PING_TIMEOUT 10
+
+#define luaL_Reg     luaL_Reg
 
 /*
  * Structures
@@ -107,6 +101,8 @@ struct MumbleChannel {
 	bool			temporary;
 	int32_t			position;
 	uint32_t		max_users;
+	uint32_t		n_links;
+	uint32_t*		links;
 };
 
 struct MumbleUser
@@ -281,6 +277,9 @@ int channel_getDescriptionHash(lua_State *l);
 int channel_isTemporary(lua_State *l);
 int channel_getPosition(lua_State *l);
 int channel_getMaxUsers(lua_State *l);
+int channel_getLinks(lua_State *l);
+int channel_link(lua_State *l);
+int channel_unlink(lua_State *l);
 
 int channel_call(lua_State *l);
 int channel_tostring(lua_State *l);
@@ -338,4 +337,4 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 
 typedef void (*Packet_Handler_Func)(MumbleClient *client, lua_State *lua, Packet *packet);
 
-extern const Packet_Handler_Func packet_handler[26];
+const Packet_Handler_Func packet_handler[26];

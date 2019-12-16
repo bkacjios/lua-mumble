@@ -172,6 +172,79 @@ int channel_getMaxUsers(lua_State *l)
 	return 1;
 }
 
+int channel_link(lua_State *l)
+{
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+
+	MumbleProto__ChannelState msg = MUMBLE_PROTO__CHANNEL_STATE__INIT;
+
+	// Get the number of channels we want to link
+	int n_links_add = lua_gettop(l) - 2;
+
+	msg.n_links_add = n_links_add;
+
+	msg.links_add = malloc(sizeof(uint32_t) * n_links_add);
+
+	// Loop through each argument and add the channel_id to the array
+	for (int i = 2; i < n_links_add; i++) {
+		MumbleChannel *link = luaL_checkudata(l, i, METATABLE_CHAN);
+		msg.links_add[i] = link->channel_id;
+	}
+
+	packet_send(channel->client, PACKET_CHANNELSTATE, &msg);
+
+	free(msg.links_add);
+
+	return 0;
+}
+
+int channel_unlink(lua_State *l)
+{
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+
+	MumbleProto__ChannelState msg = MUMBLE_PROTO__CHANNEL_STATE__INIT;
+
+	// Get the number of channels we want to unlink
+	int n_links_remove = lua_gettop(l) - 2;
+
+	msg.n_links_remove = n_links_remove;
+
+	msg.links_remove = malloc(sizeof(uint32_t) * n_links_remove);
+
+	for (int i = 2; i < n_links_remove; i++) {
+		MumbleChannel *link = luaL_checkudata(l, i, METATABLE_CHAN);
+		msg.links_remove[i] = link->channel_id;
+	}
+
+	packet_send(channel->client, PACKET_CHANNELSTATE, &msg);
+
+	free(msg.links_remove);
+
+	return 0;
+}
+
+int channel_getLinks(lua_State *l)
+{
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+
+	lua_newtable(l);
+
+	// Not linked to anything, return empty table
+	if (channel->n_links == 0 || channel->links == 0) return 1;
+
+	// Add all linked channels to the table
+	for (int i = 0; i < channel->n_links; i++) {
+		// Get ID of linked channel from array
+		uint32_t link_id = channel->links[i];
+
+		lua_pushinteger(l, link_id);
+		mumble_channel_raw_get(channel->client, link_id);
+		lua_settable(l, -3);
+	}
+
+	return 1;
+}
+
 int channel_call(lua_State *l)
 {
 	MumbleChannel *self = luaL_checkudata(l, 1, METATABLE_CHAN);

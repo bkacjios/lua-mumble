@@ -1,13 +1,3 @@
-/*
- * piepie - bot framework for Mumble
- *
- * Author: Tim Cooper <tim.cooper@layeh.com>
- * License: MIT (see LICENSE)
- *
- * This file contains handlers for the messages that are received from the
- * server.
- */
-
 #include "mumble.h"
 
 int packet_sendex(MumbleClient* client, const int type, const void *message, const int length)
@@ -295,6 +285,10 @@ void packet_channel_state(MumbleClient *client, lua_State *l, Packet *packet)
 		}
 		if (state->has_max_users) {
 			channel->max_users = state->max_users;
+		}
+		if (state->links != NULL) {
+			channel->n_links = state->n_links;
+			channel->links = state->links;
 		}
 	mumble_hook_call(l, "OnChannelState", 1);
 
