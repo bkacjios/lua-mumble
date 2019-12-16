@@ -121,8 +121,6 @@ void packet_server_version(MumbleClient *client, lua_State *l, Packet *packet)
 		lua_setfield(l, -2, "os_version");
 	mumble_hook_call(l, "OnServerVersion", 1);
 
-	lua_settop(l, 0);
-
 	mumble_proto__version__free_unpacked(version, NULL);
 }
 
@@ -180,8 +178,6 @@ void packet_server_ping(MumbleClient *client, lua_State *l, Packet *packet)
 		}
 	mumble_hook_call(l, "OnServerPing", 1);
 
-	lua_settop(l, 0);
-
 	mumble_proto__ping__free_unpacked(ping, NULL);
 }
 
@@ -200,8 +196,6 @@ void packet_server_reject(MumbleClient *client, lua_State *l, Packet *packet)
 		lua_pushstring(l, reject->reason);
 		lua_setfield(l, -2, "reason");
 	mumble_hook_call(l, "OnServerReject", 1);
-
-	lua_settop(l, 0);
 
 	mumble_proto__reject__free_unpacked(reject, NULL);
 }
@@ -248,7 +242,6 @@ void packet_channel_remove(MumbleClient *client, lua_State *l, Packet *packet)
 	mumble_hook_call(l, "OnChannelRemove", 1);
 	mumble_channel_remove(client, channel->channel_id);
 
-	lua_settop(l, 0);
 	mumble_proto__channel_remove__free_unpacked(channel, NULL);
 }
 
@@ -340,7 +333,6 @@ void packet_channel_state(MumbleClient *client, lua_State *l, Packet *packet)
 	}
 	mumble_hook_call(l, "OnChannelState", 1);
 
-	lua_settop(l, 0);
 	mumble_proto__channel_state__free_unpacked(state, NULL);
 }
 
@@ -369,7 +361,6 @@ void packet_user_remove(MumbleClient *client, lua_State *l, Packet *packet)
 	mumble_hook_call(l, "OnUserRemove", 1);
 	mumble_user_remove(client, user->session);
 
-	lua_settop(l, 0);
 	mumble_proto__user_remove__free_unpacked(user, NULL);
 }
 
@@ -463,7 +454,6 @@ void packet_user_state(MumbleClient *client, lua_State *l, Packet *packet)
 		}
 	mumble_hook_call(l, "OnUserState", 1);
 
-	lua_settop(l, 0);
 	mumble_proto__user_state__free_unpacked(state, NULL);
 }
 
@@ -505,7 +495,6 @@ void packet_text_message(MumbleClient *client, lua_State *l, Packet *packet)
 		}
 	mumble_hook_call(l, "OnMessage", 1);
 
-	lua_settop(l, 0);
 	mumble_proto__text_message__free_unpacked(msg, NULL);
 }
 
@@ -543,7 +532,6 @@ void packet_permissiondenied(MumbleClient *client, lua_State *l, Packet *packet)
 		}
 	mumble_hook_call(l, "OnPermissionDenied", 1);
 
-	lua_settop(l, 0);
 	mumble_proto__permission_denied__free_unpacked(proto, NULL);
 }
 
@@ -567,7 +555,6 @@ void packet_codec_version(MumbleClient *client, lua_State *l, Packet *packet)
 		}
 	mumble_hook_call(l, "OnCodecVersion", 1);
 
-	lua_settop(l, 0);
 	mumble_proto__codec_version__free_unpacked(codec, NULL);
 }
 
@@ -757,8 +744,6 @@ void packet_user_stats(MumbleClient *client, lua_State *l, Packet *packet)
 		}
 	mumble_hook_call(l, "OnUserStats", 1);
 
-	lua_settop(l, 0);
-
 	mumble_proto__user_stats__free_unpacked(stats, NULL);
 }
 
@@ -794,7 +779,6 @@ void packet_server_config(MumbleClient *client, lua_State *l, Packet *packet)
 		}
 	mumble_hook_call(l, "OnServerConfig", 1);
 
-	lua_settop(l, 0);
 	mumble_proto__server_config__free_unpacked(config, NULL);
 }
 

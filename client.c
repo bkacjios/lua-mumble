@@ -83,50 +83,52 @@ int client_update(lua_State *l)
 	}
 	pthread_mutex_unlock(&client->lock);
 
-	static Packet packet_read;
+	while(true) {
+		static Packet packet_read;
 
-	int total_read = 0;
+		int total_read = 0;
 
-	int ret = SSL_read(client->ssl, packet_read.buffer, 6);
+		int ret = SSL_read(client->ssl, packet_read.buffer, 6);
 
-	if (ret <= 0) {
-		int err = SSL_get_error(client->ssl, ret);
-		if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL) {
-			mumble_hook_call(l, "OnDisconnect", 0);
-			mumble_disconnect(client);
-		}
-		return 0;
-	}
-
-	if (ret != 6) {
-		return 0;
-	}
-
-	packet_read.type = ntohs(*(uint16_t *)packet_read.buffer);
-	if (packet_read.type >= sizeof(packet_handler) / sizeof(Packet_Handler_Func)) {
-		return 0;
-	}
-	packet_read.length = ntohl(*(uint32_t *)(packet_read.buffer + 2));
-	if (packet_read.length > PAYLOAD_SIZE_MAX) {
-		return 0;
-	}
-
-	while (total_read < packet_read.length) {
-		ret = SSL_read(client->ssl, packet_read.buffer + total_read, packet_read.length - total_read);
 		if (ret <= 0) {
+			int err = SSL_get_error(client->ssl, ret);
+			if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL) {
+				mumble_hook_call(l, "OnDisconnect", 0);
+				mumble_disconnect(client);
+			}
 			return 0;
 		}
-		total_read += ret;
-	}
 
-	if (total_read != packet_read.length) {
-		return 0;
-	}
+		if (ret != 6) {
+			return 0;
+		}
 
-	Packet_Handler_Func handler = packet_handler[packet_read.type];
+		packet_read.type = ntohs(*(uint16_t *)packet_read.buffer);
+		if (packet_read.type >= sizeof(packet_handler) / sizeof(Packet_Handler_Func)) {
+			return 0;
+		}
+		packet_read.length = ntohl(*(uint32_t *)(packet_read.buffer + 2));
+		if (packet_read.length > PAYLOAD_SIZE_MAX) {
+			return 0;
+		}
 
-	if (handler != NULL) {
-		handler(client, l, &packet_read);
+		while (total_read < packet_read.length) {
+			ret = SSL_read(client->ssl, packet_read.buffer + total_read, packet_read.length - total_read);
+			if (ret <= 0) {
+				return 0;
+			}
+			total_read += ret;
+		}
+
+		if (total_read != packet_read.length) {
+			return 0;
+		}
+
+		Packet_Handler_Func handler = packet_handler[packet_read.type];
+
+		if (handler != NULL) {
+			handler(client, l, &packet_read);
+		}
 	}
 
 	return 0;
@@ -398,7 +400,8 @@ int client_gc(lua_State *l)
 	pthread_mutex_destroy(&client->lock);
 	pthread_cond_destroy(&client->cond);
 
-	pthread_join(client->audio_thread, NULL);
+	if (client->audio_thread != 0)
+		pthread_join(client->audio_thread, NULL);
 
 	opus_encoder_destroy(client->encoder);
 	return 0;
