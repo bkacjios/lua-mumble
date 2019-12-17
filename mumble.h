@@ -52,12 +52,7 @@ typedef struct MumbleClient MumbleClient;
 typedef struct AudioTransmission AudioTransmission;
 typedef struct MumbleChannel MumbleChannel;
 typedef struct MumbleUser MumbleUser;
-
-struct MumbleData
-{
-	char* data;
-	size_t len;
-};
+typedef struct LinkNode LinkNode;
 
 struct MumbleClient {
 	lua_State*			l;
@@ -87,6 +82,12 @@ struct MumbleClient {
 	uint8_t				audio_target;
 };
 
+struct LinkNode
+{
+	uint32_t data;
+	struct LinkNode	*next;
+};
+
 struct MumbleChannel {
 	MumbleClient*	client;
 	int				data;
@@ -99,9 +100,12 @@ struct MumbleChannel {
 	bool			temporary;
 	int32_t			position;
 	uint32_t		max_users;
-	uint32_t		n_links;
-	uint32_t*		links;
+	LinkNode*		links;
 };
+
+void list_add(LinkNode** head_ref, uint32_t value);
+void list_remove(LinkNode **head_ref, uint32_t value);
+void list_clear(LinkNode** head_ref);
 
 struct MumbleUser
 {

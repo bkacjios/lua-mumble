@@ -280,55 +280,23 @@ void packet_channel_state(MumbleClient *client, lua_State *l, Packet *packet)
 		channel->max_users = state->max_users;
 	}
 	if (state->n_links_add != 0) {
-		// Save how many links the channel has for later..
-		uint32_t starting = channel->n_links;
-
-		// Adjust link size to fit additions
-		channel->n_links = (channel->n_links + state->n_links_add);
-
-		// Reallocate memory
-		channel->links = realloc(channel->links, sizeof(uint32_t) * channel->n_links);
-
-		// Add the new entries to the end of the array
+		// Add the new entries to the head of the list
 		for (int i=0; i<state->n_links_add; i++) {
-			channel->links[starting + i] = state->links_add[i];
+			list_add(&channel->links, state->links_add[i]);
 		}
 	}
 	if (state->n_links_remove != 0) {
-
-		int i = 0;
-
-		for (int j=0; j<channel->n_links; j++) {
-			for (int k=0; k<state->n_links_remove; k++) {
-				// If the channel in the linked array is not in the list of channels to be removed..
-				if (channel->links[j] != state->links_remove[k]) {
-					// Add it back to the array
-					channel->links[i] = channel->links[j];
-					i++;
-				}
-			}
+		for (int i=0; i<state->n_links_remove; i++) {
+			list_remove(&channel->links, state->links_remove[i]);
 		}
 
-		// Adjust link size to fit removals
-		channel->n_links = (channel->n_links - state->n_links_remove);
-
-		// Reallocate memory
-		channel->links = realloc(channel->links, sizeof(uint32_t) * channel->n_links);
 	}
 	if (state->n_links != 0) {
-		// Free up the previous list..
-		if (channel->links != NULL)
-			free(channel->links);
+		list_clear(&channel->links);
 
-		// Store how many links the channel has
-		channel->n_links = state->n_links;
-
-		// Create the array
-		channel->links = malloc(sizeof(uint32_t) * state->n_links);
-
-		// Store links in new array
+		// Store links in new list
 		for (int i=0; i<state->n_links; i++) {
-			channel->links[i] = state->links[i];
+			list_add(&channel->links, state->links[i]);
 		}
 	}
 	mumble_hook_call(l, "OnChannelState", 1);

@@ -53,3 +53,62 @@ const char* eztype(lua_State *L, int i)
 {
 	return lua_typename(L, lua_type(L, i));
 }
+
+/* Function to add a node at the beginning of Linked List. 
+	This function expects a pointer to the data to be added 
+	and size of the data type */
+
+void list_add(LinkNode** head_ref, uint32_t value) 
+{
+	LinkNode* new_node = malloc(sizeof(LinkNode));
+	new_node->data = value;
+	new_node->next = (*head_ref);
+	(*head_ref) = new_node;
+}
+
+void list_remove(LinkNode **head_ref, uint32_t value)
+{
+	LinkNode* temp = *head_ref, *prev;
+
+	// If head node itself holds the key to be deleted
+	if (temp != NULL && temp->data == value)
+	{
+		*head_ref = temp->next;   // Changed head
+		free(temp);               // free old head
+		return;
+	}
+
+	// Search for the key to be deleted, keep track of the
+	// previous node as we need to change 'prev->next'
+	while (temp != NULL && temp->data != value)
+	{
+		prev = temp;
+		temp = temp->next;
+	}
+
+	// If key was not present in linked list 
+	if (temp == NULL) return;
+
+	// Unlink the node from linked list 
+	prev->next = temp->next;
+
+	free(temp); // Free memory
+}
+
+void list_clear(LinkNode** head_ref)
+{
+	/* deref head_ref to get the real head */
+	LinkNode* current = *head_ref;
+	LinkNode* next;
+
+	while (current != NULL)
+	{
+		next = current->next;
+		free(current);
+		current = next;
+	}
+
+	/* deref head_ref to affect the real head back
+	in the caller. */
+	*head_ref = NULL;
+}

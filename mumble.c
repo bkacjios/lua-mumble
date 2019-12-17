@@ -466,8 +466,7 @@ MumbleChannel* mumble_channel_get(MumbleClient* client, uint32_t channel_id)
 			channel->temporary = false;
 			channel->position = 0;
 			channel->max_users = 0;
-			channel->n_links = 0;
-			channel->links = 0;
+			channel->links = NULL;
 		}
 		lua_settable(l, -3);
 

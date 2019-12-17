@@ -241,18 +241,16 @@ int channel_getLinks(lua_State *l)
 
 	lua_newtable(l);
 
-	// Not linked to anything, return empty table
-	if (channel->n_links == 0 || channel->links == 0) return 1;
+	LinkNode * current = channel->links;
 
 	// Add all linked channels to the table
-	for (int i = 0; i < channel->n_links; i++) {
-		// Get ID of linked channel from array
-		uint32_t link_id = channel->links[i];
-
-		lua_pushinteger(l, link_id);
-		mumble_channel_raw_get(channel->client, link_id);
+    while (current != NULL) {
+		lua_pushinteger(l, current->data);
+		mumble_channel_raw_get(channel->client, current->data);
 		lua_settable(l, -3);
-	}
+
+        current = current->next;
+    }
 
 	return 1;
 }
