@@ -270,7 +270,7 @@ Number linked = mumble.channel:getLinked()
 mumble.channel:link(mumble.channel ...)
 
 -- Attempts to unlink channel(s)
-mumble.channel:link(mumble.channel ...)
+mumble.channel:unlink(mumble.channel ...)
 ```
 
 ### mumble.voicetarget
