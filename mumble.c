@@ -82,6 +82,8 @@ int mumble_connect(lua_State *l)
 {
 	const char* server_host_str = luaL_checkstring(l, 1);
 	int port = luaL_checkinteger(l, 2);
+	char port_str[6];
+	snprintf(port_str, sizeof(port_str), "%u\n", port);
 
 	const char* certificate_file = luaL_checkstring(l, 3);
 	const char* key_file = luaL_checkstring(l, 4);
@@ -130,23 +132,6 @@ int mumble_connect(lua_State *l)
 	opus_encoder_ctl(client->encoder, OPUS_SET_VBR(0));
 	opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(40000));
 
-	client->socket = socket(AF_INET, SOCK_STREAM, 0);
-	if (client->socket < 0) {
-		lua_pushnil(l);
-		lua_pushfstring(l, "could not create socket: %s", strerror(errno));
-		return 2;
-	}
-
-	struct timeval timeout;
-	timeout.tv_sec = 5;
-	timeout.tv_usec = 0;
-
-	if (setsockopt(client->socket, SOL_SOCKET, (SO_RCVTIMEO | SO_SNDTIMEO), (char *)&timeout, sizeof(timeout)) < 0) {
-		lua_pushnil(l);
-		lua_pushfstring(l, "setsockopt failed: %s", strerror(errno));
-		return 2;
-	}
-
 	client->ssl_context = SSL_CTX_new(SSLv23_client_method());
 
 	if (client->ssl_context == NULL) {
@@ -166,26 +151,47 @@ int mumble_connect(lua_State *l)
 		}
 	}
 
-	struct hostent *server_host;
-	struct sockaddr_in server_addr;
+	struct addrinfo hint;
+	memset(&hint, 0, sizeof(hint));
+	hint.ai_family = AF_UNSPEC;
+	hint.ai_socktype = SOCK_STREAM;
 
-	memset(&server_addr, 0, sizeof(server_addr));
-	server_addr.sin_family = AF_INET;
-	server_addr.sin_port = htons(port);
-
-	server_host = gethostbyname(server_host_str);
-	if (server_host == NULL || server_host->h_addr_list[0] == NULL || server_host->h_addrtype != AF_INET) {
+	struct addrinfo* server_host;
+	err = getaddrinfo(server_host_str, port_str, &hint, &server_host);
+	
+	if(err != 0) {
 		lua_pushnil(l);
-		lua_pushstring(l, "could not parse server address");
+		lua_pushfstring(l, "could not parse server address: %s", gai_strerror(err));
 		return 2;
 	}
-	memmove(&server_addr.sin_addr, server_host->h_addr_list[0], server_host->h_length);
 
-	if (connect(client->socket, (struct sockaddr *) &server_addr, sizeof(server_addr)) != 0) {
+	client->socket = socket(server_host->ai_family, server_host->ai_socktype, 0);
+	if (client->socket < 0) {
+		freeaddrinfo(server_host);
+		lua_pushnil(l);
+		lua_pushfstring(l, "could not create socket: %s", strerror(errno));
+		return 2;
+	}
+
+	struct timeval timeout;
+	timeout.tv_sec = 5;
+	timeout.tv_usec = 0;
+
+	if (setsockopt(client->socket, SOL_SOCKET, (SO_RCVTIMEO | SO_SNDTIMEO), (char *)&timeout, sizeof(timeout)) < 0) {
+		freeaddrinfo(server_host);
+		lua_pushnil(l);
+		lua_pushfstring(l, "setsockopt failed: %s", strerror(errno));
+		return 2;
+	}
+
+	if (connect(client->socket, server_host->ai_addr, server_host->ai_addrlen) != 0) {
+		freeaddrinfo(server_host);
 		lua_pushnil(l);
 		lua_pushfstring(l, "could not connect to server: %s", strerror(errno));
 		return 2;
 	}
+
+	freeaddrinfo(server_host);
 	
 	client->ssl = SSL_new(client->ssl_context);
 
