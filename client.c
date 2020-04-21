@@ -16,11 +16,11 @@ int client_auth(lua_State *l)
 	auth.username = (char*) luaL_checkstring(l, 2);
 	auth.n_tokens = 0;
 
-	if (lua_isnil(l, 3) != 0) {
+	if (lua_isnoneornil(l, 3) == 0) {
 		auth.password = (char*) luaL_checkstring(l, 3);
 	}
 
-	if (lua_isnil(l, 4) != 0) {
+	if (lua_isnoneornil(l, 4) == 0) {
 		luaL_checktype(l, 4, LUA_TTABLE);
 
 		lua_pushvalue(l, 4);
@@ -56,89 +56,9 @@ int client_auth(lua_State *l)
 	return 0;
 }
 
-int client_update(lua_State *l)
-{
-	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-
-	pthread_mutex_lock(&client->lock);
-	if (!client->connected)
-		return 0;
-	pthread_mutex_unlock(&client->lock);
-
-	double curTime = gettime();
-
-	mumble_hook_call(l, "OnTick", 0);
-
-	if (client->nextping < curTime) {
-		client->nextping = curTime + PING_TIMEOUT;
-		MumbleProto__Ping ping = MUMBLE_PROTO__PING__INIT;
-		mumble_hook_call(l, "OnClientPing", 0);
-		packet_send(client, PACKET_PING, &ping);
-	}
-
-	pthread_mutex_lock(&client->lock);
-	if (client->audio_finished) {
-		client->audio_finished = false;
-		mumble_hook_call(l, "OnAudioFinished", 0);
-	}
-	pthread_mutex_unlock(&client->lock);
-
-	while(true) {
-		static Packet packet_read;
-
-		int total_read = 0;
-
-		int ret = SSL_read(client->ssl, packet_read.buffer, 6);
-
-		if (ret <= 0) {
-			int err = SSL_get_error(client->ssl, ret);
-			if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL) {
-				mumble_hook_call(l, "OnDisconnect", 0);
-				mumble_disconnect(client);
-			}
-			return 0;
-		}
-
-		if (ret != 6) {
-			return 0;
-		}
-
-		packet_read.type = ntohs(*(uint16_t *)packet_read.buffer);
-		if (packet_read.type >= sizeof(packet_handler) / sizeof(Packet_Handler_Func)) {
-			return 0;
-		}
-		packet_read.length = ntohl(*(uint32_t *)(packet_read.buffer + 2));
-		if (packet_read.length > PAYLOAD_SIZE_MAX) {
-			return 0;
-		}
-
-		while (total_read < packet_read.length) {
-			ret = SSL_read(client->ssl, packet_read.buffer + total_read, packet_read.length - total_read);
-			if (ret <= 0) {
-				return 0;
-			}
-			total_read += ret;
-		}
-
-		if (total_read != packet_read.length) {
-			return 0;
-		}
-
-		Packet_Handler_Func handler = packet_handler[packet_read.type];
-
-		if (handler != NULL) {
-			handler(client, l, &packet_read);
-		}
-	}
-
-	return 0;
-}
-
 int client_disconnect(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	SSL_shutdown(client->ssl);
-	close(client->socket);
 	mumble_disconnect(client);
 	return 0;
 }
@@ -146,10 +66,7 @@ int client_disconnect(lua_State *l)
 int client_isConnected(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	
-	pthread_mutex_lock(&client->lock);
 	lua_pushboolean(l, client->connected);
-	pthread_mutex_unlock(&client->lock);
 	return 1;
 }
 
@@ -166,9 +83,7 @@ int client_play(lua_State *l)
 	const char* filepath	= luaL_checkstring(l, 2);
 	float volume			= (float) luaL_optnumber(l, 3, 1);
 
-	pthread_mutex_lock(&client->lock);
 	audio_transmission_stop(client);
-	pthread_mutex_unlock(&client->lock);
 
 	//AudioTransmission *sound = lua_newuserdata(l, sizeof(AudioTransmission));
 	//luaL_getmetatable(l, METATABLE_AUDIO);
@@ -197,10 +112,7 @@ int client_play(lua_State *l)
 		return 2;
 	}
 
-	pthread_mutex_lock(&client->lock);
 	client->audio_job = sound;
-	pthread_cond_signal(&client->cond);
-	pthread_mutex_unlock(&client->lock);
 
 	lua_pushboolean(l, true);
 	return 1;
@@ -209,18 +121,14 @@ int client_play(lua_State *l)
 int client_isPlaying(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
-	pthread_mutex_lock(&client->lock);
 	lua_pushboolean(l, client->audio_job != NULL);
-	pthread_mutex_unlock(&client->lock);
 	return 1;
 }
 
 int client_stopPlaying(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
-	pthread_mutex_lock(&client->lock);
 	audio_transmission_stop(client);
-	pthread_mutex_unlock(&client->lock);
 	return 1;
 }
 
@@ -291,7 +199,7 @@ int client_call(lua_State *l)
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	const char* hook = luaL_checkstring(l, 2);
 	int nargs = lua_gettop(l) - 2;
-	mumble_hook_call(l, hook, nargs);
+	mumble_hook_call(client, hook, nargs);
 	return 0;
 }
 
@@ -326,7 +234,7 @@ int client_getChannel(lua_State *l)
 	lua_gettable(l, -2);
 	lua_remove(l, -2);
 
-	if (lua_isnil(l, -1) == 0) {
+	if (lua_isnoneornil(l, -1) == 0) {
 		lua_replace(l, 1);
 		return channel_call(l);
 	}
@@ -362,18 +270,21 @@ int client_registerVoiceTarget(lua_State *l)
 int client_setVoiceTarget(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	pthread_mutex_lock(&client->lock);
 	client->audio_target = luaL_optinteger(l, 2, 0);
-	pthread_mutex_unlock(&client->lock);
 	return 0;
 }
 
 int client_getVoiceTarget(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	pthread_mutex_lock(&client->lock);
 	lua_pushinteger(l, client->audio_target);
-	pthread_mutex_unlock(&client->lock);
+	return 1;
+}
+
+int client_getPing(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	lua_pushnumber(l, client->tcp_ping_avg);
 	return 1;
 }
 
@@ -387,21 +298,13 @@ int client_getUpTime(lua_State *l)
 int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	
-	pthread_mutex_lock(&client->lock);
-	audio_transmission_stop(client);
-	pthread_mutex_unlock(&client->lock);
+
+	mumble_disconnect(client);
 
 	luaL_unref(l, LUA_REGISTRYINDEX, client->self);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->hooks);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->users);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->channels);
-
-	pthread_mutex_destroy(&client->lock);
-	pthread_cond_destroy(&client->cond);
-
-	if (client->audio_thread != 0)
-		pthread_join(client->audio_thread, NULL);
 
 	opus_encoder_destroy(client->encoder);
 	return 0;

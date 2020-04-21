@@ -47,7 +47,4 @@ end
 client:hook("OnUserStats", "AFK Check", afk.checkStats)
 client:hook("OnServerPing", "AFK Query Users", afk.queryUsers)
 
-while client:isConnected() do
-	client:update()
-	mumble.sleep(0.01)
-end
+mumble.loop()

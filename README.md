@@ -5,7 +5,7 @@ A lua module to connect to a mumble server and interact with it
 ## Build requirements
 
 ```
-sudo apt-get install libluajit-5.1-dev protobuf-c libprotobuf-c-dev libssl-dev libopus-dev libvorbis-dev 
+sudo apt-get install libluajit-5.1-dev protobuf-c libprotobuf-c-dev libssl-dev libopus-dev libvorbis-dev libev-dev
 ```
 
 ## Usage
@@ -16,6 +16,10 @@ sudo apt-get install libluajit-5.1-dev protobuf-c libprotobuf-c-dev libssl-dev l
 -- Connect to a mumble server
 -- Returns nil and an error string if something went wrong
 mumble.client, [ String error ] = mumble.connect(String host, Number port, String certificate file path, String key file path)
+
+-- Main loop that handles all events, ping, and audio processing
+-- This will block the script until disconnect or SIGINT, so call this *after* you create your hooks
+mumble.loop()
 
 -- The client's user
 mumble.user = mumble.client.me
@@ -31,7 +35,7 @@ Number time = mumble.gettime()
 
 ``` lua
 -- Authenticate as a user
-mumble.client:auth(String username)
+mumble.client:auth(String username, String password, Table tokens)
 
 -- Check if the client is connected
 Boolean connected = mumble.client:isConnected()
@@ -41,9 +45,6 @@ Boolean synced = mumble.client:isSynced()
 
 -- Disconnect from a mumble server
 mumble.client:disconnect()
-
--- Called to process the internal socket and callbacks
-mumble.client:update()
 
 -- Play an ogg audio file
 mumble.client:play(String ogg file path)
@@ -314,7 +315,7 @@ ___
 ### `OnServerPing (Table event)`
 
 Called when the server sends a responce to a ping request.
-The mumble.client will automatically ping the server every 15 seconds within mumble.client:update()
+The mumble.client will automatically ping the server every 15 seconds within mumble.loop()
 
 ``` lua
 Table event = {
@@ -534,14 +535,15 @@ Called when a hook is erroring.
 WARNING: Erroring within this hook will cause the script to exit!
 ___
 
-### `OnTick ()`
-
-Called whenever mumble.client:update() is called.
-___
-
-### `OnClientPing ()`
+### `OnClientPing (Table event)`
 
 Called just before a ping is sent to the server.
+
+``` lua
+Table event = {
+	["timestamp"]	= Number timestamp,
+}
+```
 ___
 
 ### `OnAudioFinished ()`

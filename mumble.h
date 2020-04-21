@@ -1,10 +1,11 @@
-#include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
 #include <errno.h>
+
+#include <ev.h>
 
 #include <lua.h>
 #include <lualib.h>
@@ -53,6 +54,24 @@ typedef struct AudioTransmission AudioTransmission;
 typedef struct MumbleChannel MumbleChannel;
 typedef struct MumbleUser MumbleUser;
 typedef struct LinkNode LinkNode;
+typedef struct my_io my_io;
+typedef struct my_timer my_timer;
+typedef struct my_signal my_signal;
+
+struct my_io {
+	ev_io io;
+	MumbleClient* client;
+};
+
+struct my_timer {
+	ev_timer timer;
+	MumbleClient* client;
+};
+
+struct my_signal {
+	ev_signal signal;
+	MumbleClient* client;
+};
 
 struct MumbleClient {
 	lua_State*			l;
@@ -69,17 +88,23 @@ struct MumbleClient {
 	int					hooks;
 	int					users;
 	int					channels;
-	double				nextping;
 	double				time;
 	uint32_t			session;
 	float				volume;
-	pthread_t			audio_thread;
-	pthread_mutex_t		lock;
-	pthread_cond_t		cond;
+	my_io				socket_io;
+	my_timer			audio_timer;
+	my_timer			ping_timer;
+	my_signal			signal;
 	AudioTransmission*	audio_job;
 	bool				audio_finished;
+	int					audio_frames;
 	OpusEncoder*		encoder;
 	uint8_t				audio_target;
+
+	uint32_t	tcp_packets;
+	double		tcp_ping_total;
+	float		tcp_ping_avg;
+	float		tcp_ping_var; 
 };
 
 struct LinkNode
@@ -183,7 +208,7 @@ MumbleChannel* mumble_channel_get(MumbleClient* client, uint32_t channel_id);
 MumbleChannel* mumble_channel_raw_get(MumbleClient* client, uint32_t channel_id);
 void mumble_channel_remove(MumbleClient* client, uint32_t channel_id);
 
-void mumble_hook_call(lua_State *l, const char* hook, int nargs);
+void mumble_hook_call(MumbleClient *client, const char* hook, int nargs);
 
 void audio_transmission_event(MumbleClient *client);
 void audio_transmission_stop(MumbleClient *client);
@@ -196,7 +221,6 @@ void audio_transmission_stop(MumbleClient *client);
 
 int client_connect(lua_State *l);
 int client_auth(lua_State *l);
-int client_update(lua_State *l);
 int client_disconnect(lua_State *l);
 int client_isSynced(lua_State *l);
 int client_isConnected(lua_State *l);
@@ -215,6 +239,7 @@ int client_getChannel(lua_State *l);
 int client_registerVoiceTarget(lua_State *l);
 int client_setVoiceTarget(lua_State *l);
 int client_getVoiceTarget(lua_State *l);
+int client_getPing(lua_State *l);
 int client_getUpTime(lua_State *l);
 int client_gc(lua_State *l);
 int client_tostring(lua_State *l);

@@ -1,84 +1,118 @@
 #include "mumble.h"
 
-static unsigned long long getNanoTime()
+static void signal_event(struct ev_loop *loop, ev_signal *w_, int revents)
 {
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return (ts.tv_sec + ts.tv_nsec);
+	struct my_signal *w = (struct my_signal *) w_;
+	MumbleClient *client = w->client;
+	mumble_disconnect(client);
+	ev_break(EV_DEFAULT, EVBREAK_ALL);
 }
 
-static bool thread_isPlaying(MumbleClient *client)
+static void mumble_audio_timer(EV_P_ ev_timer *w_, int revents)
 {
-	pthread_mutex_lock(&client->lock);
-	bool result = client->audio_job != NULL;
-	pthread_mutex_unlock(&client->lock);
-	return result;
-}
+	struct my_timer *w = (struct my_timer *) w_;
 
-static bool thread_isConnected(MumbleClient *client)
-{
-	pthread_mutex_lock(&client->lock);		
-	bool result = client->connected;
-	pthread_mutex_unlock(&client->lock);
-	return result;
-}
+	MumbleClient *client = w->client;
 
-static void mumble_audiothread(MumbleClient *client)
-{
-	while (thread_isConnected(client)) {
-
-		pthread_mutex_lock(&client->lock);
-		while (client->connected && client->audio_job == NULL)
-			pthread_cond_wait(&client->cond, &client->lock);
-		pthread_mutex_unlock(&client->lock);
-
-		// Signal ended up being a disconnect
-		if (!thread_isConnected(client)) {
-			break;
-		}
-
-		while (thread_isPlaying(client)) {
-			unsigned long long start, stop, diff;
-
-			start = getNanoTime();
-
-			pthread_mutex_lock(&client->lock);
-			audio_transmission_event(client);
-			pthread_mutex_unlock(&client->lock);
-
-			struct timespec sleep, remain;
-			
-			stop = getNanoTime();
-
-			diff = fabs((double) stop - start);
-			sleep.tv_nsec = 10000000LL - diff;
-
-			while (nanosleep(&sleep, &remain) != 0) {
-				sleep.tv_sec = remain.tv_sec;
-				sleep.tv_nsec = remain.tv_nsec;
-			}
-		}
+	if (client->connected && client->audio_job != NULL) {
+		audio_transmission_event(client);
 	}
 }
 
-int mumble_sleep(lua_State *l)
+static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 {
-	double n = luaL_checknumber(l, 1);
-	struct timespec t, r;
-	if (n < 0.0) n = 0.0;
-	if (n > INT_MAX) n = INT_MAX;
-	t.tv_sec = (int) n;
-	n -= t.tv_sec;
-	t.tv_nsec = (int) (n * 1000000000);
-	if (t.tv_nsec >= 1000000000) t.tv_nsec = 999999999;
-	while (nanosleep(&t, &r) != 0) {
-		t.tv_sec = r.tv_sec;
-		t.tv_nsec = r.tv_nsec;
-	}
-	return 0;
+	struct my_timer *w = (struct my_timer *) w_;
+
+	MumbleClient *client = w->client;
+
+	MumbleProto__Ping ping = MUMBLE_PROTO__PING__INIT;
+
+	double ts = gettime() * 1000;
+
+	ping.has_timestamp = true;
+	ping.timestamp = ts;
+
+	ping.has_tcp_packets = true;
+	ping.tcp_packets = client->tcp_packets;
+
+	ping.has_tcp_ping_avg = true;
+	ping.tcp_ping_avg = client->tcp_ping_avg;
+	
+	ping.has_tcp_ping_var = true;
+	ping.tcp_ping_var = client->tcp_ping_var;
+
+	lua_newtable(client->l);
+		// Push the timestamp we are sending to the server
+		lua_pushinteger(client->l, ts);
+		lua_setfield(client->l, -2, "timestamp");
+	mumble_hook_call(client, "OnClientPing", 1);
+	packet_send(client, PACKET_PING, &ping);
 }
 
-int mumble_connect(lua_State *l)
+static void socket_read_event(struct ev_loop *loop, ev_io *w_, int revents)
+{
+	struct my_io *w = (struct my_io *) w_;
+
+	MumbleClient *client = w->client;
+	lua_State *l = client->l;
+
+	static Packet packet_read;
+
+	int total_read = 0;
+
+	int ret = SSL_read(client->ssl, packet_read.buffer, 6);
+
+	if (ret <= 0) {
+		int err = SSL_get_error(client->ssl, ret);
+		if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL) {
+			mumble_disconnect(client);
+		}
+		ev_break(loop, EVBREAK_ALL);
+		return;
+	}
+
+	if (ret != 6) {
+		ev_break(loop, EVBREAK_ALL);
+		return;
+	}
+
+	packet_read.type = ntohs(*(uint16_t *)packet_read.buffer);
+	if (packet_read.type >= sizeof(packet_handler) / sizeof(Packet_Handler_Func)) {
+		ev_break(loop, EVBREAK_ALL);
+		return;
+	}
+	packet_read.length = ntohl(*(uint32_t *)(packet_read.buffer + 2));
+	if (packet_read.length > PAYLOAD_SIZE_MAX) {
+		ev_break(loop, EVBREAK_ALL);
+		return;
+	}
+
+	while (total_read < packet_read.length) {
+		ret = SSL_read(client->ssl, packet_read.buffer + total_read, packet_read.length - total_read);
+		if (ret <= 0) {
+			ev_break(loop, EVBREAK_ALL);
+			return;
+		}
+		total_read += ret;
+	}
+
+	if (total_read != packet_read.length) {
+		ev_break(loop, EVBREAK_ALL);
+		return;
+	}
+
+	Packet_Handler_Func handler = packet_handler[packet_read.type];
+
+	if (handler != NULL) {
+		handler(client, l, &packet_read);
+	}
+
+	if (SSL_pending(client->ssl) > 0) {
+		ev_feed_fd_event(loop, w_->fd, revents);
+	}
+}
+
+static int mumble_connect(lua_State *l)
 {
 	const char* server_host_str = luaL_checkstring(l, 1);
 	int port = luaL_checkinteger(l, 2);
@@ -111,7 +145,6 @@ int mumble_connect(lua_State *l)
 
 	client->host = server_host_str;
 	client->port = port;
-	client->nextping = gettime() + PING_TIMEOUT;
 	client->time = gettime();
 	client->volume = 1;
 	client->audio_job = NULL;
@@ -119,6 +152,11 @@ int mumble_connect(lua_State *l)
 	client->synced = false;
 	client->audio_finished = false;
 	client->audio_target = 0;
+	client->audio_frames = 1;
+
+	client->tcp_packets = 0;
+	client->tcp_ping_avg = 0;
+	client->tcp_ping_var = 0;
 
 	int err;
 	client->encoder = opus_encoder_create(48000, 1, OPUS_APPLICATION_AUDIO, &err);
@@ -213,38 +251,51 @@ int mumble_connect(lua_State *l)
 		return 2;
 	}
 
-	// Non blocking after connect
-	int flags = fcntl(client->socket, F_GETFL, 0);
-	fcntl(client->socket, F_SETFL, flags | O_NONBLOCK);
+	client->signal.client = client;
+	client->socket_io.client = client;
+	client->audio_timer.client = client;
+	client->ping_timer.client = client;
 
-	if (pthread_mutex_init(&client->lock , NULL)) {
-		lua_pushnil(l);
-		lua_pushstring(l, "could not init mutex");
-		return 2;
-	}
+	// Create a signal event.
+	// Disconnects the client on exit request and ends the main loop
+	ev_signal_init(&client->signal.signal, signal_event, SIGINT);
+	ev_signal_start(EV_DEFAULT, &client->signal.signal);
 
-	if (pthread_cond_init(&client->cond, NULL)) {
-		lua_pushnil(l);
-		lua_pushstring(l, "could not init condition");
-		return 2;
-	}
+	// Create a callback for when the socket is ready to be read from
+	ev_io_init(&client->socket_io.io, socket_read_event, client->socket, EV_READ);
+	ev_io_start(EV_DEFAULT, &client->socket_io.io);
 
-	if (pthread_create(&client->audio_thread, NULL, (void*) mumble_audiothread, client)){
-		lua_pushnil(l);
-		lua_pushstring(l, "could not create audio thread");
-		return 2;
-	}
+	// Create a timer for audio data
+	ev_timer_init(&client->audio_timer.timer, mumble_audio_timer, 0, 0.01);
+	ev_timer_start(EV_DEFAULT, &client->audio_timer.timer);
+
+	// Create a timer to ping the server every X seconds
+	ev_timer_init(&client->ping_timer.timer, mumble_ping_timer, PING_TIMEOUT, PING_TIMEOUT);
+	ev_timer_start(EV_DEFAULT, &client->ping_timer.timer);
 
 	return 1;
 }
 
+static int mumble_loop(lua_State *l)
+{
+	ev_run(EV_DEFAULT, 0);
+	return 0;
+}
+
 void mumble_disconnect(MumbleClient *client)
 {
-	pthread_mutex_lock(&client->lock);
-	client->connected = false;
 	audio_transmission_stop(client);
-	pthread_cond_signal(&client->cond);
-	pthread_mutex_unlock(&client->lock);
+
+	if (client->connected) {
+		mumble_hook_call(client, "OnDisconnect", 0);
+		client->connected = false;
+	}
+
+	if (client->ssl)
+		SSL_shutdown(client->ssl);
+
+	if (client->socket)
+		close(client->socket);
 }
 
 static int mumble_gettime(lua_State *l)
@@ -267,9 +318,9 @@ static int traceback(lua_State *l)
 	return 1;
 }
 
-void mumble_hook_call(lua_State *l, const char* hook, int nargs)
+void mumble_hook_call(MumbleClient *client, const char* hook, int nargs)
 {
-	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	lua_State* l = client->l;
 
 	int top = lua_gettop(l);
 	int i;
@@ -326,7 +377,7 @@ void mumble_hook_call(lua_State *l, const char* hook, int nargs)
 				if (lua_pcall(l, nargs, 0, base) != 0) {
 					// Call the OnError hook
 					erroring = true;
-					mumble_hook_call(l, "OnError", 1);
+					mumble_hook_call(client, "OnError", 1);
 					erroring = false;
 				}
 				lua_remove(l, base);
@@ -496,7 +547,7 @@ void mumble_channel_remove(MumbleClient* client, uint32_t channel_id)
 
 const luaL_Reg mumble[] = {
 	{"connect", mumble_connect},
-	{"sleep", mumble_sleep},
+	{"loop", mumble_loop},
 	{"gettime", mumble_gettime},
 	{"getConnections", mumble_getConnections},
 	{NULL, NULL}
@@ -504,7 +555,6 @@ const luaL_Reg mumble[] = {
 
 const luaL_Reg mumble_client[] = {
 	{"auth", client_auth},
-	{"update", client_update},
 	{"disconnect", client_disconnect},
 	{"isConnected", client_isConnected},
 	{"isSynced", client_isSynced},
@@ -523,6 +573,7 @@ const luaL_Reg mumble_client[] = {
 	{"registerVoiceTarget", client_registerVoiceTarget},
 	{"setVoiceTarget", client_setVoiceTarget},
 	{"getVoiceTarget", client_getVoiceTarget},
+	{"getPing", client_getPing},
 	{"getUpTime", client_getUpTime},
 	{"__gc", client_gc},
 	{"__tostring", client_tostring},

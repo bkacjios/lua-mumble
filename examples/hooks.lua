@@ -15,6 +15,10 @@ client:hook("OnServerSync", function(event)
 	print("OnServerSync", event)
 end)
 
+client:hook("OnClientPing", function(event)
+	print("OnClientPing", event)
+end)
+
 client:hook("OnServerPing", function(event)
 	print("OnServerPing", event)
 end)
@@ -59,7 +63,8 @@ client:hook("OnAudioFinished", function()
 	print("OnAudioFinished")
 end)
 
-while client:isConnected() do
-	client:update()
-	mumble.sleep(0.01)
-end
+client:hook("OnDisconnect", function()
+	print("OnDisconnect")
+end)
+
+mumble.loop()

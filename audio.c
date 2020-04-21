@@ -91,8 +91,12 @@ void audio_transmission_stop(MumbleClient *client)
 		return;
 	
 	ov_clear(&sound->ogg);
-	fclose(sound->file);
-	free(sound);
+
+	if (sound->file)
+		fclose(sound->file);
+
+	if (sound)
+		free(sound);
 }
 
 void audio_transmission_event(MumbleClient *client)

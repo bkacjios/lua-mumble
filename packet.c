@@ -119,7 +119,7 @@ void packet_server_version(MumbleClient *client, lua_State *l, Packet *packet)
 		lua_setfield(l, -2, "os");
 		lua_pushstring(l, version->os_version);
 		lua_setfield(l, -2, "os_version");
-	mumble_hook_call(l, "OnServerVersion", 1);
+	mumble_hook_call(client, "OnServerVersion", 1);
 
 	mumble_proto__version__free_unpacked(version, NULL);
 }
@@ -131,8 +131,19 @@ void packet_server_ping(MumbleClient *client, lua_State *l, Packet *packet)
 		return;
 	}
 
+	double ms = 0;
+
 	lua_newtable(l);
 		if (ping->has_timestamp) {
+			ms = (gettime() * 1000) - ping->timestamp;
+			client->tcp_ping_total += ms;
+			client->tcp_packets += 1;
+			client->tcp_ping_avg = client->tcp_ping_total / client->tcp_packets;
+			client->tcp_ping_var = powf(fabs(ms - client->tcp_ping_avg), 2);
+
+			lua_pushnumber(l, ms);
+			lua_setfield(l, -2, "ping");
+
 			lua_pushinteger(l, ping->timestamp);
 			lua_setfield(l, -2, "timestamp");
 		}
@@ -176,7 +187,7 @@ void packet_server_ping(MumbleClient *client, lua_State *l, Packet *packet)
 			lua_pushnumber(l, ping->tcp_ping_var);
 			lua_setfield(l, -2, "tcp_ping_var");
 		}
-	mumble_hook_call(l, "OnServerPing", 1);
+	mumble_hook_call(client, "OnServerPing", 1);
 
 	mumble_proto__ping__free_unpacked(ping, NULL);
 }
@@ -195,7 +206,7 @@ void packet_server_reject(MumbleClient *client, lua_State *l, Packet *packet)
 		}
 		lua_pushstring(l, reject->reason);
 		lua_setfield(l, -2, "reason");
-	mumble_hook_call(l, "OnServerReject", 1);
+	mumble_hook_call(client, "OnServerReject", 1);
 
 	mumble_proto__reject__free_unpacked(reject, NULL);
 }
@@ -227,7 +238,7 @@ void packet_server_sync(MumbleClient *client, lua_State *l, Packet *packet)
 			lua_pushinteger(l, sync->permissions);
 			lua_setfield(l, -2, "permissions");
 		}
-	mumble_hook_call(l, "OnServerSync", 1);
+	mumble_hook_call(client, "OnServerSync", 1);
 
 	mumble_proto__server_sync__free_unpacked(sync, NULL);
 }
@@ -239,7 +250,7 @@ void packet_channel_remove(MumbleClient *client, lua_State *l, Packet *packet)
 	}
 
 	mumble_channel_raw_get(client, channel->channel_id);
-	mumble_hook_call(l, "OnChannelRemove", 1);
+	mumble_hook_call(client, "OnChannelRemove", 1);
 	mumble_channel_remove(client, channel->channel_id);
 
 	mumble_proto__channel_remove__free_unpacked(channel, NULL);
@@ -299,7 +310,7 @@ void packet_channel_state(MumbleClient *client, lua_State *l, Packet *packet)
 			list_add(&channel->links, state->links[i]);
 		}
 	}
-	mumble_hook_call(l, "OnChannelState", 1);
+	mumble_hook_call(client, "OnChannelState", 1);
 
 	mumble_proto__channel_state__free_unpacked(state, NULL);
 }
@@ -326,7 +337,7 @@ void packet_user_remove(MumbleClient *client, lua_State *l, Packet *packet)
 			lua_pushboolean(l, user->ban);
 			lua_setfield(l, -2, "ban");
 		}
-	mumble_hook_call(l, "OnUserRemove", 1);
+	mumble_hook_call(client, "OnUserRemove", 1);
 	mumble_user_remove(client, user->session);
 
 	mumble_proto__user_remove__free_unpacked(user, NULL);
@@ -368,7 +379,7 @@ void packet_user_state(MumbleClient *client, lua_State *l, Packet *packet)
 						lua_setfield(l, -2, "to");
 						mumble_user_raw_get(client, state->session);
 						lua_setfield(l, -2, "user");
-					mumble_hook_call(l, "OnUserChannel", 1);
+					mumble_hook_call(client, "OnUserChannel", 1);
 				}
 				user->channel_id = state->channel_id;
 			}
@@ -418,9 +429,9 @@ void packet_user_state(MumbleClient *client, lua_State *l, Packet *packet)
 		if (user->connected == false && client->synced == true) {
 			user->connected = true;
 			lua_pushvalue(l, -1);
-			mumble_hook_call(l, "OnUserConnected", 1);
+			mumble_hook_call(client, "OnUserConnected", 1);
 		}
-	mumble_hook_call(l, "OnUserState", 1);
+	mumble_hook_call(client, "OnUserState", 1);
 
 	mumble_proto__user_state__free_unpacked(state, NULL);
 }
@@ -461,7 +472,7 @@ void packet_text_message(MumbleClient *client, lua_State *l, Packet *packet)
 			}
 			lua_setfield(l, -2, "channels");
 		}
-	mumble_hook_call(l, "OnMessage", 1);
+	mumble_hook_call(client, "OnMessage", 1);
 
 	mumble_proto__text_message__free_unpacked(msg, NULL);
 }
@@ -498,7 +509,7 @@ void packet_permissiondenied(MumbleClient *client, lua_State *l, Packet *packet)
 			lua_pushstring(l, proto->name);
 			lua_setfield(l, -2, "name");
 		}
-	mumble_hook_call(l, "OnPermissionDenied", 1);
+	mumble_hook_call(client, "OnPermissionDenied", 1);
 
 	mumble_proto__permission_denied__free_unpacked(proto, NULL);
 }
@@ -521,7 +532,7 @@ void packet_codec_version(MumbleClient *client, lua_State *l, Packet *packet)
 			lua_pushboolean(l, codec->opus);
 			lua_setfield(l, -2, "opus");
 		}
-	mumble_hook_call(l, "OnCodecVersion", 1);
+	mumble_hook_call(client, "OnCodecVersion", 1);
 
 	mumble_proto__codec_version__free_unpacked(codec, NULL);
 }
@@ -710,7 +721,7 @@ void packet_user_stats(MumbleClient *client, lua_State *l, Packet *packet)
 			lua_pushboolean(l, stats->opus);
 			lua_setfield(l, -2, "opus");
 		}
-	mumble_hook_call(l, "OnUserStats", 1);
+	mumble_hook_call(client, "OnUserStats", 1);
 
 	mumble_proto__user_stats__free_unpacked(stats, NULL);
 }
@@ -745,7 +756,7 @@ void packet_server_config(MumbleClient *client, lua_State *l, Packet *packet)
 			lua_pushinteger(l, config->max_users);
 			lua_setfield(l, -2, "max_users");
 		}
-	mumble_hook_call(l, "OnServerConfig", 1);
+	mumble_hook_call(client, "OnServerConfig", 1);
 
 	mumble_proto__server_config__free_unpacked(config, NULL);
 }
