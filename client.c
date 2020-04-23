@@ -1,10 +1,13 @@
 #include "mumble.h"
 
+#include "client.h"
+#include "channel.h"
+
 /*--------------------------------
 	MUMBLE CLIENT META METHODS
 --------------------------------*/
 
-int client_auth(lua_State *l)
+static int client_auth(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
@@ -56,28 +59,28 @@ int client_auth(lua_State *l)
 	return 0;
 }
 
-int client_disconnect(lua_State *l)
+static int client_disconnect(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	mumble_disconnect(client);
 	return 0;
 }
 
-int client_isConnected(lua_State *l)
+static int client_isConnected(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_pushboolean(l, client->connected);
 	return 1;
 }
 
-int client_isSynced(lua_State *l)
+static int client_isSynced(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_pushboolean(l, client->synced);
 	return 1;
 }
 
-int client_play(lua_State *l)
+static int client_play(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
 	const char* filepath	= luaL_checkstring(l, 2);
@@ -118,35 +121,35 @@ int client_play(lua_State *l)
 	return 1;
 }
 
-int client_isPlaying(lua_State *l)
+static int client_isPlaying(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_pushboolean(l, client->audio_job != NULL);
 	return 1;
 }
 
-int client_stopPlaying(lua_State *l)
+static int client_stopPlaying(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
 	audio_transmission_stop(client);
 	return 1;
 }
 
-int client_setVolume(lua_State *l)
+static int client_setVolume(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
 	client->volume = luaL_checknumber(l, 2);
 	return 0;
 }
 
-int client_getVolume(lua_State *l)
+static int client_getVolume(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_pushnumber(l, client->volume);
 	return 1;
 }
 
-int client_setComment(lua_State *l)
+static int client_setComment(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	
@@ -161,7 +164,7 @@ int client_setComment(lua_State *l)
 	return 0;
 }
 
-int client_hook(lua_State *l)
+static int client_hook(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
@@ -194,7 +197,7 @@ int client_hook(lua_State *l)
 	return 0;
 }
 
-int client_call(lua_State *l)
+static int client_call(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	const char* hook = luaL_checkstring(l, 2);
@@ -203,31 +206,31 @@ int client_call(lua_State *l)
 	return 0;
 }
 
-int client_getHooks(lua_State *l)
+static int client_getHooks(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->hooks);
 	return 1;
 }
 
-int client_getUsers(lua_State *l)
+static int client_getUsers(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
 	return 1;
 }
 
-int client_getChannels(lua_State *l)
+static int client_getChannels(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
 	return 1;
 }
 
-int client_getChannel(lua_State *l)
+static int client_getChannel(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	char* path = (char*) luaL_checkstring(l, 2);
+	//char* path = (char*) luaL_checkstring(l, 2);
 
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
 	lua_pushinteger(l, 0);
@@ -242,7 +245,7 @@ int client_getChannel(lua_State *l)
 	return 0;
 }
 
-int client_registerVoiceTarget(lua_State *l)
+static int client_registerVoiceTarget(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
@@ -267,35 +270,35 @@ int client_registerVoiceTarget(lua_State *l)
 	return 0;
 }
 
-int client_setVoiceTarget(lua_State *l)
+static int client_setVoiceTarget(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	client->audio_target = luaL_optinteger(l, 2, 0);
 	return 0;
 }
 
-int client_getVoiceTarget(lua_State *l)
+static int client_getVoiceTarget(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_pushinteger(l, client->audio_target);
 	return 1;
 }
 
-int client_getPing(lua_State *l)
+static int client_getPing(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_pushnumber(l, client->tcp_ping_avg);
 	return 1;
 }
 
-int client_getUpTime(lua_State *l)
+static int client_getUpTime(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_pushnumber(l, gettime() - client->time);
 	return 1;
 }
 
-int client_gc(lua_State *l)
+static int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
@@ -310,14 +313,14 @@ int client_gc(lua_State *l)
 	return 0;
 }
 
-int client_tostring(lua_State *l)
+static int client_tostring(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_pushfstring(l, "%s: %p", METATABLE_CLIENT, client);
 	return 1;
 }
 
-int client_index(lua_State *l)
+static int client_index(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
@@ -337,3 +340,31 @@ int client_index(lua_State *l)
 	lua_gettable(l, -2);
 	return 1;
 }
+
+const luaL_Reg mumble_client[] = {
+	{"auth", client_auth},
+	{"disconnect", client_disconnect},
+	{"isConnected", client_isConnected},
+	{"isSynced", client_isSynced},
+	{"play", client_play},
+	{"isPlaying", client_isPlaying},
+	{"stopPlaying", client_stopPlaying},
+	{"setComment", client_setComment},
+	{"setVolume", client_setVolume},
+	{"getVolume", client_getVolume},
+	{"hook", client_hook},
+	{"call", client_call},
+	{"getHooks", client_getHooks},
+	{"getUsers", client_getUsers},
+	{"getChannels", client_getChannels},
+	{"getChannel", client_getChannel},
+	{"registerVoiceTarget", client_registerVoiceTarget},
+	{"setVoiceTarget", client_setVoiceTarget},
+	{"getVoiceTarget", client_getVoiceTarget},
+	{"getPing", client_getPing},
+	{"getUpTime", client_getUpTime},
+	{"__gc", client_gc},
+	{"__tostring", client_tostring},
+	{"__index", client_index},
+	{NULL, NULL}
+};

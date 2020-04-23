@@ -1,50 +1,36 @@
-CFLAGS = `pkg-config --libs --cflags libssl luajit libprotobuf-c opus vorbis vorbisfile` -lev -g -DDEBUG
-
-INCLUDES = -I.
+LIBRARIES = $(shell pkg-config --libs libssl luajit libprotobuf-c opus vorbis vorbisfile) -lev
+INCLUDES = $(shell pkg-config --cflags libssl luajit libprotobuf-c opus vorbis vorbisfile) -lev
+CFLAGS = -fPIC -g -DDEBUG -I.
 
 default: all
 
 clean:
-	rm *.o *.so proto/Mumble.o proto/Mumble.pb-c.c proto/Mumble.pb-c.h
+	rm *.o *.so proto/*.o proto/*.c proto/*.h
 
 uninstall:
 	rm /usr/local/lib/lua/5.1/mumble.so
 
-all: proto/Mumble.o mumble.o client.o user.o channel.o encoder.o audio.o packet.o target.o util.o mumble.so
+PROTO_SOURCES	= $(wildcard proto/*.proto)
+PROTO_C 		= $(PROTO_SOURCES:.proto=.pb-c.c)
+
+SOURCES			= $(wildcard *.c)
+OBJECTS			= $(PROTO_SOURCES:.proto=.o) $(SOURCES:.c=.o)
+
+all: proto $(OBJECTS) mumble.so
+
+proto: $(PROTO_C)
 
 install: all
 	cp mumble.so /usr/local/lib/lua/5.1/mumble.so
 
-proto/Mumble.o: proto/Mumble.proto
+proto/%.pb-c.c: proto/%.proto
 	protoc-c --c_out=. $<
-	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ proto/Mumble.pb-c.c
 
-mumble.o: mumble.c
-	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
+proto/%.o: proto/%.pb-c.c
+	$(CC) -c $(INCLUDES) $(CFLAGS) -o $@ $^
 
-client.o: client.c
-	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
+%.o: %.c
+	$(CC) -c $(INCLUDES) $(CFLAGS) -o $@ $^
 
-user.o: user.c
-	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
-
-channel.o: channel.c
-	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
-
-encoder.o: encoder.c
-	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
-
-audio.o: audio.c
-	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
-
-packet.o: packet.c
-	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
-
-target.o: target.c
-	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
-
-util.o: util.c
-	$(CC) -c $(INCLUDES) -fPIC -shared -o $@ $^ $(CFLAGS)
-
-mumble.so: proto/Mumble.o mumble.o client.o user.o channel.o encoder.o audio.o packet.o target.o util.o
-	$(CC) -shared -o $@ $^ $(CFLAGS)
+mumble.so: $(OBJECTS)
+	$(CC) -shared $(CFLAGS) -o $@ $^ $(LIBRARIES)

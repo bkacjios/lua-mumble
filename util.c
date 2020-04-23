@@ -14,7 +14,7 @@ int getNetworkBandwidth(int bitrate, int frames)
 	return overhead + bitrate;
 }
 
-void bin_to_strhex(uint8_t *bin, size_t binsz, char **result)
+void bin_to_strhex(char *bin, size_t binsz, char **result)
 {
 	char hex_str[]= "0123456789abcdef";
 	size_t i;

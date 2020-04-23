@@ -1,6 +1,8 @@
 #include "mumble.h"
 
-int target_new(lua_State *l)
+#include "user.h"
+
+int mumble_target_new(lua_State *l)
 {
 	MumbleProto__VoiceTarget__Target *target = lua_newuserdata(l, sizeof(MumbleProto__VoiceTarget__Target));
 	mumble_proto__voice_target__target__init(target);
@@ -9,7 +11,7 @@ int target_new(lua_State *l)
 	return 1;
 }
 
-int target_addUser(lua_State *l)
+static int target_addUser(lua_State *l)
 {
 	MumbleProto__VoiceTarget__Target *target = luaL_checkudata(l, 1, METATABLE_VOICETARGET);
 	MumbleUser *user = luaL_checkudata(l, 2, METATABLE_USER);
@@ -25,7 +27,7 @@ int target_addUser(lua_State *l)
 	return 0;
 }
 
-int target_setChannel(lua_State *l)
+static int target_setChannel(lua_State *l)
 {
 	MumbleProto__VoiceTarget__Target *target = luaL_checkudata(l, 1, METATABLE_VOICETARGET);
 	MumbleChannel *channel = luaL_checkudata(l, 2, METATABLE_CHAN);
@@ -35,14 +37,14 @@ int target_setChannel(lua_State *l)
 	return 0;
 }
 
-int target_getChannel(lua_State *l)
+static int target_getChannel(lua_State *l)
 {
 	MumbleProto__VoiceTarget__Target *target = luaL_checkudata(l, 1, METATABLE_VOICETARGET);
 	lua_pushinteger(l, target->channel_id);
 	return 1;
 }
 
-int target_setGroup(lua_State *l)
+static int target_setGroup(lua_State *l)
 {
 	MumbleProto__VoiceTarget__Target *target = luaL_checkudata(l, 1, METATABLE_VOICETARGET);
 
@@ -50,7 +52,7 @@ int target_setGroup(lua_State *l)
 	return 0;
 }
 
-int target_setLinks(lua_State *l)
+static int target_setLinks(lua_State *l)
 {
 	MumbleProto__VoiceTarget__Target *target = luaL_checkudata(l, 1, METATABLE_VOICETARGET);
 	
@@ -59,7 +61,7 @@ int target_setLinks(lua_State *l)
 	return 0;
 }
 
-int target_setChildren(lua_State *l)
+static int target_setChildren(lua_State *l)
 {
 	MumbleProto__VoiceTarget__Target *target = luaL_checkudata(l, 1, METATABLE_VOICETARGET);
 	
@@ -68,7 +70,7 @@ int target_setChildren(lua_State *l)
 	return 0;
 }
 
-int target_tostring(lua_State *l)
+static int target_tostring(lua_State *l)
 {	
 	MumbleProto__VoiceTarget__Target *target = luaL_checkudata(l, 1, METATABLE_VOICETARGET);
 
@@ -76,9 +78,21 @@ int target_tostring(lua_State *l)
 	return 1;
 }
 
-int target_gc(lua_State *l)
+static int target_gc(lua_State *l)
 {
 	MumbleProto__VoiceTarget__Target *target = luaL_checkudata(l, 1, METATABLE_VOICETARGET);
 	free(target->session);
 	return 0;
 }
+
+const luaL_Reg mumble_target[] = {
+	{"addUser", target_addUser},
+	{"setChannel", target_setChannel},
+	{"getChannel", target_getChannel},
+	{"setGroup", target_setGroup},
+	{"setLinks", target_setLinks},
+	{"setChildren", target_setChildren},
+	{"__tostring", target_tostring},
+	{"__gc", target_gc},
+	{NULL, NULL}
+};

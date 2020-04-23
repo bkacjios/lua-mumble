@@ -284,7 +284,7 @@ void packet_channel_state(MumbleClient *client, lua_State *l, Packet *packet)
 		channel->position = state->position;
 	}
 	if (state->has_description_hash) {
-		channel->description_hash = strdup(state->description_hash.data);
+		channel->description_hash = (char*) strdup((const char*)state->description_hash.data);
 		channel->description_hash_len = state->description_hash.len;
 	}
 	if (state->has_max_users) {
@@ -292,12 +292,12 @@ void packet_channel_state(MumbleClient *client, lua_State *l, Packet *packet)
 	}
 	if (state->n_links_add != 0) {
 		// Add the new entries to the head of the list
-		for (int i=0; i<state->n_links_add; i++) {
+		for (uint32_t i=0; i<state->n_links_add; i++) {
 			list_add(&channel->links, state->links_add[i]);
 		}
 	}
 	if (state->n_links_remove != 0) {
-		for (int i=0; i<state->n_links_remove; i++) {
+		for (uint32_t i=0; i<state->n_links_remove; i++) {
 			list_remove(&channel->links, state->links_remove[i]);
 		}
 
@@ -306,7 +306,7 @@ void packet_channel_state(MumbleClient *client, lua_State *l, Packet *packet)
 		list_clear(&channel->links);
 
 		// Store links in new list
-		for (int i=0; i<state->n_links; i++) {
+		for (uint32_t i=0; i<state->n_links; i++) {
 			list_add(&channel->links, state->links[i]);
 		}
 	}
@@ -411,17 +411,17 @@ void packet_user_state(MumbleClient *client, lua_State *l, Packet *packet)
 				user->priority_speaker = state->priority_speaker;
 			}
 			if (state->has_texture) {
-				user->texture = strdup(state->texture.data);
+				user->texture = (char*) strdup((const char*)state->texture.data);
 			}
 			if (state->hash != NULL) {
-				user->hash = strdup(state->hash);
+				user->hash = (char*) strdup((const char*)state->hash);
 			}
 			if (state->has_comment_hash) {
-				user->comment_hash = strdup(state->comment_hash.data);
+				user->comment_hash = (char*) strdup((const char*)state->comment_hash.data);
 				user->comment_hash_len = state->comment_hash.len;
 			}
 			if (state->has_texture_hash) {
-				user->texture_hash = strdup(state->texture_hash.data);
+				user->texture_hash = (char*) strdup((const char*)state->texture_hash.data);
 				user->texture_hash_len = state->texture_hash.len;
 			}
 		lua_setfield(l, -2, "user");
@@ -453,7 +453,7 @@ void packet_text_message(MumbleClient *client, lua_State *l, Packet *packet)
 			lua_setfield(l, -2, "message");
 		}
 		if (msg->n_session > 0) {
-			int i;
+			uint32_t i;
 			lua_newtable(l);
 			for (i = 0; i < msg->n_session; i++) {
 				lua_pushinteger(l, i);
@@ -463,7 +463,7 @@ void packet_text_message(MumbleClient *client, lua_State *l, Packet *packet)
 			lua_setfield(l, -2, "users");
 		}
 		if (msg->n_channel_id > 0) {
-			int i;
+			uint32_t i;
 			lua_newtable(l);
 			for (i = 0; i < msg->n_channel_id; i++) {
 				lua_pushinteger(l, i);
@@ -554,7 +554,7 @@ void packet_user_stats(MumbleClient *client, lua_State *l, Packet *packet)
 			lua_setfield(l, -2, "stats_only");
 		}
 		lua_newtable(l);
-		int i;
+		uint32_t i;
 		for (i=0; i < stats->n_certificates; i++) {
 			lua_pushinteger(l, i);
 			lua_pushlstring(l, (char *)stats->certificates[i].data, stats->certificates[i].len);
@@ -650,7 +650,7 @@ void packet_user_stats(MumbleClient *client, lua_State *l, Packet *packet)
 		}
 
 		lua_newtable(l);
-		int j;
+		uint32_t j;
 		for (j=0; j < stats->n_celt_versions; j++) {
 			lua_pushinteger(l, j);
 			lua_pushinteger(l, stats->celt_versions[j]);
@@ -687,7 +687,7 @@ void packet_user_stats(MumbleClient *client, lua_State *l, Packet *packet)
 				}
 
 				lua_newtable(l);
-					int k;
+					uint32_t k;
 					for (k=0; k < stats->address.len; k++) {
 						lua_pushinteger(l, k+1);
 						lua_pushinteger(l, stats->address.data[k]);

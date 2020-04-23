@@ -1,5 +1,11 @@
 #include "mumble.h"
 
+#include "channel.h"
+#include "encoder.h"
+#include "client.h"
+#include "user.h"
+#include "target.h"
+
 static void signal_event(struct ev_loop *loop, ev_signal *w_, int revents)
 {
 	struct my_signal *w = (struct my_signal *) w_;
@@ -58,7 +64,7 @@ static void socket_read_event(struct ev_loop *loop, ev_io *w_, int revents)
 
 	static Packet packet_read;
 
-	int total_read = 0;
+	uint32_t total_read = 0;
 
 	int ret = SSL_read(client->ssl, packet_read.buffer, 6);
 
@@ -245,7 +251,7 @@ static int mumble_connect(lua_State *l)
 		return 2;
 	}
 
-	if (err = SSL_connect(client->ssl) != 1) {
+	if ((err = SSL_connect(client->ssl)) != 1) {
 		lua_pushnil(l);
 		lua_pushfstring(l, "could not create secure connection: %s", SSL_get_error(client->ssl, err));
 		return 2;
@@ -323,7 +329,6 @@ void mumble_hook_call(MumbleClient *client, const char* hook, int nargs)
 	lua_State* l = client->l;
 
 	int top = lua_gettop(l);
-	int i;
 
 	// Get hook table
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->hooks);
@@ -331,14 +336,16 @@ void mumble_hook_call(MumbleClient *client, const char* hook, int nargs)
 	// Get the table of callbacks
 	lua_getfield(l, -1, hook);
 
+	// Remove hook table from stack
 	lua_remove(l, -2);
 
+	// if getfield returned nil OR the returned value is NOT a table..
 	if (lua_isnil(l, -1) == 1 || lua_istable(l, -1) == 0) {
-		// Pop the nil
+		// Pop the nil or nontable value
 		lua_pop(l, 1);
 
 		// Remove the arguments anyway despite no hook call
-		for (i = top; i < top + nargs; i++) {
+		for (int i = top; i < top + nargs; i++) {
 			lua_remove(l, i);
 		}
 		return;
@@ -358,7 +365,7 @@ void mumble_hook_call(MumbleClient *client, const char* hook, int nargs)
 
 			//mumble_client_raw_get(client);
 
-			for (i = 1; i <= nargs; i++) {
+			for (int i = 1; i <= nargs; i++) {
 				// Copy number of arguments
 				int pos = top - nargs + i;
 
@@ -374,6 +381,7 @@ void mumble_hook_call(MumbleClient *client, const char* hook, int nargs)
 				int base = lua_gettop(l) - nargs;
 				lua_pushcfunction(l, traceback);
 				lua_insert(l, base);
+
 				if (lua_pcall(l, nargs, 0, base) != 0) {
 					// Call the OnError hook
 					erroring = true;
@@ -392,7 +400,7 @@ void mumble_hook_call(MumbleClient *client, const char* hook, int nargs)
 	lua_pop(l, 1);
 
 	// Remove the original arguments
-	for (i = top; i < top + nargs; i++) {
+	for (int i = top; i < top + nargs; i++) {
 		lua_remove(l, i);
 	}
 }
@@ -553,113 +561,6 @@ const luaL_Reg mumble[] = {
 	{NULL, NULL}
 };
 
-const luaL_Reg mumble_client[] = {
-	{"auth", client_auth},
-	{"disconnect", client_disconnect},
-	{"isConnected", client_isConnected},
-	{"isSynced", client_isSynced},
-	{"play", client_play},
-	{"isPlaying", client_isPlaying},
-	{"stopPlaying", client_stopPlaying},
-	{"setComment", client_setComment},
-	{"setVolume", client_setVolume},
-	{"getVolume", client_getVolume},
-	{"hook", client_hook},
-	{"call", client_call},
-	{"getHooks", client_getHooks},
-	{"getUsers", client_getUsers},
-	{"getChannels", client_getChannels},
-	{"getChannel", client_getChannel},
-	{"registerVoiceTarget", client_registerVoiceTarget},
-	{"setVoiceTarget", client_setVoiceTarget},
-	{"getVoiceTarget", client_getVoiceTarget},
-	{"getPing", client_getPing},
-	{"getUpTime", client_getUpTime},
-	{"__gc", client_gc},
-	{"__tostring", client_tostring},
-	{"__index", client_index},
-	{NULL, NULL}
-};
-
-const luaL_Reg mumble_user[] = {
-	{"message", user_message},
-	{"kick", user_kick},
-	{"ban", user_ban},
-	{"move", user_move},
-	{"setMuted", user_setMuted},
-	{"setDeaf", user_setDeaf},
-	{"requestStats", user_request_stats},
-
-	{"getClient", user_getClient},
-	{"getSession", user_getSession},
-	{"getName", user_getName},
-	{"getChannel", user_getChannel},
-	{"getID", user_getID},
-	{"isMute", user_isMute},
-	{"isDeaf", user_isDeaf},
-	{"isSelfMute", user_isSelfMute},
-	{"isSelfDeaf", user_isSelfDeaf},
-	{"isSuppressed", user_isSuppressed},
-	{"getComment", user_getComment},
-	{"getCommentHash", user_getCommentHash},
-	{"isRecording", user_isRecording},
-	{"isPrioritySpeaker", user_isPrioritySpeaker},
-	{"getTexture", user_getTexture},
-	{"getTextureHash", user_getTextureHash},
-	{"getHash", user_getHash},
-	{"setTexture", user_setTexture},
-
-	{"__tostring", user_tostring},
-	{"__newindex", user_newindex},
-	{"__index", user_index},
-	{NULL, NULL}
-};
-
-const luaL_Reg mumble_channel[] = {
-	{"message", channel_message},
-	{"setDescription", channel_setDescription},
-	{"remove", channel_remove},
-
-	{"getClient", channel_getClient},
-	{"getName", channel_getName},
-	{"getID", channel_getID},
-	{"getParent", channel_getParent},
-	{"getChildren", channel_getChildren},
-	{"getUsers", channel_getUsers},
-	{"getDescription", channel_getDescription},
-	{"getDescriptionHash", channel_getDescriptionHash},
-	{"isTemporary", channel_isTemporary},
-	{"getPosition", channel_getPosition},
-	{"getMaxUsers", channel_getMaxUsers},
-	{"link", channel_link},
-	{"unlink", channel_unlink},
-	{"getLinks", channel_getLinks},
-
-	{"__call", channel_call},
-	{"__tostring", channel_tostring},
-	{"__newindex", channel_newindex},
-	{"__index", channel_index},
-	{NULL, NULL}
-};
-
-const luaL_Reg mumble_encoder[] = {
-	{"setBitRate", encoder_setBitRate},
-	{"__tostring", encoder_tostring},
-	{NULL, NULL}
-};
-
-const luaL_Reg mumble_target[] = {
-	{"addUser", target_addUser},
-	{"setChannel", target_setChannel},
-	{"getChannel", target_getChannel},
-	{"setGroup", target_setGroup},
-	{"setLinks", target_setLinks},
-	{"setChildren", target_setChildren},
-	{"__tostring", target_tostring},
-	{"__gc", target_gc},
-	{NULL, NULL}
-};
-
 int luaopen_mumble(lua_State *l)
 {
 	signal(SIGPIPE, SIG_IGN);
@@ -668,7 +569,7 @@ int luaopen_mumble(lua_State *l)
 	luaL_register(l, "mumble", mumble);
 	{
 		lua_newtable(l);
-		for (int i = 0; i < mumble_proto__reject__reject_type__descriptor.n_values; i++) {
+		for (uint32_t i = 0; i < mumble_proto__reject__reject_type__descriptor.n_values; i++) {
 			ProtobufCEnumValueIndex reject = mumble_proto__reject__reject_type__descriptor.values_by_name[i];
 			lua_pushnumber(l, reject.index);
 			lua_setfield(l, -2, reject.name);
@@ -707,7 +608,7 @@ int luaopen_mumble(lua_State *l)
 		luaL_register(l, NULL, mumble_encoder);
 		lua_newtable(l);
 		{
-			lua_pushcfunction(l, encoder_new);
+			lua_pushcfunction(l, mumble_encoder_new);
 			lua_setfield(l, -2, "__call");
 		}
 		lua_setmetatable(l, -2);
@@ -721,7 +622,7 @@ int luaopen_mumble(lua_State *l)
 		luaL_register(l, NULL, mumble_target);
 		lua_newtable(l);
 		{
-			lua_pushcfunction(l, target_new);
+			lua_pushcfunction(l, mumble_target_new);
 			lua_setfield(l, -2, "__call");
 		}
 		lua_setmetatable(l, -2);

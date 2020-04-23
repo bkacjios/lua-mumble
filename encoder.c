@@ -1,6 +1,8 @@
 #include "mumble.h"
 
-int encoder_new(lua_State *l)
+#include "encoder.h"
+
+int mumble_encoder_new(lua_State *l)
 {
 	opus_int32 samplerate = luaL_optinteger(l, 1, 48000);
 
@@ -22,16 +24,22 @@ int encoder_new(lua_State *l)
 	return 1;
 }
 
-int encoder_setBitRate(lua_State *l)
+static int encoder_setBitRate(lua_State *l)
 {
 	OpusEncoder *encoder = luaL_checkudata(l, 1, METATABLE_ENCODER);
 	opus_encoder_ctl(encoder, OPUS_SET_BITRATE(luaL_checkinteger(l, 2)));
 	return 0;
 }
 
-int encoder_tostring(lua_State *l)
+static int encoder_tostring(lua_State *l)
 {
 	OpusEncoder *encoder = luaL_checkudata(l, 1, METATABLE_ENCODER);
 	lua_pushfstring(l, "%s: %p", METATABLE_ENCODER, encoder);
 	return 1;
 }
+
+const luaL_Reg mumble_encoder[] = {
+	{"setBitRate", encoder_setBitRate},
+	{"__tostring", encoder_tostring},
+	{NULL, NULL}
+};

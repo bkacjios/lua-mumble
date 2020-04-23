@@ -1,17 +1,20 @@
 #include "mumble.h"
 
+#include "channel.h"
+
 /*--------------------------------
 	MUMBLE CHANNEL META METHODS
 --------------------------------*/
 
-int channel_add(lua_State *l)
+static int channel_add(lua_State *l)
 {
-	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+	//MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
 	// TODO: Figure out how channel adding works
+	return 0;
 }
 
-int channel_message(lua_State *l)
+static int channel_message(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
@@ -28,7 +31,7 @@ int channel_message(lua_State *l)
 	return 0;
 }
 
-int channel_setDescription(lua_State *l)
+static int channel_setDescription(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
@@ -42,7 +45,7 @@ int channel_setDescription(lua_State *l)
 	return 0;
 }
 
-int channel_remove(lua_State *l)
+static int channel_remove(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
@@ -54,28 +57,28 @@ int channel_remove(lua_State *l)
 	return 0;
 }
 
-int channel_getClient(lua_State *l)
+static int channel_getClient(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 	mumble_client_raw_get(channel->client);
 	return 1;
 }
 
-int channel_getName(lua_State *l)
+static int channel_getName(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 	lua_pushstring(l, channel->name);
 	return 1;
 }
 
-int channel_getID(lua_State *l)
+static int channel_getID(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 	lua_pushinteger(l, channel->channel_id);
 	return 1;
 }
 
-int channel_getParent(lua_State *l)
+static int channel_getParent(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
@@ -89,7 +92,7 @@ int channel_getParent(lua_State *l)
 	return 1;
 }
 
-int channel_getChildren(lua_State *l)
+static int channel_getChildren(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
@@ -115,7 +118,7 @@ int channel_getChildren(lua_State *l)
 	return 1;
 }
 
-int channel_getUsers(lua_State *l)
+static int channel_getUsers(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
@@ -141,14 +144,14 @@ int channel_getUsers(lua_State *l)
 	return 1;
 }
 
-int channel_getDescription(lua_State *l)
+static int channel_getDescription(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 	lua_pushstring(l, channel->description);
 	return 1;
 }
 
-int channel_getDescriptionHash(lua_State *l)
+static int channel_getDescriptionHash(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 	char* result;
@@ -158,28 +161,28 @@ int channel_getDescriptionHash(lua_State *l)
 	return 1;
 }
 
-int channel_isTemporary(lua_State *l)
+static int channel_isTemporary(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 	lua_pushboolean(l, channel->temporary);
 	return 1;
 }
 
-int channel_getPosition(lua_State *l)
+static int channel_getPosition(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 	lua_pushinteger(l, channel->position);
 	return 1;
 }
 
-int channel_getMaxUsers(lua_State *l)
+static int channel_getMaxUsers(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 	lua_pushinteger(l, channel->max_users);
 	return 1;
 }
 
-int channel_link(lua_State *l)
+static int channel_link(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
@@ -208,7 +211,7 @@ int channel_link(lua_State *l)
 	return 0;
 }
 
-int channel_unlink(lua_State *l)
+static int channel_unlink(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
@@ -235,7 +238,7 @@ int channel_unlink(lua_State *l)
 	return 0;
 }
 
-int channel_getLinks(lua_State *l)
+static int channel_getLinks(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
@@ -301,14 +304,14 @@ int channel_call(lua_State *l)
 	return 1;
 }
 
-int channel_tostring(lua_State *l)
+static int channel_tostring(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 	lua_pushfstring(l, "%s [%d][%s]", METATABLE_CHAN, channel->channel_id, channel->name);
 	return 1;
 }
 
-int channel_newindex(lua_State *l)
+static int channel_newindex(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
@@ -319,7 +322,7 @@ int channel_newindex(lua_State *l)
 	return 0;
 }
 
-int channel_index(lua_State *l)
+static int channel_index(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
@@ -334,3 +337,30 @@ int channel_index(lua_State *l)
 	}
 	return 1;
 }
+
+const luaL_Reg mumble_channel[] = {
+	{"message", channel_message},
+	{"setDescription", channel_setDescription},
+	{"remove", channel_remove},
+
+	{"getClient", channel_getClient},
+	{"getName", channel_getName},
+	{"getID", channel_getID},
+	{"getParent", channel_getParent},
+	{"getChildren", channel_getChildren},
+	{"getUsers", channel_getUsers},
+	{"getDescription", channel_getDescription},
+	{"getDescriptionHash", channel_getDescriptionHash},
+	{"isTemporary", channel_isTemporary},
+	{"getPosition", channel_getPosition},
+	{"getMaxUsers", channel_getMaxUsers},
+	{"link", channel_link},
+	{"unlink", channel_unlink},
+	{"getLinks", channel_getLinks},
+
+	{"__call", channel_call},
+	{"__tostring", channel_tostring},
+	{"__newindex", channel_newindex},
+	{"__index", channel_index},
+	{NULL, NULL}
+};
