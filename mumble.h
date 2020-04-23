@@ -40,12 +40,25 @@
 #define MODULE_NAME "lua-mumble"
 #define MODULE_VERSION "0.0.1"
 
-#define OPUS_FRAME_SIZE 480
+// The default audio quality the encoder will try to use.
+// If the servers maximum bandwidth doesn't allow for such
+// a high value, it will try to auto ajust.
+#define AUDIO_DEFAULT_BITRATE 96000
+
+// Number of frames to send per packet
+// 1 = Lower latency, 4 = Better quality
+#define AUDIO_DEFAULT_FRAMES 2
+
+// The sample rate in which all ogg files should be encoded to
+#define AUDIO_SAMPLE_RATE 48000
+
+// The size of the PCM buffer
+// Technically, it should be FRAMESIZE*SAMPLERATE/100
 #define PCM_BUFFER 4096
 
 #define PAYLOAD_SIZE_MAX (1024 * 1024 * 8 - 1)
 
-#define PING_TIMEOUT 10
+#define PING_TIMEOUT 30
 
 /*
  * Structures
@@ -199,6 +212,7 @@ int luaL_checkboolean(lua_State *L, int i);
 int luaL_optboolean(lua_State *L, int i, int d);
 const char* eztype(lua_State *L, int i);
 
+void mumble_create_audio_timer(MumbleClient *client, int bitspersec);
 void mumble_disconnect(MumbleClient *client);
 
 void mumble_client_raw_get(MumbleClient* client);

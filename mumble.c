@@ -158,14 +158,14 @@ static int mumble_connect(lua_State *l)
 	client->synced = false;
 	client->audio_finished = false;
 	client->audio_target = 0;
-	client->audio_frames = 1;
+	client->audio_frames = AUDIO_DEFAULT_FRAMES;
 
 	client->tcp_packets = 0;
 	client->tcp_ping_avg = 0;
 	client->tcp_ping_var = 0;
 
 	int err;
-	client->encoder = opus_encoder_create(48000, 1, OPUS_APPLICATION_AUDIO, &err);
+	client->encoder = opus_encoder_create(AUDIO_SAMPLE_RATE, 1, OPUS_APPLICATION_AUDIO, &err);
 
 	if (err != OPUS_OK) {
 		lua_pushnil(l);
@@ -174,7 +174,7 @@ static int mumble_connect(lua_State *l)
 	}
 
 	opus_encoder_ctl(client->encoder, OPUS_SET_VBR(0));
-	opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(40000));
+	opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(AUDIO_DEFAULT_BITRATE));
 
 	client->ssl_context = SSL_CTX_new(SSLv23_client_method());
 
@@ -271,15 +271,59 @@ static int mumble_connect(lua_State *l)
 	ev_io_init(&client->socket_io.io, socket_read_event, client->socket, EV_READ);
 	ev_io_start(EV_DEFAULT, &client->socket_io.io);
 
-	// Create a timer for audio data
-	ev_timer_init(&client->audio_timer.timer, mumble_audio_timer, 0, 0.01);
-	ev_timer_start(EV_DEFAULT, &client->audio_timer.timer);
-
 	// Create a timer to ping the server every X seconds
 	ev_timer_init(&client->ping_timer.timer, mumble_ping_timer, PING_TIMEOUT, PING_TIMEOUT);
 	ev_timer_start(EV_DEFAULT, &client->ping_timer.timer);
 
 	return 1;
+}
+
+static int getNetworkBandwidth(int bitrate, int frames)
+{
+	int overhead = 20 + 8 + 4 + 1 + 2 + 12 + frames;
+	overhead *= (800 / frames);
+	return overhead + bitrate;
+}
+
+void mumble_create_audio_timer(MumbleClient *client, int bitspersec)
+{
+	int frames = client->audio_frames;
+	int bitrate;
+
+	opus_encoder_ctl(client->encoder, OPUS_GET_BITRATE(&bitrate));
+
+	if (bitspersec == -1) {
+		// No limit
+	}
+	else if (getNetworkBandwidth(bitrate, frames) > bitspersec) {
+		if ((frames <= 4) && (bitspersec <= 32000))
+			frames = 4;
+		else if ((frames == 1) &&  (bitspersec <= 64000))
+			frames = 2;
+		else if ((frames == 2) &&  (bitspersec <= 48000))
+			frames = 4;
+
+		if (getNetworkBandwidth(bitrate, frames) > bitspersec) {
+			do {
+				bitrate -= 1000;
+			} while ((bitrate > 8000) && (getNetworkBandwidth(bitrate, frames) > bitspersec));
+		}
+	}
+	if (bitrate < 8000)
+		bitrate = 8000;
+
+	if (bitrate != AUDIO_DEFAULT_BITRATE) {
+		printf("Server maximum network bandwidth is only %d kbit/s. Audio quality auto-adjusted to %d kbit/s (%d ms)\n", bitspersec / 1000, bitrate / 1000, frames * 10);
+		client->audio_frames = frames;
+		opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(bitrate));
+	}
+
+	// Get the length of our timer for the audio stream..
+	float time = (float) frames / 100;
+
+	// Create a timer for audio data
+	ev_timer_init(&client->audio_timer.timer, mumble_audio_timer, 0, time);
+	ev_timer_start(EV_DEFAULT, &client->audio_timer.timer);
 }
 
 static int mumble_loop(lua_State *l)

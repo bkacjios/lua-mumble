@@ -112,7 +112,9 @@ void audio_transmission_event(MumbleClient *client)
 	voicepacket_init(&packet, packet_buffer);
 	voicepacket_setheader(&packet, VOICEPACKET_OPUS, client->audio_target, sound->sequence);
 
-	while (sound->buffer.size < OPUS_FRAME_SIZE * sizeof(opus_int16)) {
+	uint32_t frame_size = client->audio_frames * AUDIO_SAMPLE_RATE / 100;
+
+	while (sound->buffer.size < frame_size * sizeof(opus_int16)) {
 		long_ret = ov_read_filter(&sound->ogg, sound->buffer.pcm + sound->buffer.size, PCM_BUFFER - sound->buffer.size, 0, 2, 1, NULL, audio_transmission_event_filter, sound);
 		if (long_ret <= 0) {
 			audio_transmission_stop(client);
@@ -121,13 +123,13 @@ void audio_transmission_event(MumbleClient *client)
 		sound->buffer.size += long_ret;
 	}
 
-	byte_count = opus_encode(client->encoder, (opus_int16 *)sound->buffer.pcm, OPUS_FRAME_SIZE, output, sizeof(output));
+	byte_count = opus_encode(client->encoder, (opus_int16 *)sound->buffer.pcm, frame_size, output, sizeof(output));
 	if (byte_count < 0) {
 		audio_transmission_stop(client);
 		return;
 	}
-	sound->buffer.size -= OPUS_FRAME_SIZE * sizeof(opus_int16);
-	memmove(sound->buffer.pcm, sound->buffer.pcm + OPUS_FRAME_SIZE * sizeof(opus_int16), sound->buffer.size);
+	sound->buffer.size -= frame_size * sizeof(opus_int16);
+	memmove(sound->buffer.pcm, sound->buffer.pcm + frame_size * sizeof(opus_int16), sound->buffer.size);
 	voicepacket_setframe(&packet, byte_count, output);
 
 	packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));

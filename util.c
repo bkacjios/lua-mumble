@@ -7,13 +7,6 @@ double gettime()
 	return time.tv_sec + time.tv_usec/1.0e6;
 }
 
-int getNetworkBandwidth(int bitrate, int frames)
-{
-	int overhead = 20 + 8 + 4 + 1 + 2 + 12 + frames;
-	overhead *= (800 / frames);
-	return overhead + bitrate;
-}
-
 void bin_to_strhex(char *bin, size_t binsz, char **result)
 {
 	char hex_str[]= "0123456789abcdef";
