@@ -85,8 +85,15 @@ static int client_play(lua_State *l)
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
 	const char* filepath	= luaL_checkstring(l, 2);
 	float volume			= (float) luaL_optnumber(l, 3, 1);
+	int channel				= luaL_optinteger(l, 4, 1);
 
-	audio_transmission_stop(client);
+	if (channel < 1)
+		channel = 1;
+
+	if (channel > AUDIO_MAX_CHANNELS)
+		channel = AUDIO_MAX_CHANNELS;
+
+	audio_transmission_stop(client->audio_jobs[channel - 1]);
 
 	//AudioTransmission *sound = lua_newuserdata(l, sizeof(AudioTransmission));
 	//luaL_getmetatable(l, METATABLE_AUDIO);
@@ -94,28 +101,21 @@ static int client_play(lua_State *l)
 
 	AudioTransmission *sound = malloc(sizeof *sound);
 
+	sound->playing = true;
 	sound->client = client;
 	sound->lua = l;
-	sound->sequence = 1;
-	sound->buffer.size = 0;
 	sound->volume = volume;
-	sound->file = fopen(filepath, "rb");
 
-	if (sound->file == NULL) {
+	int error;
+	sound->ogg = stb_vorbis_open_filename(filepath, &error, NULL);
+
+	if (error != VORBIS__no_error) {
 		lua_pushnil(l);
-		lua_pushfstring(l, "error opening file %s: %s", filepath, strerror(errno));
+		lua_pushfstring(l, "error opening file %s", filepath);
 		return 2;
 	}
 
-	int error = ov_open_callbacks(sound->file, &sound->ogg, NULL, 0, OV_CALLBACKS_STREAMONLY_NOCLOSE);
-
-	if (error != 0) {
-		lua_pushnil(l);
-		lua_pushfstring(l, "error opening file %s: %s", filepath, opus_strerror(error));
-		return 2;
-	}
-
-	client->audio_job = sound;
+	client->audio_jobs[channel - 1] = sound;
 
 	lua_pushboolean(l, true);
 	return 1;
@@ -124,14 +124,17 @@ static int client_play(lua_State *l)
 static int client_isPlaying(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_pushboolean(l, client->audio_job != NULL);
+	int channel = luaL_optinteger(l, 1, 1);
+	lua_pushboolean(l, client->audio_jobs[channel - 1] != NULL);
 	return 1;
 }
 
 static int client_stopPlaying(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
-	audio_transmission_stop(client);
+	int channel				= luaL_optinteger(l, 2, 1);
+
+	audio_transmission_stop(client->audio_jobs[channel - 1]);
 	return 1;
 }
 

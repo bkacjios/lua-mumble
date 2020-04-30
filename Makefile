@@ -1,4 +1,4 @@
-DEPENDENCIES = libssl luajit libprotobuf-c opus vorbis vorbisfile
+DEPENDENCIES = libssl luajit libprotobuf-c opus
 
 LIBRARIES = $(shell pkg-config --libs $(DEPENDENCIES)) -lev # libev doesn't have a pkg-config file..
 INCLUDES = $(shell pkg-config --cflags $(DEPENDENCIES))

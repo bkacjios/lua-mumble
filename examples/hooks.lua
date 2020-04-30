@@ -59,8 +59,12 @@ client:hook("OnServerConfig", function(event)
 	print("OnServerConfig", event)
 end)
 
-client:hook("OnAudioFinished", function()
-	print("OnAudioFinished")
+client:hook("OnAudioFinished", function(channel)
+	print("OnAudioFinished", channel)
+end)
+
+client:hook("OnAudioStreamEnd", function()
+	print("OnAudioStreamEnd")
 end)
 
 client:hook("OnDisconnect", function()

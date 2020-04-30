@@ -20,9 +20,8 @@ static void mumble_audio_timer(EV_P_ ev_timer *w_, int revents)
 
 	MumbleClient *client = w->client;
 
-	if (client->connected && client->audio_job != NULL) {
+	if (client->connected)
 		audio_transmission_event(client);
-	}
 }
 
 static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
@@ -153,10 +152,8 @@ static int mumble_connect(lua_State *l)
 	client->port = port;
 	client->time = gettime();
 	client->volume = 1;
-	client->audio_job = NULL;
 	client->connected = true;
 	client->synced = false;
-	client->audio_finished = false;
 	client->audio_target = 0;
 	client->audio_frames = AUDIO_DEFAULT_FRAMES;
 
@@ -334,8 +331,6 @@ static int mumble_loop(lua_State *l)
 
 void mumble_disconnect(MumbleClient *client)
 {
-	audio_transmission_stop(client);
-
 	if (client->connected) {
 		mumble_hook_call(client, "OnDisconnect", 0);
 		client->connected = false;

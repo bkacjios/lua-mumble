@@ -32,10 +32,11 @@
 #include <math.h>
 
 #include <opus/opus.h>
-#include <vorbis/codec.h>
-#include <vorbis/vorbisfile.h>
 
 #include "proto/Mumble.pb-c.h"
+
+#define STB_VORBIS_HEADER_ONLY
+#include "stb_vorbis.c"
 
 #define MODULE_NAME "lua-mumble"
 #define MODULE_VERSION "0.0.1"
@@ -52,11 +53,14 @@
 // The sample rate in which all ogg files should be encoded to
 #define AUDIO_SAMPLE_RATE 48000
 
+// Number of audio "channels" for playing multiple sounds at once
+#define AUDIO_MAX_CHANNELS 128
+
 // The size of the PCM buffer
 // Technically, it should be FRAMESIZE*SAMPLERATE/100
 #define PCM_BUFFER 4096
 
-#define PAYLOAD_SIZE_MAX (1024 * 1024 * 8 - 1)
+#define PAYLOAD_SIZE_MAX (1024 * 8 - 1)
 
 #define PING_TIMEOUT 30
 
@@ -110,8 +114,9 @@ struct MumbleClient {
 	my_timer			audio_timer;
 	my_timer			ping_timer;
 	my_signal			signal;
-	AudioTransmission*	audio_job;
-	bool				audio_finished;
+	short				audio_buffer[PCM_BUFFER];
+	uint32_t			audio_sequence;
+	AudioTransmission*	audio_jobs[AUDIO_MAX_CHANNELS];
 	int					audio_frames;
 	OpusEncoder*		encoder;
 	uint8_t				audio_target;
@@ -181,14 +186,11 @@ typedef struct {
 struct AudioTransmission {
 	FILE *file;
 	lua_State *lua;
-	OggVorbis_File ogg;
-	uint32_t sequence;
+	stb_vorbis *ogg;
 	MumbleClient *client;
+	bool playing;
 	float volume;
-	struct {
-		char pcm[PCM_BUFFER];
-		uint32_t size;
-	} buffer;
+	short buffer[PCM_BUFFER];
 };
 
 typedef struct {
@@ -227,7 +229,7 @@ void mumble_channel_remove(MumbleClient* client, uint32_t channel_id);
 void mumble_hook_call(MumbleClient *client, const char* hook, int nargs);
 
 void audio_transmission_event(MumbleClient *client);
-void audio_transmission_stop(MumbleClient *client);
+void audio_transmission_stop(AudioTransmission* sound);
 
 #define METATABLE_CLIENT		"mumble.client"
 #define METATABLE_USER			"mumble.user"

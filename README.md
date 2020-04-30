@@ -5,7 +5,7 @@ A lua module to connect to a mumble server and interact with it
 ## Build requirements
 
 ```
-sudo apt-get install libluajit-5.1-dev protobuf-c libprotobuf-c-dev libssl-dev libopus-dev libvorbis-dev libev-dev
+sudo apt-get install libluajit-5.1-dev protobuf-c libprotobuf-c-dev libssl-dev libopus-dev libev-dev
 ```
 
 ## Usage
@@ -47,13 +47,14 @@ Boolean synced = mumble.client:isSynced()
 mumble.client:disconnect()
 
 -- Play an ogg audio file
-mumble.client:play(String ogg file path)
+-- Changing the channel value will allow you to play multiple audio files at once
+mumble.client:play(String ogg file path, Number volume = 1.0, Number channel = 1)
 
--- Checks if the client is currently playing an audio file
-Boolean playing = mumble.client:isPlaying()
+-- Checks if the client is currently playing an audio file on the specified audio channel
+Boolean playing = mumble.client:isPlaying(Number channel = 1)
 
--- Stops playing the current audio
-mumble.client:stopPlaying()
+-- Stops playing the current audio on the specified audio channel
+mumble.client:stopPlaying(Number channel = 1)
 
 -- Sets the global volume level
 -- Consider this the master volume level
@@ -546,7 +547,13 @@ Table event = {
 ```
 ___
 
-### `OnAudioFinished ()`
+### `OnAudioFinished (Number channel)`
 
 Called when a sound file has finished playing.
+Passes the number of the audio channel that finished.
+___
+
+### `OnAudioStreamEnd ()`
+
+Called when all audio channels have finished playing.
 ___

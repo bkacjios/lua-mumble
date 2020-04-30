@@ -1,5 +1,8 @@
 #include "mumble.h"
 
+#define STB_VORBIS_HEADER_ONLY
+#include "stb_vorbis.c"
+
 int util_set_varint(uint8_t buffer[], const uint64_t value)
 {
 	if (value < 0x80) {
@@ -45,7 +48,11 @@ int voicepacket_setheader(VoicePacket *packet, const uint8_t type, const uint8_t
 int voicepacket_setframe(VoicePacket *packet, const uint16_t length, uint8_t *buffer)
 {
 	int offset;
-	if (packet == NULL || buffer == NULL || length <= 0 || length >= 0x2000) {
+
+	// The 14th bit of our length value contains a flag for determining end of stream
+	uint16_t actual_length = (length & 0x1FFF);
+
+	if (packet == NULL || buffer == NULL || actual_length <= 0 || actual_length >= 0x2000) {
 		return -1;
 	}
 	if (packet->header_length <= 0) {
@@ -55,8 +62,8 @@ int voicepacket_setframe(VoicePacket *packet, const uint16_t length, uint8_t *bu
 	if (offset <= 0) {
 		return -3;
 	}
-	memmove(packet->buffer + packet->header_length + offset, buffer, length);
-	packet->length = packet->header_length + length + offset;
+	memmove(packet->buffer + packet->header_length + offset, buffer, actual_length);
+	packet->length = packet->header_length + actual_length + offset;
 	return 1;
 }
 
@@ -78,61 +85,79 @@ static void audio_transmission_event_filter(float **pcm, long channels, long sam
 	}
 }
 
-void audio_transmission_stop(MumbleClient *client)
+void audio_transmission_stop(AudioTransmission* sound)
 {
-	if (client->audio_job != NULL) {
-		client->audio_job = NULL;
-		client->audio_finished = true;
+	if (sound == NULL) return;
+	if (sound->ogg != NULL) {
+		stb_vorbis_close(sound->ogg);
 	}
-
-	AudioTransmission *sound = client->audio_job;
-
-	if (sound == NULL)
-		return;
-	
-	ov_clear(&sound->ogg);
-
-	if (sound->file)
-		fclose(sound->file);
-
-	if (sound)
-		free(sound);
 }
 
 void audio_transmission_event(MumbleClient *client)
 {
-	AudioTransmission *sound = client->audio_job;
-
 	VoicePacket packet;
-	uint8_t packet_buffer[PCM_BUFFER];
-	uint8_t output[PCM_BUFFER];
-	opus_int32 byte_count;
-	long long_ret;
 
-	voicepacket_init(&packet, packet_buffer);
-	voicepacket_setheader(&packet, VOICEPACKET_OPUS, client->audio_target, sound->sequence);
+	uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
+	uint8_t output[0x1FFF];
+	opus_int32 encoded_len;
+	long read;
+	long biggest_read = 0;
 
 	uint32_t frame_size = client->audio_frames * AUDIO_SAMPLE_RATE / 100;
 
-	while (sound->buffer.size < frame_size * sizeof(opus_int16)) {
-		long_ret = ov_read_filter(&sound->ogg, sound->buffer.pcm + sound->buffer.size, PCM_BUFFER - sound->buffer.size, 0, 2, 1, NULL, audio_transmission_event_filter, sound);
-		if (long_ret <= 0) {
-			audio_transmission_stop(client);
-			return;
+	memset(client->audio_buffer, 0, sizeof(client->audio_buffer));
+
+	// Loop through all available audio channels
+	for (int i = 0; i < AUDIO_MAX_CHANNELS; i++) {
+		AudioTransmission *sound = client->audio_jobs[i];
+
+		// No sound playing = skip
+		if (sound == NULL) continue;
+
+		memset(sound->buffer, 0, sizeof(sound->buffer));
+
+		read = stb_vorbis_get_samples_short_interleaved(sound->ogg, 1, sound->buffer, frame_size);
+
+		if (read < frame_size) {
+			lua_pushinteger(client->l, i + 1); // Push the channel number
+			mumble_hook_call(client, "OnAudioFinished", 1);
+			audio_transmission_stop(sound);
+			client->audio_jobs[i] = NULL;
 		}
-		sound->buffer.size += long_ret;
+
+		if (read > biggest_read) {
+			// We need to save the biggest PCM length for later.
+			// If we didn't do this, we could be cutting off some audio if one
+			// stream ends while another is still playing.
+			biggest_read = read;
+		}
+
+		for (int i = 0; i < read; i++) {
+			// Mix all channels together in the buffer
+			client->audio_buffer[i] = client->audio_buffer[i] + sound->buffer[i];
+		}
 	}
 
-	byte_count = opus_encode(client->encoder, (opus_int16 *)sound->buffer.pcm, frame_size, output, sizeof(output));
-	if (byte_count < 0) {
-		audio_transmission_stop(client);
-		return;
+	// Nothing to do..
+	if (biggest_read <= 0) return;
+
+	encoded_len = opus_encode(client->encoder, (opus_int16 *)client->audio_buffer, frame_size, output, sizeof(output));
+
+	if (encoded_len <= 0) return;
+
+	voicepacket_init(&packet, packet_buffer);
+	voicepacket_setheader(&packet, VOICEPACKET_OPUS, client->audio_target, client->audio_sequence);
+
+	// If the largest PCM buffer is smaller than our frame size, it has to be the last frame available
+	if (biggest_read < frame_size) {
+		// Set 14th bit to 1 to signal end of stream.
+		encoded_len = ((1 << 13) | encoded_len);
+		mumble_hook_call(client, "OnAudioStreamEnd", 0);
 	}
-	sound->buffer.size -= frame_size * sizeof(opus_int16);
-	memmove(sound->buffer.pcm, sound->buffer.pcm + frame_size * sizeof(opus_int16), sound->buffer.size);
-	voicepacket_setframe(&packet, byte_count, output);
+
+	voicepacket_setframe(&packet, encoded_len, output);
 
 	packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
 
-	sound->sequence = (sound->sequence + 1) % 100000;
+	client->audio_sequence = (client->audio_sequence + 1) % 100000;
 }
