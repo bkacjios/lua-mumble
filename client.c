@@ -111,9 +111,17 @@ static int client_play(lua_State *l)
 
 	if (error != VORBIS__no_error) {
 		lua_pushnil(l);
-		lua_pushfstring(l, "error opening file %s", filepath);
+		lua_pushfstring(l, "error opening file %s (%d)", filepath, error);
 		return 2;
 	}
+
+	sound->info = stb_vorbis_get_info(sound->ogg);
+
+	/*if (sound->info.sample_rate != AUDIO_SAMPLE_RATE) {
+		lua_pushnil(l);
+		lua_pushfstring(l, "audio has invalid sample rate (%d expected, got %d)", AUDIO_SAMPLE_RATE, sound->info.sample_rate);
+		return 2;
+	}*/
 
 	client->audio_jobs[channel - 1] = sound;
 

@@ -114,7 +114,8 @@ struct MumbleClient {
 	my_timer			audio_timer;
 	my_timer			ping_timer;
 	my_signal			signal;
-	short				audio_buffer[PCM_BUFFER];
+	float				audio_buffer[PCM_BUFFER];
+	float				audio_rebuffer[PCM_BUFFER];
 	uint32_t			audio_sequence;
 	AudioTransmission*	audio_jobs[AUDIO_MAX_CHANNELS];
 	int					audio_frames;
@@ -190,7 +191,8 @@ struct AudioTransmission {
 	MumbleClient *client;
 	bool playing;
 	float volume;
-	short buffer[PCM_BUFFER];
+	float buffer[PCM_BUFFER];
+	stb_vorbis_info info;
 };
 
 typedef struct {

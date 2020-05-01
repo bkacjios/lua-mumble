@@ -75,16 +75,6 @@ int voicepacket_getlength(const VoicePacket *packet)
 	return packet->length;
 }
 
-static void audio_transmission_event_filter(float **pcm, long channels, long samples, void *param) {
-	AudioTransmission *sound = (AudioTransmission *)param;
-	int channel, sample;
-	for (channel = 0; channel < channels; channel++) {
-		for (sample = 0; sample < samples; sample++) {
-			pcm[channel][sample] *= sound->volume * sound->client->volume;
-		}
-	}
-}
-
 void audio_transmission_stop(AudioTransmission* sound)
 {
 	if (sound == NULL) return;
@@ -103,7 +93,7 @@ void audio_transmission_event(MumbleClient *client)
 	long read;
 	long biggest_read = 0;
 
-	uint32_t frame_size = client->audio_frames * AUDIO_SAMPLE_RATE / 100;
+	uint32_t enc_frame_size = client->audio_frames * AUDIO_SAMPLE_RATE / 100;
 
 	memset(client->audio_buffer, 0, sizeof(client->audio_buffer));
 
@@ -114,11 +104,50 @@ void audio_transmission_event(MumbleClient *client)
 		// No sound playing = skip
 		if (sound == NULL) continue;
 
+		int channels = sound->info.channels;
+		uint32_t source_rate = sound->info.sample_rate;
+
+		uint32_t sample_size = client->audio_frames * source_rate / 100;
+
 		memset(sound->buffer, 0, sizeof(sound->buffer));
 
-		read = stb_vorbis_get_samples_short_interleaved(sound->ogg, 1, sound->buffer, frame_size);
+		read = stb_vorbis_get_samples_float_interleaved(sound->ogg, channels, sound->buffer, sample_size * channels);
 
-		if (read < frame_size) {
+		// Downmix all PCM data into a single channel
+		for (int i=0, j=0; i < sample_size * channels; i+=channels) {
+			float total = 0;
+			for (int c=0; c < channels; c++) {
+				// Add all the channels together
+				total += sound->buffer[i + c];
+			}
+			// Average the channels out and apply volume
+			client->audio_rebuffer[j] = total * sound->volume * client->volume / channels;
+			j++;
+		}
+
+		memcpy(sound->buffer, client->audio_rebuffer, sizeof(client->audio_rebuffer));
+
+		// Very very awful resampling, but at least it's something..
+		if (source_rate != AUDIO_SAMPLE_RATE) {
+			// Clear the rebuffer so we can use it again
+			memset(client->audio_rebuffer, 0, sizeof(client->audio_rebuffer));
+
+			// Resample the audio
+			float scale = (float) read / (float) sample_size;
+
+			sample_size = sample_size * (float) AUDIO_SAMPLE_RATE / (float) source_rate;
+			read = ceil(sample_size * scale);
+
+			for (int t=0; t < read; t++) {
+				// Resample the audio to fit within the requested sample_rate
+				client->audio_rebuffer[t*2] = sound->buffer[(int) floor((float) t / AUDIO_SAMPLE_RATE * source_rate) * 2] * 2;
+			}
+
+			// Copy resampled audio back into the main buffer
+			memcpy(sound->buffer, client->audio_rebuffer, sizeof(client->audio_rebuffer));
+		}
+
+		if (read < sample_size) {
 			lua_pushinteger(client->l, i + 1); // Push the channel number
 			mumble_hook_call(client, "OnAudioFinished", 1);
 			audio_transmission_stop(sound);
@@ -141,7 +170,7 @@ void audio_transmission_event(MumbleClient *client)
 	// Nothing to do..
 	if (biggest_read <= 0) return;
 
-	encoded_len = opus_encode(client->encoder, (opus_int16 *)client->audio_buffer, frame_size, output, sizeof(output));
+	encoded_len = opus_encode_float(client->encoder, client->audio_buffer, enc_frame_size, output, sizeof(output));
 
 	if (encoded_len <= 0) return;
 
@@ -149,7 +178,7 @@ void audio_transmission_event(MumbleClient *client)
 	voicepacket_setheader(&packet, VOICEPACKET_OPUS, client->audio_target, client->audio_sequence);
 
 	// If the largest PCM buffer is smaller than our frame size, it has to be the last frame available
-	if (biggest_read < frame_size) {
+	if (biggest_read < enc_frame_size) {
 		// Set 14th bit to 1 to signal end of stream.
 		encoded_len = ((1 << 13) | encoded_len);
 		mumble_hook_call(client, "OnAudioStreamEnd", 0);

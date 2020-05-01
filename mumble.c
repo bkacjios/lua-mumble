@@ -151,7 +151,7 @@ static int mumble_connect(lua_State *l)
 	client->host = server_host_str;
 	client->port = port;
 	client->time = gettime();
-	client->volume = 1;
+	client->volume = 0.5;
 	client->connected = true;
 	client->synced = false;
 	client->audio_target = 0;
@@ -424,6 +424,7 @@ void mumble_hook_call(MumbleClient *client, const char* hook, int nargs)
 				if (lua_pcall(l, nargs, 0, base) != 0) {
 					// Call the OnError hook
 					erroring = true;
+					fprintf(stderr, "%s\n", lua_tostring(l, -1));
 					mumble_hook_call(client, "OnError", 1);
 					erroring = false;
 				}
