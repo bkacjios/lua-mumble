@@ -59,6 +59,10 @@ client:hook("OnServerConfig", function(event)
 	print("OnServerConfig", event)
 end)
 
+client:hook("OnSuggestConfig", function(event)
+	print("OnSuggestConfig", event)
+end)
+
 client:hook("OnAudioFinished", function(channel)
 	print("OnAudioFinished", channel)
 end)

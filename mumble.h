@@ -217,20 +217,20 @@ int luaL_optboolean(lua_State *L, int i, int d);
 const char* eztype(lua_State *L, int i);
 
 void mumble_create_audio_timer(MumbleClient *client, int bitspersec);
-void mumble_disconnect(MumbleClient *client);
+void mumble_disconnect(lua_State* l, MumbleClient *client);
 
-void mumble_client_raw_get(MumbleClient* client);
-MumbleUser* mumble_user_get(MumbleClient* client, uint32_t session);
-void mumble_user_raw_get(MumbleClient* client, uint32_t session);
-void mumble_user_remove(MumbleClient* client, uint32_t session);
+void mumble_client_raw_get(lua_State* l, MumbleClient* client);
+MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session);
+void mumble_user_raw_get(lua_State* l, MumbleClient* client, uint32_t session);
+void mumble_user_remove(lua_State* l, MumbleClient* client, uint32_t session);
 
-MumbleChannel* mumble_channel_get(MumbleClient* client, uint32_t channel_id);
-MumbleChannel* mumble_channel_raw_get(MumbleClient* client, uint32_t channel_id);
-void mumble_channel_remove(MumbleClient* client, uint32_t channel_id);
+MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t channel_id);
+MumbleChannel* mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t channel_id);
+void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_id);
 
-void mumble_hook_call(MumbleClient *client, const char* hook, int nargs);
+void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs);
 
-void audio_transmission_event(MumbleClient *client);
+void audio_transmission_event(lua_State* l, MumbleClient *client);
 void audio_transmission_stop(AudioTransmission* sound);
 
 #define METATABLE_CLIENT		"mumble.client"
@@ -257,11 +257,13 @@ enum {
 	PACKET_CODECVERSION     = 21,
 	PACKET_USERSTATS        = 22,
 	PACKET_REQUESTBLOB      = 23,
+	PACKET_SERVERCONFIG     = 24,
+	PACKET_SUGGESTCONFIG    = 25,
 };
 
 #define packet_send(client, type, message) packet_sendex(client, type, message, 0)
 int packet_sendex(MumbleClient* client, const int type, const void *message, const int length);
 
-typedef void (*Packet_Handler_Func)(MumbleClient *client, lua_State *lua, Packet *packet);
+typedef void (*Packet_Handler_Func)(lua_State *lua, MumbleClient *client, Packet *packet);
 
 const Packet_Handler_Func packet_handler[26];

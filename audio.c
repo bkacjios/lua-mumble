@@ -50,7 +50,7 @@ int voicepacket_setframe(VoicePacket *packet, const uint16_t length, uint8_t *bu
 	int offset;
 
 	// The 14th bit of our length value contains a flag for determining end of stream
-	uint16_t actual_length = (length & 0x1FFF);
+	const uint16_t actual_length = (length & 0x1FFF);
 
 	if (packet == NULL || buffer == NULL || actual_length <= 0 || actual_length >= 0x2000) {
 		return -1;
@@ -83,17 +83,14 @@ void audio_transmission_stop(AudioTransmission* sound)
 	}
 }
 
-void audio_transmission_event(MumbleClient *client)
+void audio_transmission_event(lua_State* l, MumbleClient *client)
 {
 	VoicePacket packet;
 
-	uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
-	uint8_t output[0x1FFF];
-	opus_int32 encoded_len;
 	long read;
 	long biggest_read = 0;
 
-	uint32_t enc_frame_size = client->audio_frames * AUDIO_SAMPLE_RATE / 100;
+	const uint32_t enc_frame_size = client->audio_frames * AUDIO_SAMPLE_RATE / 100;
 
 	memset(client->audio_buffer, 0, sizeof(client->audio_buffer));
 
@@ -104,8 +101,8 @@ void audio_transmission_event(MumbleClient *client)
 		// No sound playing = skip
 		if (sound == NULL) continue;
 
-		int channels = sound->info.channels;
-		uint32_t source_rate = sound->info.sample_rate;
+		const int channels = sound->info.channels;
+		const uint32_t source_rate = sound->info.sample_rate;
 
 		uint32_t sample_size = client->audio_frames * source_rate / 100;
 
@@ -135,6 +132,7 @@ void audio_transmission_event(MumbleClient *client)
 			// Resample the audio
 			float scale = (float) read / (float) sample_size;
 
+			// Adjust these values
 			sample_size = sample_size * (float) AUDIO_SAMPLE_RATE / (float) source_rate;
 			read = ceil(sample_size * scale);
 
@@ -147,9 +145,15 @@ void audio_transmission_event(MumbleClient *client)
 			memcpy(sound->buffer, client->audio_rebuffer, sizeof(client->audio_rebuffer));
 		}
 
+		for (int i = 0; i < read; i++) {
+			// Mix all channels together in the buffer
+			client->audio_buffer[i] = client->audio_buffer[i] + sound->buffer[i];
+		}
+
+		// If the number of samples we read from the OGG file are less than the request sample size, it must be the last bit of audio
 		if (read < sample_size) {
-			lua_pushinteger(client->l, i + 1); // Push the channel number
-			mumble_hook_call(client, "OnAudioFinished", 1);
+			lua_pushinteger(l, i + 1); // Push the channel number
+			mumble_hook_call(l, client, "OnAudioFinished", 1);
 			audio_transmission_stop(sound);
 			client->audio_jobs[i] = NULL;
 		}
@@ -160,19 +164,17 @@ void audio_transmission_event(MumbleClient *client)
 			// stream ends while another is still playing.
 			biggest_read = read;
 		}
-
-		for (int i = 0; i < read; i++) {
-			// Mix all channels together in the buffer
-			client->audio_buffer[i] = client->audio_buffer[i] + sound->buffer[i];
-		}
 	}
 
 	// Nothing to do..
 	if (biggest_read <= 0) return;
 
-	encoded_len = opus_encode_float(client->encoder, client->audio_buffer, enc_frame_size, output, sizeof(output));
+	uint8_t output[0x1FFF];
+	opus_int32 encoded_len = opus_encode_float(client->encoder, client->audio_buffer, enc_frame_size, output, sizeof(output));
 
 	if (encoded_len <= 0) return;
+
+	uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
 
 	voicepacket_init(&packet, packet_buffer);
 	voicepacket_setheader(&packet, VOICEPACKET_OPUS, client->audio_target, client->audio_sequence);
@@ -181,7 +183,7 @@ void audio_transmission_event(MumbleClient *client)
 	if (biggest_read < enc_frame_size) {
 		// Set 14th bit to 1 to signal end of stream.
 		encoded_len = ((1 << 13) | encoded_len);
-		mumble_hook_call(client, "OnAudioStreamEnd", 0);
+		mumble_hook_call(l, client, "OnAudioStreamEnd", 0);
 	}
 
 	voicepacket_setframe(&packet, encoded_len, output);

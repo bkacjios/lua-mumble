@@ -143,7 +143,7 @@ static int user_request_stats(lua_State *l)
 static int user_getClient(lua_State *l)
 {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
-	mumble_client_raw_get(user->client);
+	mumble_client_raw_get(l, user->client);
 	return 1;
 }
 
@@ -164,7 +164,7 @@ static int user_getName(lua_State *l)
 static int user_getChannel(lua_State *l)
 {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
-	mumble_channel_raw_get(user->client, user->channel_id);
+	mumble_channel_raw_get(l, user->client, user->channel_id);
 	return 1;
 }
 

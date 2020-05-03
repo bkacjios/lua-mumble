@@ -213,7 +213,7 @@ static int client_call(lua_State *l)
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	const char* hook = luaL_checkstring(l, 2);
 	int nargs = lua_gettop(l) - 2;
-	mumble_hook_call(client, hook, nargs);
+	mumble_hook_call(l, client, hook, nargs);
 	return 0;
 }
 
@@ -336,7 +336,7 @@ static int client_index(lua_State *l)
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
 	if (strcmp(lua_tostring(l, 2), "me") == 0 && client->session) {
-		mumble_user_raw_get(client, client->session);
+		mumble_user_raw_get(l, client, client->session);
 		return 1;
 	} else if (strcmp(lua_tostring(l, 2), "host") == 0&& client->host) {
 		lua_pushstring(l, client->host);

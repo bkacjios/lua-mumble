@@ -10,7 +10,8 @@ static void signal_event(struct ev_loop *loop, ev_signal *w_, int revents)
 {
 	struct my_signal *w = (struct my_signal *) w_;
 	MumbleClient *client = w->client;
-	mumble_disconnect(client);
+	lua_State *l = client->l;
+	mumble_disconnect(l, client);
 	ev_break(EV_DEFAULT, EVBREAK_ALL);
 }
 
@@ -19,9 +20,10 @@ static void mumble_audio_timer(EV_P_ ev_timer *w_, int revents)
 	struct my_timer *w = (struct my_timer *) w_;
 
 	MumbleClient *client = w->client;
+	lua_State *l = client->l;
 
 	if (client->connected)
-		audio_transmission_event(client);
+		audio_transmission_event(l, client);
 }
 
 static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
@@ -29,6 +31,7 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 	struct my_timer *w = (struct my_timer *) w_;
 
 	MumbleClient *client = w->client;
+	lua_State *l = client->l;
 
 	MumbleProto__Ping ping = MUMBLE_PROTO__PING__INIT;
 
@@ -50,7 +53,7 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 		// Push the timestamp we are sending to the server
 		lua_pushinteger(client->l, ts);
 		lua_setfield(client->l, -2, "timestamp");
-	mumble_hook_call(client, "OnClientPing", 1);
+	mumble_hook_call(l, client, "OnClientPing", 1);
 	packet_send(client, PACKET_PING, &ping);
 }
 
@@ -70,7 +73,7 @@ static void socket_read_event(struct ev_loop *loop, ev_io *w_, int revents)
 	if (ret <= 0) {
 		int err = SSL_get_error(client->ssl, ret);
 		if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL) {
-			mumble_disconnect(client);
+			mumble_disconnect(l, client);
 		}
 		ev_break(loop, EVBREAK_ALL);
 		return;
@@ -109,7 +112,7 @@ static void socket_read_event(struct ev_loop *loop, ev_io *w_, int revents)
 	Packet_Handler_Func handler = packet_handler[packet_read.type];
 
 	if (handler != NULL) {
-		handler(client, l, &packet_read);
+		handler(l, client, &packet_read);
 	}
 
 	if (SSL_pending(client->ssl) > 0) {
@@ -329,10 +332,10 @@ static int mumble_loop(lua_State *l)
 	return 0;
 }
 
-void mumble_disconnect(MumbleClient *client)
+void mumble_disconnect(lua_State *l, MumbleClient *client)
 {
 	if (client->connected) {
-		mumble_hook_call(client, "OnDisconnect", 0);
+		mumble_hook_call(l, client, "OnDisconnect", 0);
 		client->connected = false;
 	}
 
@@ -363,10 +366,8 @@ static int traceback(lua_State *l)
 	return 1;
 }
 
-void mumble_hook_call(MumbleClient *client, const char* hook, int nargs)
+void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs)
 {
-	lua_State* l = client->l;
-
 	int top = lua_gettop(l);
 
 	// Get hook table
@@ -402,7 +403,7 @@ void mumble_hook_call(MumbleClient *client, const char* hook, int nargs)
 			// Copy function
 			lua_pushvalue(l, -2);
 
-			//mumble_client_raw_get(client);
+			//mumble_client_raw_get(l, client);
 
 			for (int i = 1; i <= nargs; i++) {
 				// Copy number of arguments
@@ -425,7 +426,7 @@ void mumble_hook_call(MumbleClient *client, const char* hook, int nargs)
 					// Call the OnError hook
 					erroring = true;
 					fprintf(stderr, "%s\n", lua_tostring(l, -1));
-					mumble_hook_call(client, "OnError", 1);
+					mumble_hook_call(l, client, "OnError", 1);
 					erroring = false;
 				}
 				lua_remove(l, base);
@@ -445,10 +446,8 @@ void mumble_hook_call(MumbleClient *client, const char* hook, int nargs)
 	}
 }
 
-MumbleUser* mumble_user_get(MumbleClient* client, uint32_t session) {
+MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session) {
 	MumbleUser* user = NULL;
-
-	lua_State* l = client->l;
 
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
 
@@ -501,24 +500,21 @@ MumbleUser* mumble_user_get(MumbleClient* client, uint32_t session) {
 	return user;
 }
 
-void mumble_client_raw_get(MumbleClient* client) {
-	lua_State* l = client->l;
+void mumble_client_raw_get(lua_State* l, MumbleClient* client) {
 	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CONNECTIONS);
 	lua_pushinteger(l, client->self);
 	lua_gettable(l, -2);
 	lua_remove(l, -2);
 }
 
-void mumble_user_raw_get(MumbleClient* client, uint32_t session) {
-	lua_State* l = client->l;
+void mumble_user_raw_get(lua_State* l, MumbleClient* client, uint32_t session) {
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
 	lua_pushinteger(l, session);
 	lua_gettable(l, -2);
 	lua_remove(l, -2);
 }
 
-void mumble_user_remove(MumbleClient* client, uint32_t session) {
-	lua_State* l = client->l;
+void mumble_user_remove(lua_State* l, MumbleClient* client, uint32_t session) {
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
 		lua_pushinteger(l, session);
 		lua_pushnil(l);
@@ -526,9 +522,8 @@ void mumble_user_remove(MumbleClient* client, uint32_t session) {
 	lua_pop(l, 1);
 }
 
-MumbleChannel* mumble_channel_raw_get(MumbleClient* client, uint32_t channel_id)
+MumbleChannel* mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t channel_id)
 {
-	lua_State* l = client->l;
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
 	lua_pushinteger(l, channel_id);
 	lua_gettable(l, -2);
@@ -536,11 +531,9 @@ MumbleChannel* mumble_channel_raw_get(MumbleClient* client, uint32_t channel_id)
 	return lua_touserdata(l, -1);
 }
 
-MumbleChannel* mumble_channel_get(MumbleClient* client, uint32_t channel_id)
+MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t channel_id)
 {
 	MumbleChannel* channel = NULL;
-
-	lua_State* l = client->l;
 
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
 
@@ -583,9 +576,8 @@ MumbleChannel* mumble_channel_get(MumbleClient* client, uint32_t channel_id)
 	return channel;
 }
 
-void mumble_channel_remove(MumbleClient* client, uint32_t channel_id)
+void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_id)
 {
-	lua_State* l = client->l;
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
 		lua_pushinteger(l, channel_id);
 		lua_pushnil(l);
@@ -608,14 +600,27 @@ int luaopen_mumble(lua_State *l)
 
 	luaL_register(l, "mumble", mumble);
 	{
+		// Create a table of all RejectType enums
 		lua_newtable(l);
 		for (uint32_t i = 0; i < mumble_proto__reject__reject_type__descriptor.n_values; i++) {
 			ProtobufCEnumValueIndex reject = mumble_proto__reject__reject_type__descriptor.values_by_name[i];
 			lua_pushnumber(l, reject.index);
-			lua_setfield(l, -2, reject.name);
+			lua_pushstring(l, reject.name);
+			lua_settable(l, -3);
 		}
 		lua_setfield(l, -2, "reject");
 
+		// Create a table of all DenyType enums
+		lua_newtable(l);
+		for (uint32_t i = 0; i < mumble_proto__permission_denied__deny_type__descriptor.n_values; i++) {
+			ProtobufCEnumValueIndex deny = mumble_proto__permission_denied__deny_type__descriptor.values_by_name[i];
+			lua_pushnumber(l, deny.index);
+			lua_pushstring(l, deny.name);
+			lua_settable(l, -3);
+		}
+		lua_setfield(l, -2, "deny");
+
+		// Register client metatable
 		luaL_newmetatable(l, METATABLE_CLIENT);
 		{
 			lua_pushvalue(l, -1);
@@ -624,6 +629,7 @@ int luaopen_mumble(lua_State *l)
 		luaL_register(l, NULL, mumble_client);
 		lua_setfield(l, -2, "client");
 
+		// Register user metatable
 		luaL_newmetatable(l, METATABLE_USER);
 		{
 			lua_pushvalue(l, -1);
@@ -632,6 +638,7 @@ int luaopen_mumble(lua_State *l)
 		luaL_register(l, NULL, mumble_user);
 		lua_setfield(l, -2, "user");
 
+		// Register channel metatable
 		luaL_newmetatable(l, METATABLE_CHAN);
 		{
 			lua_pushvalue(l, -1);
@@ -640,12 +647,15 @@ int luaopen_mumble(lua_State *l)
 		luaL_register(l, NULL, mumble_channel);
 		lua_setfield(l, -2, "channel");
 
+		// Register encoder metatable
 		luaL_newmetatable(l, METATABLE_ENCODER);
 		{
 			lua_pushvalue(l, -1);
 			lua_setfield(l, -2, "__index");
 		}
 		luaL_register(l, NULL, mumble_encoder);
+
+		// If you call the encoder metatable as a function it will return a new encoder object
 		lua_newtable(l);
 		{
 			lua_pushcfunction(l, mumble_encoder_new);
@@ -654,12 +664,15 @@ int luaopen_mumble(lua_State *l)
 		lua_setmetatable(l, -2);
 		lua_setfield(l, -2, "encoder");
 
+		// Register voice target metatable
 		luaL_newmetatable(l, METATABLE_VOICETARGET);
 		{
 			lua_pushvalue(l, -1);
 			lua_setfield(l, -2, "__index");
 		}
 		luaL_register(l, NULL, mumble_target);
+
+		// If you call the voice target metatable as a function it will return a new voice target object
 		lua_newtable(l);
 		{
 			lua_pushcfunction(l, mumble_target_new);

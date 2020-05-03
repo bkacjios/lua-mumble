@@ -60,7 +60,7 @@ static int channel_remove(lua_State *l)
 static int channel_getClient(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
-	mumble_client_raw_get(channel->client);
+	mumble_client_raw_get(l, channel->client);
 	return 1;
 }
 
@@ -88,7 +88,7 @@ static int channel_getParent(lua_State *l)
 		return 1;
 	}
 	
-	mumble_channel_raw_get(channel->client, channel->parent);
+	mumble_channel_raw_get(l, channel->client, channel->parent);
 	return 1;
 }
 
@@ -249,7 +249,7 @@ static int channel_getLinks(lua_State *l)
 	// Add all linked channels to the table
     while (current != NULL) {
 		lua_pushinteger(l, current->data);
-		mumble_channel_raw_get(channel->client, current->data);
+		mumble_channel_raw_get(l, channel->client, current->data);
 		lua_settable(l, -3);
 
         current = current->next;
@@ -273,7 +273,7 @@ int channel_call(lua_State *l)
 		if (strcmp(pch, ".") == 0) {
 			current = channel;
 		} else if(strcmp(pch, "..") == 0) {
-			current = mumble_channel_raw_get(channel->client, channel->parent);
+			current = mumble_channel_raw_get(l, channel->client, channel->parent);
 		} else {
 			lua_rawgeti(l, LUA_REGISTRYINDEX, self->client->channels);
 			lua_pushnil(l);
@@ -300,7 +300,7 @@ int channel_call(lua_State *l)
 		pch = strtok(NULL, "/\\");
 	}
 
-	mumble_channel_raw_get(channel->client, channel->channel_id);
+	mumble_channel_raw_get(l, channel->client, channel->channel_id);
 	return 1;
 }
 

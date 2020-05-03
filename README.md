@@ -297,6 +297,41 @@ mumble.voicetarget:setLinks(Boolean followlinks)
 mumble.voicetarget:setChildren(Boolean followchildren)
 ```
 
+### mumble.reject
+
+```lua
+Table mumble.reject = {
+	[0] = "None",
+	[1] = "WrongVersion",
+	[2] = "InvalidUsername",
+	[3] = "WrongUserPW",
+	[4] = "WrongServerPW",
+	[5] = "UsernameInUse",
+	[6] = "ServerFull",
+	[7] = "NoCertificate",
+	[8] = "AuthenticatorFail",
+}
+```
+
+### mumble.deny
+
+```lua
+Table mumble.deny = {
+	[0]  = "Text",
+	[1]  = "Permission",
+	[2]  = "SuperUser",
+	[3]  = "ChannelName",
+	[4]  = "TextTooLong",
+	[5]  = "H9K",
+	[6]  = "TemporaryChannel",
+	[7]  = "MissingCertificate",
+	[8]  = "UserName",
+	[9]  = "ChannelFull",
+	[10] = "NestingLimit",
+	[11] = "ChannelCountLimit",
+}
+```
+
 ## hooks
 
 ### `OnServerVersion (Table event)`
@@ -316,10 +351,11 @@ ___
 ### `OnServerPing (Table event)`
 
 Called when the server sends a responce to a ping request.
-The mumble.client will automatically ping the server every 15 seconds within mumble.loop()
+The mumble.client will automatically ping the server every 30 seconds within mumble.loop()
 
 ``` lua
 Table event = {
+	["ping"]			= Number ping,
 	["timestamp"]		= Number timestamp,
 	["good"]			= Number good,
 	["late"]			= Number late,
@@ -526,6 +562,19 @@ Table event = {
 	["message_length"]			= Number message_length,
 	["image_message_length"]	= Number image_message_length,
 	["max_users"]				= Number max_users,
+}
+```
+___
+
+### `OnSuggestConfig (Table event)`
+
+Called when the servers suggest the client to use specific settings.
+
+``` lua
+Table event = {
+	["version"]					= Number version,
+	["positional"]				= Boolean positional,
+	["push_to_talk"]			= Boolean push_to_talk,
 }
 ```
 ___
