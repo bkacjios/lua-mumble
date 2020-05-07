@@ -8,13 +8,41 @@ A lua module to connect to a mumble server and interact with it
 sudo apt-get install libluajit-5.1-dev protobuf-c libprotobuf-c-dev libssl-dev libopus-dev libev-dev
 ```
 
-## Usage
+Note: `libluajit-5.1-dev` can be substituted with `liblua5.1-0-dev`, `liblua5.2-dev`, or `liblua5.3-dev` depending on your needs.
+
+## Make usage
+
+```bash
+# Removes all object files, generated protobuf c/h files, and mumble.so
+make clean
+
+# Makes everything
+make all
+
+# Make everything with debug flags for use with a debugger
+make debug
+
+# Makes only the protobuf c files in the ./proto folder
+make proto
+
+# Copies mumble.so in /usr/local/lib/lua/5.1/
+make install
+
+# Removes mumble.so in /usr/local/lib/lua/5.1/
+make uninstall
+```
+
+## Scripting documentation
 
 ### mumble
 
 ``` lua
+-- The mumble library is returned by a require call
+local mumble = require("mumble")
+
 -- Connect to a mumble server
--- Returns nil and an error string if something went wrong
+-- Returns client metatable object
+-- Can return nil and an error string if something went wrong
 mumble.client, [ String error ] = mumble.connect(String host, Number port, String certificate file path, String key file path)
 
 -- Main loop that handles all events, ping, and audio processing
@@ -75,11 +103,11 @@ Table hooks = mumble.client:getHooks()
 
 -- Structure
 Table hooks = {
-	["onServerSync"] = {
+	["OnServerSync"] = {
 		["hook"] = function: 0xffffffff,
 		["do stuff on connection"] = function: 0xffffffff,
 	},
-	["onServerPing"] = {
+	["OnServerPing"] = {
 		["hook"] = function: 0xffffffff,
 		["do stuff on ping"] = function: 0xffffffff,
 	}
@@ -581,8 +609,8 @@ ___
 
 ### `OnError (String error)`
 
-Called when a hook is erroring.
-WARNING: Erroring within this hook will cause the script to exit!
+Called when an error occurs inside a hook.
+WARNING: Erroring within this hook will cause an error on the line where mumble.loop() is called, causing the script to exit
 ___
 
 ### `OnClientPing (Table event)`
