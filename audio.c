@@ -49,7 +49,7 @@ int voicepacket_setframe(VoicePacket *packet, const uint16_t length, uint8_t *bu
 {
 	int offset;
 
-	// The 14th bit of our length value contains a flag for determining end of stream
+	// Strip out the 14th bit that contains end of stream flag to get actual length of packet
 	const uint16_t actual_length = (length & 0x1FFF);
 
 	if (packet == NULL || buffer == NULL || actual_length <= 0 || actual_length >= 0x2000) {

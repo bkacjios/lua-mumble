@@ -10,20 +10,17 @@ static void signal_event(struct ev_loop *loop, ev_signal *w_, int revents)
 {
 	struct my_signal *w = (struct my_signal *) w_;
 	MumbleClient *client = w->client;
-	lua_State *l = client->l;
-	mumble_disconnect(l, client);
+	mumble_disconnect(w->l, client);
 	ev_break(EV_DEFAULT, EVBREAK_ALL);
 }
 
 static void mumble_audio_timer(EV_P_ ev_timer *w_, int revents)
 {
 	struct my_timer *w = (struct my_timer *) w_;
-
 	MumbleClient *client = w->client;
-	lua_State *l = client->l;
 
 	if (client->connected)
-		audio_transmission_event(l, client);
+		audio_transmission_event(w->l, client);
 }
 
 static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
@@ -31,7 +28,7 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 	struct my_timer *w = (struct my_timer *) w_;
 
 	MumbleClient *client = w->client;
-	lua_State *l = client->l;
+	lua_State *l = w->l;
 
 	MumbleProto__Ping ping = MUMBLE_PROTO__PING__INIT;
 
@@ -49,10 +46,10 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 	ping.has_tcp_ping_var = true;
 	ping.tcp_ping_var = client->tcp_ping_var;
 
-	lua_newtable(client->l);
+	lua_newtable(l);
 		// Push the timestamp we are sending to the server
-		lua_pushinteger(client->l, ts);
-		lua_setfield(client->l, -2, "timestamp");
+		lua_pushinteger(l, ts);
+		lua_setfield(l, -2, "timestamp");
 	mumble_hook_call(l, client, "OnClientPing", 1);
 	packet_send(client, PACKET_PING, &ping);
 }
@@ -62,7 +59,7 @@ static void socket_read_event(struct ev_loop *loop, ev_io *w_, int revents)
 	struct my_io *w = (struct my_io *) w_;
 
 	MumbleClient *client = w->client;
-	lua_State *l = client->l;
+	lua_State *l = w->l;
 
 	static Packet packet_read;
 
@@ -139,8 +136,6 @@ static int mumble_connect(lua_State *l)
 
 	client->self = luaL_ref(l, -2);
 	lua_pop(l, 1);
-
-	client->l = l;
 
 	lua_newtable(l);
 	client->hooks = luaL_ref(l, LUA_REGISTRYINDEX);
@@ -257,9 +252,16 @@ static int mumble_connect(lua_State *l)
 		return 2;
 	}
 
+	client->signal.l = l;
 	client->signal.client = client;
+
+	client->socket_io.l = l;
 	client->socket_io.client = client;
+
+	client->audio_timer.l = l;
 	client->audio_timer.client = client;
+	
+	client->ping_timer.l = l;
 	client->ping_timer.client = client;
 
 	// Create a signal event.

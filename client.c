@@ -62,7 +62,7 @@ static int client_auth(lua_State *l)
 static int client_disconnect(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	mumble_disconnect(client);
+	mumble_disconnect(l, client);
 	return 0;
 }
 
@@ -103,7 +103,6 @@ static int client_play(lua_State *l)
 
 	sound->playing = true;
 	sound->client = client;
-	sound->lua = l;
 	sound->volume = volume;
 
 	int error;
@@ -313,7 +312,7 @@ static int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
-	mumble_disconnect(client);
+	mumble_disconnect(l, client);
 
 	luaL_unref(l, LUA_REGISTRYINDEX, client->self);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->hooks);

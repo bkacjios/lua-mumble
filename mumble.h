@@ -80,20 +80,22 @@ typedef struct my_signal my_signal;
 struct my_io {
 	ev_io io;
 	MumbleClient* client;
+	lua_State* l;
 };
 
 struct my_timer {
 	ev_timer timer;
 	MumbleClient* client;
+	lua_State* l;
 };
 
 struct my_signal {
 	ev_signal signal;
 	MumbleClient* client;
+	lua_State* l;
 };
 
 struct MumbleClient {
-	lua_State*			l;
 	int					self;
 	int					socket;
 	SSL_CTX				*ssl_context;
@@ -185,7 +187,6 @@ typedef struct {
 } Packet;
 
 struct AudioTransmission {
-	FILE *file;
 	lua_State *lua;
 	stb_vorbis *ogg;
 	MumbleClient *client;
