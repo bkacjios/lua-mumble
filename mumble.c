@@ -5,10 +5,11 @@
 #include "client.h"
 #include "user.h"
 #include "target.h"
+#include "timer.h"
 
 static void signal_event(struct ev_loop *loop, ev_signal *w_, int revents)
 {
-	struct my_signal *w = (struct my_signal *) w_;
+	my_signal *w = (my_signal *) w_;
 	MumbleClient *client = w->client;
 	mumble_disconnect(w->l, client);
 	ev_break(EV_DEFAULT, EVBREAK_ALL);
@@ -16,7 +17,7 @@ static void signal_event(struct ev_loop *loop, ev_signal *w_, int revents)
 
 static void mumble_audio_timer(EV_P_ ev_timer *w_, int revents)
 {
-	struct my_timer *w = (struct my_timer *) w_;
+	my_timer *w = (my_timer *) w_;
 	MumbleClient *client = w->client;
 
 	if (client->connected)
@@ -25,7 +26,7 @@ static void mumble_audio_timer(EV_P_ ev_timer *w_, int revents)
 
 static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 {
-	struct my_timer *w = (struct my_timer *) w_;
+	my_timer *w = (my_timer *) w_;
 
 	MumbleClient *client = w->client;
 	lua_State *l = w->l;
@@ -56,7 +57,7 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 
 static void socket_read_event(struct ev_loop *loop, ev_io *w_, int revents)
 {
-	struct my_io *w = (struct my_io *) w_;
+	my_io *w = (my_io *) w_;
 
 	MumbleClient *client = w->client;
 	lua_State *l = w->l;
@@ -362,7 +363,7 @@ static int mumble_getConnections(lua_State *l)
 
 static bool erroring = false;
 
-static int traceback(lua_State *l)
+int mumble_traceback(lua_State *l)
 {
 	luaL_traceback(l, l, lua_tostring(l, 1), 1);
 	return 1;
@@ -421,7 +422,7 @@ void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int 
 				lua_call(l, nargs, 0);
 			} else {
 				int base = lua_gettop(l) - nargs;
-				lua_pushcfunction(l, traceback);
+				lua_pushcfunction(l, mumble_traceback);
 				lua_insert(l, base);
 
 				if (lua_pcall(l, nargs, 0, base) != 0) {
@@ -682,6 +683,23 @@ int luaopen_mumble(lua_State *l)
 		}
 		lua_setmetatable(l, -2);
 		lua_setfield(l, -2, "voicetarget");
+
+		// Register timer metatable
+		luaL_newmetatable(l, METATABLE_TIMER);
+		{
+			lua_pushvalue(l, -1);
+			lua_setfield(l, -2, "__index");
+		}
+		luaL_register(l, NULL, mumble_timer);
+
+		// If you call the voice target metatable as a function it will return a new voice target object
+		lua_newtable(l);
+		{
+			lua_pushcfunction(l, mumble_timer_new);
+			lua_setfield(l, -2, "__call");
+		}
+		lua_setmetatable(l, -2);
+		lua_setfield(l, -2, "timer");
 	}
 
 	lua_newtable(l);

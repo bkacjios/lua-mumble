@@ -52,6 +52,10 @@ mumble.loop()
 -- The client's user
 mumble.user = mumble.client.me
 
+-- A new timer object
+-- The timer itself will do a best-effort at avoiding drift, that is, if you configure a timer to trigger every 10 seconds, then it will normally trigger at exactly 10 second intervals. If, however, your program cannot keep up with the timer (because it takes longer than those 10 seconds to do stuff) the timer will not fire more than once per event loop iteration.
+mumble.timer = mumble.timer()
+
 -- A new voicetarget object
 mumble.voicetarget = mumble.voicetarget()
 
@@ -301,6 +305,30 @@ mumble.channel:link(mumble.channel ...)
 
 -- Attempts to unlink channel(s)
 mumble.channel:unlink(mumble.channel ...)
+```
+
+### mumble.timer
+
+``` lua
+-- Configure the timer to trigger after after seconds (fractional and negative values are supported).
+-- If repeat is 0, then it will automatically be stopped once the timeout is reached.
+-- If it is positive, then the timer will automatically be configured to trigger again repeat seconds later, again, and again, until stopped manually.
+mumble.timer:start(Function callback, Number after, Number repeat = 0)
+
+-- Configure the timer to trigger after after seconds (fractional and negative values are supported).
+-- If repeat is 0., then it will automatically be stopped once the timeout is reached.
+-- If it is positive, then the timer will automatically be configured to trigger again repeat seconds later, again, and again, until stopped manually.
+mumble.timer:set(Number after, Number repeat = 0)
+
+-- This will act as if the timer timed out, and restarts it again if it is repeating. It basically works like calling mumble.timer.stop, updating the timeout to the repeat value and calling mumble.timer.start.
+-- The exact semantics are as in the following rules, all of which will be applied to the watcher:
+-- If the timer is pending, the pending status is always cleared.
+-- If the timer is started but non-repeating, stop it (as if it timed out, without invoking it).
+-- If the timer is repeating, make the repeat value the new timeout and start the timer, if necessary.
+mumble.timer:again()
+
+-- Stops the timer
+mumble.timer:stop()
 ```
 
 ### mumble.voicetarget

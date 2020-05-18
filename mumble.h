@@ -75,6 +75,7 @@ typedef struct MumbleUser MumbleUser;
 typedef struct LinkNode LinkNode;
 typedef struct my_io my_io;
 typedef struct my_timer my_timer;
+typedef struct lua_timer lua_timer;
 typedef struct my_signal my_signal;
 
 struct my_io {
@@ -87,6 +88,13 @@ struct my_timer {
 	ev_timer timer;
 	MumbleClient* client;
 	lua_State* l;
+};
+
+struct lua_timer {
+	ev_timer timer;
+	lua_State* l;
+	int self;
+	int callback;
 };
 
 struct my_signal {
@@ -229,6 +237,7 @@ MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t c
 MumbleChannel* mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t channel_id);
 void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_id);
 
+int mumble_traceback(lua_State *l);
 void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs);
 
 void audio_transmission_event(lua_State* l, MumbleClient *client);
@@ -239,6 +248,7 @@ void audio_transmission_stop(AudioTransmission* sound);
 #define METATABLE_CHAN			"mumble.channel"
 #define METATABLE_ENCODER		"mumble.encoder"
 #define METATABLE_VOICETARGET	"mumble.voicetarget"
+#define METATABLE_TIMER			"mumble.timer"
 
 /*--------------------------------
 	MUMBLE PACKET FUNCTIONS
