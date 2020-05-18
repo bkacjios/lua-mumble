@@ -64,6 +64,12 @@
 
 #define PING_TIMEOUT 30
 
+#define UDP_CELT_ALPHA 0
+#define UDP_PING 1
+#define UDP_SPEEX 2
+#define UDP_CELT_BETA 3
+#define UDP_OPUS 4
+
 /*
  * Structures
  */
@@ -180,6 +186,7 @@ struct MumbleUser
 	char*			comment;
 	char*			comment_hash;
 	size_t			comment_hash_len;
+	bool			speaking;
 	bool			recording;
 	bool			priority_speaker;
 	char*			texture;
@@ -224,6 +231,8 @@ void debugstack(lua_State *l, const char* text);
 int luaL_checkboolean(lua_State *L, int i);
 int luaL_optboolean(lua_State *L, int i, int d);
 const char* eztype(lua_State *L, int i);
+
+int64_t util_get_varint(uint8_t buffer[], int *len);
 
 void mumble_create_audio_timer(MumbleClient *client, int bitspersec);
 void mumble_disconnect(lua_State* l, MumbleClient *client);

@@ -124,6 +124,60 @@ void packet_server_version(lua_State *l, MumbleClient *client, Packet *packet)
 	mumble_proto__version__free_unpacked(version, NULL);
 }
 
+void packet_udp_tunnel(lua_State *l, MumbleClient *client, Packet *packet)
+{
+	unsigned char header	= packet->buffer[0];
+	unsigned char codec		= header >> 5;
+	unsigned char target	= header >> 31;
+
+	int read = 1;
+	int session = util_get_varint(packet->buffer + read, &read);
+	int sequence = util_get_varint(packet->buffer + read, &read);
+	
+	bool speaking = false;
+	MumbleUser* user = mumble_user_get(l, client, session);
+
+	if (codec == UDP_SPEEX || codec == UDP_CELT_ALPHA || codec == UDP_CELT_BETA) {
+		int header = packet->buffer[read];
+		int len = header & 0x7F;
+		speaking = ((header & 0x80) == 0);
+	} else if (codec == UDP_OPUS) {
+		int header = util_get_varint(packet->buffer + read, &read);
+		int len = header & 0x1FFF;
+		speaking = ((header & 0x2000) == 0);
+	}
+
+	bool state_change = false;
+
+	if (user->speaking != speaking) {
+		user->speaking = speaking;
+		state_change = true;
+	}
+
+	if (state_change && speaking) {
+		mumble_user_raw_get(l, client, session);
+		mumble_hook_call(l, client, "OnUserStartSpeaking", 1);
+	}
+
+	lua_newtable(l);
+		lua_pushnumber(l, codec);
+		lua_setfield(l, -2, "codec");
+		lua_pushnumber(l, target);
+		lua_setfield(l, -2, "target");
+		lua_pushnumber(l, sequence);
+		lua_setfield(l, -2, "sequence");
+		mumble_user_raw_get(l, client, session);
+		lua_setfield(l, -2, "user");
+		lua_pushboolean(l, speaking);
+		lua_setfield(l, -2, "speaking");
+	mumble_hook_call(l, client, "OnUserSpeak", 1);
+
+	if (state_change && !speaking) {
+		mumble_user_raw_get(l, client, session);
+		mumble_hook_call(l, client, "OnUserStopSpeaking", 1);
+	}
+}
+
 void packet_server_ping(lua_State *l, MumbleClient *client, Packet *packet)
 {
 	MumbleProto__Ping *ping = mumble_proto__ping__unpack(NULL, packet->length, packet->buffer);
@@ -791,7 +845,7 @@ void packet_suggest_config(lua_State *l, MumbleClient *client, Packet *packet)
 
 const Packet_Handler_Func packet_handler[26] = {
 	/*  0 */ packet_server_version, // Version
-	/*  1 */ NULL, // UDPTunnel
+	/*  1 */ packet_udp_tunnel, // UDPTunnel
 	/*  2 */ NULL, // Authenticate
 	/*  3 */ packet_server_ping, // Ping
 	/*  4 */ packet_server_reject, // Reject

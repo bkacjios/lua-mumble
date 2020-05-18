@@ -304,6 +304,13 @@ int channel_call(lua_State *l)
 	return 1;
 }
 
+static int channel_gc(lua_State *l)
+{
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+	luaL_unref(l, LUA_REGISTRYINDEX, channel->data);
+	return 0;
+}
+
 static int channel_tostring(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
@@ -359,6 +366,7 @@ const luaL_Reg mumble_channel[] = {
 	{"getLinks", channel_getLinks},
 
 	{"__call", channel_call},
+	{"__gc", channel_gc},
 	{"__tostring", channel_tostring},
 	{"__newindex", channel_newindex},
 	{"__index", channel_index},

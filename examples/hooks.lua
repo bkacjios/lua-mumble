@@ -39,6 +39,18 @@ client:hook("OnUserState", function(event)
 	print("OnUserState", event)
 end)
 
+client:hook("OnUserStartSpeaking", function(user)
+	print("OnUserStartSpeaking", user)
+end)
+
+client:hook("OnUserSpeak", function(event)
+	print("OnUserSpeak", event)
+end)
+
+client:hook("OnUserStopSpeaking", function(user)
+	print("OnUserStopSpeaking", user)
+end)
+
 client:hook("OnMessage", function(event)
 	print("OnMessage", event)
 end)

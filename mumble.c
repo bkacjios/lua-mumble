@@ -486,6 +486,7 @@ MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session
 			user->comment = "";
 			user->comment_hash = "";
 			user->comment_hash_len = 0;
+			user->speaking = false;
 			user->recording = false;
 			user->priority_speaker = false;
 			user->texture = "";

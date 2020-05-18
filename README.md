@@ -229,6 +229,9 @@ String comment = mumble.user:getComment()
 -- Returns the comments SHA1 hash
 String hash = mumble.user:getCommentHash()
 
+-- Returns if the user is speaking or not
+Boolean speaking = mumble.user:isSpeaking()
+
 -- Returns if the user is recording or not
 Boolean recording = mumble.user:isRecording()
 
@@ -513,6 +516,31 @@ Table event = {
 ```
 ___
 
+### `OnUserStartSpeaking (mumble.user)`
+
+Called when a user starts to transmit voice data.
+___
+
+### `OnUserStopSpeaking (mumble.user)`
+
+Called when a user stops transmitting voice data.
+___
+
+### `OnUserSpeak (Table event)`
+
+Called when a user starts to transmit voice data.
+
+``` lua
+Table event = {
+	["user"]		= mumble.user user,
+	["codec"]		= Number codec,
+	["target"]		= Number target,
+	["sequence"]	= Number sequence,
+	["speaking"]	= Boolean speaking,
+}
+```
+___
+
 ### `OnMessage (Table event)`
 
 Called when the bot receives a text message
@@ -661,4 +689,3 @@ ___
 ### `OnAudioStreamEnd ()`
 
 Called when all audio channels have finished playing.
-___

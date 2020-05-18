@@ -227,6 +227,13 @@ static int user_getCommentHash(lua_State *l)
 	return 1;
 }
 
+static int user_isSpeaking(lua_State *l)
+{
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+	lua_pushboolean(l, user->speaking);
+	return 1;
+}
+
 static int user_isRecording(lua_State *l)
 {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
@@ -344,6 +351,7 @@ const luaL_Reg mumble_user[] = {
 	{"isSuppressed", user_isSuppressed},
 	{"getComment", user_getComment},
 	{"getCommentHash", user_getCommentHash},
+	{"isSpeaking", user_isSpeaking},
 	{"isRecording", user_isRecording},
 	{"isPrioritySpeaker", user_isPrioritySpeaker},
 	{"getTexture", user_getTexture},
