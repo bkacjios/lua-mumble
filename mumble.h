@@ -129,7 +129,7 @@ struct MumbleClient {
 	my_io				socket_io;
 	my_timer			audio_timer;
 	my_timer			ping_timer;
-	my_signal			signal;
+	my_signal           signal;
 	float				audio_buffer[PCM_BUFFER];
 	float				audio_rebuffer[PCM_BUFFER];
 	uint32_t			audio_sequence;
@@ -163,6 +163,8 @@ struct MumbleChannel {
 	int32_t			position;
 	uint32_t		max_users;
 	LinkNode*		links;
+	bool			is_enter_restricted;
+	bool			can_enter;
 };
 
 void list_add(LinkNode** head_ref, uint32_t value);
@@ -263,22 +265,36 @@ void audio_transmission_stop(AudioTransmission* sound);
 	MUMBLE PACKET FUNCTIONS
 --------------------------------*/
 
+#define NUM_PACKETS 27
+
 enum {
 	PACKET_VERSION          = 0,
 	PACKET_UDPTUNNEL        = 1,
 	PACKET_AUTHENTICATE     = 2,
 	PACKET_PING             = 3,
+	PACKET_SERVERREJECT     = 4,
+	PACKET_SERVERSYNC       = 5,
 	PACKET_CHANNELREMOVE    = 6,
 	PACKET_CHANNELSTATE     = 7,
 	PACKET_USERREMOVE       = 8,
 	PACKET_USERSTATE        = 9,
+	PACKET_BANLIST          = 10,
 	PACKET_TEXTMESSAGE      = 11,
+	PACKET_PERMISSIONDENIED = 12,
+	PACKET_ACL              = 13,
+	PACKET_QUERYUSERS       = 14,
+	PACKET_CRYPTSETUP       = 15,
+	PACKET_CONTEXTACTIONADD = 16,
+	PACKET_CONTEXTACTION    = 17,
+	PACKET_USERLIST         = 18,
 	PACKET_VOICETARGET      = 19,
+	PACKET_PERMISSIONQUERY  = 20,
 	PACKET_CODECVERSION     = 21,
 	PACKET_USERSTATS        = 22,
 	PACKET_REQUESTBLOB      = 23,
 	PACKET_SERVERCONFIG     = 24,
 	PACKET_SUGGESTCONFIG    = 25,
+	PACKET_PLUGINDATA       = 26,
 };
 
 #define packet_send(client, type, message) packet_sendex(client, type, message, 0)
@@ -286,4 +302,4 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 
 typedef void (*Packet_Handler_Func)(lua_State *lua, MumbleClient *client, Packet *packet);
 
-const Packet_Handler_Func packet_handler[26];
+const Packet_Handler_Func packet_handler[NUM_PACKETS];

@@ -258,6 +258,33 @@ static int channel_getLinks(lua_State *l)
 	return 1;
 }
 
+static int channel_isEnterRestricted(lua_State *l)
+{
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+	lua_pushboolean(l, channel->is_enter_restricted);
+	return 1;
+}
+
+static int channel_canEnter(lua_State *l)
+{
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+	lua_pushboolean(l, channel->can_enter);
+	return 1;
+}
+
+static int channel_requestACL(lua_State *l)
+{
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+	
+	MumbleProto__ACL msg = MUMBLE_PROTO__ACL__INIT;
+	msg.channel_id = channel->channel_id;
+	msg.has_query = true;
+	msg.query = true;
+
+	packet_send(channel->client, PACKET_ACL, &msg);
+	return 0;
+}
+
 int channel_call(lua_State *l)
 {
 	MumbleChannel *self = luaL_checkudata(l, 1, METATABLE_CHAN);
@@ -364,6 +391,9 @@ const luaL_Reg mumble_channel[] = {
 	{"link", channel_link},
 	{"unlink", channel_unlink},
 	{"getLinks", channel_getLinks},
+	{"isEnterRestricted", channel_isEnterRestricted},
+	{"canEnter", channel_canEnter},
+	{"requestACL", channel_requestACL},
 
 	{"__call", channel_call},
 	{"__gc", channel_gc},

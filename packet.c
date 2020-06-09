@@ -27,6 +27,9 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 		case PACKET_TEXTMESSAGE:
 			payload_size = mumble_proto__text_message__get_packed_size(message);
 			break;
+		case PACKET_ACL:
+			payload_size = mumble_proto__acl__get_packed_size(message);
+			break;
 		case PACKET_USERREMOVE:
 			payload_size = mumble_proto__user_remove__get_packed_size(message);
 			break;
@@ -74,6 +77,9 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 				break;
 			case PACKET_TEXTMESSAGE:
 				mumble_proto__text_message__pack(message, packet_out.buffer + 6);
+				break;
+			case PACKET_ACL:
+				mumble_proto__acl__pack(message, packet_out.buffer + 6);
 				break;
 			case PACKET_USERREMOVE:
 				mumble_proto__user_remove__pack(message, packet_out.buffer + 6);
@@ -347,26 +353,33 @@ void packet_channel_state(lua_State *l, MumbleClient *client, Packet *packet)
 	if (state->has_max_users) {
 		channel->max_users = state->max_users;
 	}
-	if (state->n_links_add != 0) {
+	if (state->n_links_add > 0) {
 		// Add the new entries to the head of the list
-		for (uint32_t i=0; i<state->n_links_add; i++) {
+		for (uint32_t i = 0; i < state->n_links_add; i++) {
 			list_add(&channel->links, state->links_add[i]);
 		}
 	}
-	if (state->n_links_remove != 0) {
-		for (uint32_t i=0; i<state->n_links_remove; i++) {
+	if (state->n_links_remove > 0) {
+		for (uint32_t i = 0; i < state->n_links_remove; i++) {
 			list_remove(&channel->links, state->links_remove[i]);
 		}
 
 	}
-	if (state->n_links != 0) {
+	if (state->n_links > 0) {
 		list_clear(&channel->links);
 
 		// Store links in new list
-		for (uint32_t i=0; i<state->n_links; i++) {
+		for (uint32_t i = 0; i < state->n_links; i++) {
 			list_add(&channel->links, state->links[i]);
 		}
 	}
+	if (state->has_is_enter_restricted) {
+		channel->is_enter_restricted = state->is_enter_restricted;
+	}
+	if (state->has_can_enter) {
+		channel->can_enter = state->can_enter;
+	}
+
 	mumble_hook_call(l, client, "OnChannelState", 1);
 
 	mumble_proto__channel_state__free_unpacked(state, NULL);
@@ -510,20 +523,18 @@ void packet_text_message(lua_State *l, MumbleClient *client, Packet *packet)
 			lua_setfield(l, -2, "message");
 		}
 		if (msg->n_session > 0) {
-			uint32_t i;
 			lua_newtable(l);
-			for (i = 0; i < msg->n_session; i++) {
-				lua_pushinteger(l, i);
+			for (uint32_t i = 0; i < msg->n_session; i++) {
+				lua_pushinteger(l, i+1);
 				mumble_user_raw_get(l, client, msg->session[i]);
 				lua_settable(l, -3);
 			}
 			lua_setfield(l, -2, "users");
 		}
 		if (msg->n_channel_id > 0) {
-			uint32_t i;
 			lua_newtable(l);
-			for (i = 0; i < msg->n_channel_id; i++) {
-				lua_pushinteger(l, i);
+			for (uint32_t i = 0; i < msg->n_channel_id; i++) {
+				lua_pushinteger(l, i+1);
 				mumble_channel_raw_get(l, client, msg->channel_id[i]);
 				lua_settable(l, -3);
 			}
@@ -571,6 +582,116 @@ void packet_permissiondenied(lua_State *l, MumbleClient *client, Packet *packet)
 	mumble_proto__permission_denied__free_unpacked(proto, NULL);
 }
 
+void packet_acl(lua_State *l, MumbleClient *client, Packet *packet)
+{
+	MumbleProto__ACL *acl = mumble_proto__acl__unpack(NULL, packet->length, packet->buffer);
+	if (acl == NULL) {
+		return;
+	}
+
+	lua_newtable(l);
+		mumble_channel_raw_get(l, client, acl->channel_id);
+		lua_setfield(l, -2, "channel");
+		if (acl->n_groups > 0) {
+			lua_newtable(l);
+			for (uint32_t i = 0; i < acl->n_groups; i++) {
+				MumbleProto__ACL__ChanGroup *changroup = acl->groups[i];
+				lua_pushinteger(l, i+1);
+				lua_newtable(l);
+				if(changroup->name != NULL) {
+					lua_pushstring(l, changroup->name);
+					lua_setfield(l, -2, "name");
+				}
+				if(changroup->has_inherited) {
+					lua_pushboolean(l, changroup->inherited);
+					lua_setfield(l, -2, "inherited");
+				}
+				if(changroup->has_inheritable) {
+					lua_pushboolean(l, changroup->inheritable);
+					lua_setfield(l, -2, "inheritable");
+				}
+				if (changroup->n_add > 0) {
+					lua_newtable(l);
+					for (uint32_t j = 0; j < changroup->n_add; j++) {
+						lua_pushinteger(l, j+1);
+						lua_pushinteger(l, changroup->add[j]);
+						lua_settable(l, -3);
+					}
+					lua_setfield(l, -2, "add");
+				}
+				if (changroup->n_remove > 0) {
+					lua_newtable(l);
+					for (uint32_t j = 0; j < changroup->n_remove; j++) {
+						lua_pushinteger(l, j+1);
+						lua_pushinteger(l, changroup->remove[j]);
+						lua_settable(l, -3);
+					}
+					lua_setfield(l, -2, "remove");
+				}
+				if (changroup->n_inherited_members > 0) {
+					lua_newtable(l);
+					for (uint32_t j = 0; j < changroup->n_inherited_members; j++) {
+						lua_pushinteger(l, j+1);
+						lua_pushinteger(l, changroup->inherited_members[j]);
+						lua_settable(l, -3);
+					}
+					lua_setfield(l, -2, "inherited_members");
+				}
+				lua_settable(l, -3);
+			}
+			lua_setfield(l, -2, "groups");
+		}
+		if (acl->n_acls > 0) {
+			lua_newtable(l);
+			for (uint32_t i = 0; i < acl->n_acls; i++) {
+				MumbleProto__ACL__ChanACL *chanacl = acl->acls[i];
+				lua_pushinteger(l, i+1);
+				lua_newtable(l);
+				if(chanacl->has_apply_here) {
+					lua_pushboolean(l, chanacl->apply_here);
+					lua_setfield(l, -2, "apply_here");
+				}
+				if(chanacl->has_apply_subs) {
+					lua_pushboolean(l, chanacl->apply_subs);
+					lua_setfield(l, -2, "apply_subs");
+				}
+				if(chanacl->has_inherited) {
+					lua_pushboolean(l, chanacl->inherited);
+					lua_setfield(l, -2, "inherited");
+				}
+				if(chanacl->has_user_id) {
+					lua_pushboolean(l, chanacl->user_id);
+					lua_setfield(l, -2, "user_id");
+				}
+				if(chanacl->group != NULL) {
+					lua_pushstring(l, chanacl->group);
+					lua_setfield(l, -2, "group");
+				}
+				if(chanacl->has_grant) {
+					lua_pushinteger(l, chanacl->grant);
+					lua_setfield(l, -2, "grant");
+				}
+				if(chanacl->has_deny) {
+					lua_pushinteger(l, chanacl->deny);
+					lua_setfield(l, -2, "deny");
+				}
+				lua_settable(l, -3);
+			}
+			lua_setfield(l, -2, "acls");
+		}
+		if (acl->has_inherit_acls) {
+			lua_pushboolean(l, acl->inherit_acls);
+			lua_setfield(l, -2, "inherit_acls");
+		}
+		if (acl->has_query) {
+			lua_pushboolean(l, acl->query);
+			lua_setfield(l, -2, "query");
+		}
+	mumble_hook_call(l, client, "OnACL", 1);
+
+	mumble_proto__acl__free_unpacked(acl, NULL);
+}
+
 void packet_codec_version(lua_State *l, MumbleClient *client, Packet *packet)
 {
 	MumbleProto__CodecVersion *codec = mumble_proto__codec_version__unpack(NULL, packet->length, packet->buffer);
@@ -611,9 +732,8 @@ void packet_user_stats(lua_State *l, MumbleClient *client, Packet *packet)
 			lua_setfield(l, -2, "stats_only");
 		}
 		lua_newtable(l);
-		uint32_t i;
-		for (i=0; i < stats->n_certificates; i++) {
-			lua_pushinteger(l, i);
+		for (uint32_t i = 0; i < stats->n_certificates; i++) {
+			lua_pushinteger(l, i+1);
 			lua_pushlstring(l, (char *)stats->certificates[i].data, stats->certificates[i].len);
 			lua_settable(l, -3);
 		}
@@ -707,9 +827,8 @@ void packet_user_stats(lua_State *l, MumbleClient *client, Packet *packet)
 		}
 
 		lua_newtable(l);
-		uint32_t j;
-		for (j=0; j < stats->n_celt_versions; j++) {
-			lua_pushinteger(l, j);
+		for (uint32_t j = 0; j < stats->n_celt_versions; j++) {
+			lua_pushinteger(l, j+1);
 			lua_pushinteger(l, stats->celt_versions[j]);
 			lua_settable(l, -3);
 		}
@@ -744,8 +863,7 @@ void packet_user_stats(lua_State *l, MumbleClient *client, Packet *packet)
 				}
 
 				lua_newtable(l);
-					uint32_t k;
-					for (k=0; k < stats->address.len; k++) {
+					for (uint32_t k = 0; k < stats->address.len; k++) {
 						lua_pushinteger(l, k+1);
 						lua_pushinteger(l, stats->address.data[k]);
 						lua_settable(l, -3);
@@ -843,7 +961,43 @@ void packet_suggest_config(lua_State *l, MumbleClient *client, Packet *packet)
 	mumble_proto__suggest_config__free_unpacked(config, NULL);
 }
 
-const Packet_Handler_Func packet_handler[26] = {
+void packet_plugin_data(lua_State *l, MumbleClient *client, Packet *packet)
+{
+	MumbleProto__PluginDataTransmission *transmission = mumble_proto__plugin_data_transmission__unpack(NULL, packet->length, packet->buffer);
+	if (transmission == NULL) {
+		return;
+	}
+
+	lua_newtable(l);
+		if (transmission->has_sendersession) {
+			mumble_user_raw_get(l, client, transmission->sendersession);
+			lua_setfield(l, -2, "sender");
+		}
+
+		if (transmission->n_receiversessions > 0) {
+			lua_newtable(l);
+			for (uint32_t i = 0; i < transmission->n_receiversessions; i++) {
+				lua_pushinteger(l, i+1);
+				mumble_user_raw_get(l, client, transmission->receiversessions[i]);
+				lua_settable(l, -3);
+			}
+			lua_setfield(l, -2, "receivers");
+		}
+
+		if (transmission->has_data) {
+			lua_pushlstring(l, transmission->data.data, transmission->data.len);
+			lua_setfield(l, -2, "data");
+		}
+		if (transmission->dataid != NULL) {
+			lua_pushstring(l, transmission->dataid);
+			lua_setfield(l, -2, "id");
+		}
+	mumble_hook_call(l, client, "OnPluginData", 1);
+
+	mumble_proto__plugin_data_transmission__free_unpacked(transmission, NULL);
+}
+
+const Packet_Handler_Func packet_handler[27] = {
 	/*  0 */ packet_server_version, // Version
 	/*  1 */ packet_udp_tunnel, // UDPTunnel
 	/*  2 */ NULL, // Authenticate
@@ -857,7 +1011,7 @@ const Packet_Handler_Func packet_handler[26] = {
 	/* 10 */ NULL, // Banlist
 	/* 11 */ packet_text_message,
 	/* 12 */ packet_permissiondenied,
-	/* 13 */ NULL, // ACL
+	/* 13 */ packet_acl, // ACL
 	/* 14 */ NULL, // QueryUsers
 	/* 15 */ NULL, // CryptSetup
 	/* 16 */ NULL, // ContextActionAdd
@@ -870,4 +1024,5 @@ const Packet_Handler_Func packet_handler[26] = {
 	/* 23 */ NULL, // RequestBlob
 	/* 24 */ packet_server_config,
 	/* 25 */ packet_suggest_config,
+	/* 26 */ packet_plugin_data,
 };

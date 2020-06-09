@@ -308,6 +308,18 @@ mumble.channel:link(mumble.channel ...)
 
 -- Attempts to unlink channel(s)
 mumble.channel:unlink(mumble.channel ...)
+
+-- Returns if the client is restricted from entering the channel
+-- NOTE: *Will only work in mumble version 1.4+*
+Boolean restricted = mumble.channel:isEnterRestricted()
+
+-- Returns if the client is able to enter the channel
+-- NOTE: *Will only work in mumble version 1.4+*
+Boolean enter = mumble.channel:canEnter()
+
+-- Request ACL config for the channel
+-- When server responds, it will call the 'OnACL' hook
+mumble.channel:requestACL()
 ```
 
 ### mumble.timer
@@ -571,6 +583,50 @@ Table event = {
 ```
 ___
 
+### `OnACL (Table event)`
+
+Called when ACL data is received from a `mumble.channel:requestACL()` request
+
+```lua
+Table event = {
+	["channel"]      = mumble.channel channel,
+	["inherit_acls"] = Boolean inherit_acls,
+	["groups"]       = {
+		[1] = {
+			["name"]        = String group_name,
+			["inherited"]   = Boolean inherited,
+			["inheritable"] = Boolean inheritable,
+			["add"] = {
+				[1] = Number user_id,
+				...
+			},
+			["remove"] = {
+				[1] = Number user_id,
+				...
+			},
+			["inherited_members"] = {
+				[1] = Number user_id,
+				...
+			}
+		},
+		...
+	},
+	["acls"]       = {
+		[1] = {
+			["apply_here"]  = Boolean apply_here,
+			["apply_subs"]  = Boolean apply_subs,
+			["inherited"]   = Boolean inherited,
+			["user_id"]     = Number user_id,
+			["group"]       = String group,
+			["grant"]       = Number grant, -- This number is a flag that determines what this group is allowed to do
+			["deny"]        = Number deny,  -- This number is a flag that determines what this group is NOT allowed to do
+		},
+		...
+	},
+}
+```
+___
+
 ### `OnCodecVersion (Table event)`
 
 Called when the bot recieves the codec info from the server.
@@ -659,6 +715,22 @@ Table event = {
 	["version"]					= Number version,
 	["positional"]				= Boolean positional,
 	["push_to_talk"]			= Boolean push_to_talk,
+}
+```
+___
+
+### `OnPluginData (Table event)`
+
+Called when the servers suggest the client to use specific settings.
+
+``` lua
+Table event = {
+	["sender"] = mumble.user sender, -- Who sent this data packet
+	["id"]     = Number id,          -- The data ID of this packet
+	["data"]   = String data,        -- The data sent (can be binary data)
+	["receivers"]				= {  -- A table of who is receiving this data
+		[1] = mumble.user,
+	},
 }
 ```
 ___

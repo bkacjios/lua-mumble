@@ -110,10 +110,12 @@ static void socket_read_event(struct ev_loop *loop, ev_io *w_, int revents)
 	Packet_Handler_Func handler = packet_handler[packet_read.type];
 
 	if (handler != NULL) {
+		// Call our packet handler functions
 		handler(l, client, &packet_read);
 	}
 
 	if (SSL_pending(client->ssl) > 0) {
+		// If we still have pending packets to read, set this event to be called again
 		ev_feed_fd_event(loop, w_->fd, revents);
 	}
 }
