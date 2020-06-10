@@ -462,17 +462,11 @@ MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session
 	if (lua_isuserdata(l, -1) == 1) {
 		user = lua_touserdata(l, -1);
 	} else {
-		lua_pop(l, 1);
-
-		lua_pushinteger(l, session);
+		lua_pop(l, 1); // Pop whatever was in the table before, most likely nil
 
 		user = lua_newuserdata(l, sizeof(MumbleUser));
 		{
-			luaL_getmetatable(l, METATABLE_USER);
-			lua_setmetatable(l, -2);
-
 			user->client = client;
-
 			lua_newtable(l);
 			user->data = luaL_ref(l, LUA_REGISTRYINDEX);
 			user->connected = client->synced ? false : true;
@@ -496,10 +490,12 @@ MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session
 			user->texture_hash_len = 0;
 			user->hash = "";
 		}
-		lua_settable(l, -3);
+		luaL_getmetatable(l, METATABLE_USER);
+		lua_setmetatable(l, -2);
 
 		lua_pushinteger(l, session);
-		lua_gettable(l, -2);
+		lua_pushvalue(l, -2); // Push a copy of the new user metatable
+		lua_settable(l, -4); // Set the user metatable to where we store the table of users, using session as its index
 	}
 	
 	lua_remove(l, -2);
@@ -549,17 +545,11 @@ MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t c
 	if (lua_isuserdata(l, -1) == 1) {
 		channel = lua_touserdata(l, -1);
 	} else {
-		lua_pop(l, 1);
-
-		lua_pushinteger(l, channel_id);
+		lua_pop(l, 1); // Pop whatever was in the table before, most likely nil
 
 		channel = lua_newuserdata(l, sizeof(MumbleChannel));
 		{
-			luaL_getmetatable(l, METATABLE_CHAN);
-			lua_setmetatable(l, -2);
-
 			channel->client = client;
-
 			lua_newtable(l);
 			channel->data = luaL_ref(l, LUA_REGISTRYINDEX);
 			channel->name = "";
@@ -572,10 +562,12 @@ MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t c
 			channel->max_users = 0;
 			channel->links = NULL;
 		}
-		lua_settable(l, -3);
+		luaL_getmetatable(l, METATABLE_CHAN);
+		lua_setmetatable(l, -2);
 
 		lua_pushinteger(l, channel_id);
-		lua_gettable(l, -2);
+		lua_pushvalue(l, -2); // Push a copy of the new channel object
+		lua_settable(l, -4); // Set the channel metatable to where we store the table of cahnnels, using channel_id as its index
 	}
 	
 	lua_remove(l, -2);
@@ -625,6 +617,55 @@ int luaopen_mumble(lua_State *l)
 			lua_settable(l, -3);
 		}
 		lua_setfield(l, -2, "deny");
+
+		lua_newtable(l);
+		{
+			lua_pushinteger(l, ACL_NONE);
+			lua_setfield(l, -2, "NONE");
+			lua_pushinteger(l, ACL_WRITE);
+			lua_setfield(l, -2, "WRITE");
+			lua_pushinteger(l, ACL_TRAVERSE);
+			lua_setfield(l, -2, "TRAVERSE");
+			lua_pushinteger(l, ACL_ENTER);
+			lua_setfield(l, -2, "ENTER");
+			lua_pushinteger(l, ACL_SPEAK);
+			lua_setfield(l, -2, "SPEAK");
+			lua_pushinteger(l, ACL_MUTE_DEAFEN);
+			lua_setfield(l, -2, "MUTE_DEAFEN");
+			lua_pushinteger(l, ACL_MOVE);
+			lua_setfield(l, -2, "MOVE");
+			lua_pushinteger(l, ACL_MAKE_CHANNEL);
+			lua_setfield(l, -2, "MAKE_CHANNEL");
+			lua_pushinteger(l, ACL_LINK_CHANNEL);
+			lua_setfield(l, -2, "LINK_CHANNEL");
+			lua_pushinteger(l, ACL_WHISPER);
+			lua_setfield(l, -2, "WHISPER");
+			lua_pushinteger(l, ACL_TEXT_MESSAGE);
+			lua_setfield(l, -2, "TEXT_MESSAGE");
+			lua_pushinteger(l, ACL_MAKE_TEMP_CHANNEL);
+			lua_setfield(l, -2, "MAKE_TEMP_CHANNEL");
+			lua_pushinteger(l, ACL_LISTEN);
+			lua_setfield(l, -2, "LISTEN");
+
+			// Root channel only ACL permissions
+			lua_pushinteger(l, ACL_KICK);
+			lua_setfield(l, -2, "KICK");
+			lua_pushinteger(l, ACL_BAN);
+			lua_setfield(l, -2, "BAN");
+			lua_pushinteger(l, ACL_REGISTER);
+			lua_setfield(l, -2, "REGISTER");
+			lua_pushinteger(l, ACL_SELF_REGISTER);
+			lua_setfield(l, -2, "SELF_REGISTER");
+			lua_pushinteger(l, ACL_RESET_USER_CONTENT);
+			lua_setfield(l, -2, "RESET_USER_CONTENT");
+
+			lua_pushinteger(l, ACL_CACHED);
+			lua_setfield(l, -2, "CACHED");
+
+			lua_pushinteger(l, ACL_ALL);
+			lua_setfield(l, -2, "ALL");
+		}
+		lua_setfield(l, -2, "acl");
 
 		// Register client metatable
 		luaL_newmetatable(l, METATABLE_CLIENT);

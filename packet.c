@@ -30,6 +30,9 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 		case PACKET_ACL:
 			payload_size = mumble_proto__acl__get_packed_size(message);
 			break;
+		case PACKET_PERMISSIONQUERY:
+			payload_size = mumble_proto__permission_query__get_packed_size(message);
+			break;
 		case PACKET_USERREMOVE:
 			payload_size = mumble_proto__user_remove__get_packed_size(message);
 			break;
@@ -80,6 +83,9 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 				break;
 			case PACKET_ACL:
 				mumble_proto__acl__pack(message, packet_out.buffer + 6);
+				break;
+			case PACKET_PERMISSIONQUERY:
+				mumble_proto__permission_query__pack(message, packet_out.buffer + 6);
 				break;
 			case PACKET_USERREMOVE:
 				mumble_proto__user_remove__pack(message, packet_out.buffer + 6);
@@ -299,6 +305,9 @@ void packet_server_sync(lua_State *l, MumbleClient *client, Packet *packet)
 		if (sync->has_permissions) {
 			lua_pushinteger(l, sync->permissions);
 			lua_setfield(l, -2, "permissions");
+
+			MumbleChannel* root = mumble_channel_get(l, client, 0); lua_pop(l, 1);
+			root->permissions = sync->permissions;
 		}
 	mumble_hook_call(l, client, "OnServerSync", 1);
 
@@ -545,7 +554,7 @@ void packet_text_message(lua_State *l, MumbleClient *client, Packet *packet)
 	mumble_proto__text_message__free_unpacked(msg, NULL);
 }
 
-void packet_permissiondenied(lua_State *l, MumbleClient *client, Packet *packet)
+void packet_permission_denied(lua_State *l, MumbleClient *client, Packet *packet)
 {
 	MumbleProto__PermissionDenied *proto = mumble_proto__permission_denied__unpack(NULL, packet->length, packet->buffer);
 	if (proto == NULL) {
@@ -690,6 +699,48 @@ void packet_acl(lua_State *l, MumbleClient *client, Packet *packet)
 	mumble_hook_call(l, client, "OnACL", 1);
 
 	mumble_proto__acl__free_unpacked(acl, NULL);
+}
+
+void packet_permission_query(lua_State *l, MumbleClient *client, Packet *packet)
+{
+	MumbleProto__PermissionQuery *query = mumble_proto__permission_query__unpack(NULL, packet->length, packet->buffer);
+	if (query == NULL) {
+		return;
+	}
+
+	if (query->has_channel_id && query->has_permissions) {
+		MumbleChannel* chan = mumble_channel_get(l, client, query->channel_id); lua_pop(l, 1);
+		chan->permissions = query->permissions;
+	} else if (query->has_flush && query->flush) {
+		// Loop through all channels and set permissions to 0
+		lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
+		lua_pushnil(l);
+		while (lua_next(l, -2)) {
+			if (lua_isuserdata(l, -1) == 1) {
+				MumbleChannel* channel = lua_touserdata(l, -1);
+				channel->permissions = 0;
+			}
+			lua_pop(l, 1);
+		}
+		lua_pop(l, 1);
+	}
+
+	lua_newtable(l);
+		if (query->has_channel_id) {
+			mumble_channel_raw_get(l, client, query->channel_id);
+			lua_setfield(l, -2, "channel");
+		}
+		if (query->has_permissions) {
+			lua_pushinteger(l, query->permissions);
+			lua_setfield(l, -2, "permissions");
+		}
+		if (query->has_flush) {
+			lua_pushinteger(l, query->flush);
+			lua_setfield(l, -2, "flush");
+		}
+	mumble_hook_call(l, client, "OnPermissionQuery", 1);
+
+	mumble_proto__permission_query__free_unpacked(query, NULL);
 }
 
 void packet_codec_version(lua_State *l, MumbleClient *client, Packet *packet)
@@ -1010,7 +1061,7 @@ const Packet_Handler_Func packet_handler[27] = {
 	/*  9 */ packet_user_state,
 	/* 10 */ NULL, // Banlist
 	/* 11 */ packet_text_message,
-	/* 12 */ packet_permissiondenied,
+	/* 12 */ packet_permission_denied,
 	/* 13 */ packet_acl, // ACL
 	/* 14 */ NULL, // QueryUsers
 	/* 15 */ NULL, // CryptSetup
@@ -1018,7 +1069,7 @@ const Packet_Handler_Func packet_handler[27] = {
 	/* 17 */ NULL, // Context Action
 	/* 18 */ NULL, // UserList
 	/* 19 */ NULL, // VoiceTarget
-	/* 20 */ NULL, // PermissionQuery
+	/* 20 */ packet_permission_query, // PermissionQuery
 	/* 21 */ packet_codec_version, // CodecVersion
 	/* 22 */ packet_user_stats,
 	/* 23 */ NULL, // RequestBlob

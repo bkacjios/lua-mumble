@@ -285,6 +285,32 @@ static int channel_requestACL(lua_State *l)
 	return 0;
 }
 
+static int channel_requestPermissions(lua_State *l)
+{
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+	
+	MumbleProto__PermissionQuery msg = MUMBLE_PROTO__PERMISSION_QUERY__INIT;
+	msg.has_channel_id = true;
+	msg.channel_id = channel->channel_id;
+
+	packet_send(channel->client, PACKET_PERMISSIONQUERY, &msg);
+	return 0;
+}
+
+static int channel_getPermissions(lua_State *l)
+{
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+	lua_pushinteger(l, channel->permissions);
+	return 1;
+}
+
+static int channel_hasPermission(lua_State *l)
+{
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+	lua_pushboolean(l, (channel->permissions & luaL_checkint(l, 2)));
+	return 1;
+}
+
 int channel_call(lua_State *l)
 {
 	MumbleChannel *self = luaL_checkudata(l, 1, METATABLE_CHAN);
@@ -394,6 +420,10 @@ const luaL_Reg mumble_channel[] = {
 	{"isEnterRestricted", channel_isEnterRestricted},
 	{"canEnter", channel_canEnter},
 	{"requestACL", channel_requestACL},
+	{"requestPermissions", channel_requestPermissions},
+	{"getPermissions", channel_getPermissions},
+	{"hasPermission", channel_hasPermission},
+	{"hasPermissions", channel_hasPermission},
 
 	{"__call", channel_call},
 	{"__gc", channel_gc},

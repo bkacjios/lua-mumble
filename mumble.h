@@ -165,6 +165,7 @@ struct MumbleChannel {
 	LinkNode*		links;
 	bool			is_enter_restricted;
 	bool			can_enter;
+	uint32_t        permissions;
 };
 
 void list_add(LinkNode** head_ref, uint32_t value);
@@ -260,6 +261,38 @@ void audio_transmission_stop(AudioTransmission* sound);
 #define METATABLE_ENCODER		"mumble.encoder"
 #define METATABLE_VOICETARGET	"mumble.voicetarget"
 #define METATABLE_TIMER			"mumble.timer"
+
+/*--------------------------------
+	ACL PERMISSIONS
+--------------------------------*/
+
+enum {
+	ACL_NONE = 0x0,
+	ACL_WRITE = 0x1,
+	ACL_TRAVERSE = 0x2,
+	ACL_ENTER = 0x4,
+	ACL_SPEAK = 0x8,
+	ACL_MUTE_DEAFEN = 0x10,
+	ACL_MOVE = 0x20,
+	ACL_MAKE_CHANNEL = 0x40,
+	ACL_LINK_CHANNEL = 0x80,
+	ACL_WHISPER = 0x100,
+	ACL_TEXT_MESSAGE = 0x200,
+	ACL_MAKE_TEMP_CHANNEL = 0x400,
+	ACL_LISTEN = 0x800,
+
+	// Root channel only
+	ACL_KICK = 0x10000,
+	ACL_BAN = 0x20000,
+	ACL_REGISTER = 0x40000,
+	ACL_SELF_REGISTER = 0x80000,
+	ACL_RESET_USER_CONTENT = 0x100000,
+
+	ACL_CACHED = 0x8000000,
+	ACL_ALL = ACL_WRITE + ACL_TRAVERSE + ACL_ENTER + ACL_SPEAK + ACL_MUTE_DEAFEN + ACL_MOVE
+			+ ACL_MAKE_CHANNEL + ACL_LINK_CHANNEL + ACL_WHISPER + ACL_TEXT_MESSAGE + ACL_MAKE_TEMP_CHANNEL + ACL_LISTEN
+			+ ACL_KICK + ACL_BAN + ACL_REGISTER + ACL_SELF_REGISTER + ACL_RESET_USER_CONTENT,
+};
 
 /*--------------------------------
 	MUMBLE PACKET FUNCTIONS
