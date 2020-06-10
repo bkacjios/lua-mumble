@@ -1048,7 +1048,7 @@ void packet_plugin_data(lua_State *l, MumbleClient *client, Packet *packet)
 	mumble_proto__plugin_data_transmission__free_unpacked(transmission, NULL);
 }
 
-const Packet_Handler_Func packet_handler[27] = {
+const Packet_Handler_Func packet_handler[NUM_PACKETS] = {
 	/*  0 */ packet_server_version, // Version
 	/*  1 */ packet_udp_tunnel, // UDPTunnel
 	/*  2 */ NULL, // Authenticate

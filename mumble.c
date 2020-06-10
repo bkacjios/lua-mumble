@@ -561,6 +561,8 @@ MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t c
 			channel->position = 0;
 			channel->max_users = 0;
 			channel->links = NULL;
+			channel->is_enter_restricted = false;
+			channel->permissions = 0;
 		}
 		luaL_getmetatable(l, METATABLE_CHAN);
 		lua_setmetatable(l, -2);
