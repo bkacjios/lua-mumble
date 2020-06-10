@@ -224,115 +224,33 @@ typedef struct {
 	UTIL FUNCTIONS
 --------------------------------*/
 
-int MUMBLE_CONNECTIONS;
+extern int MUMBLE_CONNECTIONS;
 
-double gettime();
+extern double gettime();
 
-void bin_to_strhex(char *bin, size_t binsz, char **result);
+extern void bin_to_strhex(char *bin, size_t binsz, char **result);
 
-void debugstack(lua_State *l, const char* text);
-int luaL_checkboolean(lua_State *L, int i);
-int luaL_optboolean(lua_State *L, int i, int d);
-const char* eztype(lua_State *L, int i);
+extern void debugstack(lua_State *l, const char* text);
+extern int luaL_checkboolean(lua_State *L, int i);
+extern int luaL_optboolean(lua_State *L, int i, int d);
+extern const char* eztype(lua_State *L, int i);
 
-int64_t util_get_varint(uint8_t buffer[], int *len);
+extern int64_t util_get_varint(uint8_t buffer[], int *len);
 
-void mumble_create_audio_timer(MumbleClient *client, int bitspersec);
-void mumble_disconnect(lua_State* l, MumbleClient *client);
+extern void mumble_create_audio_timer(MumbleClient *client, int bitspersec);
+extern void mumble_disconnect(lua_State* l, MumbleClient *client);
 
-void mumble_client_raw_get(lua_State* l, MumbleClient* client);
-MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session);
-void mumble_user_raw_get(lua_State* l, MumbleClient* client, uint32_t session);
-void mumble_user_remove(lua_State* l, MumbleClient* client, uint32_t session);
+extern void mumble_client_raw_get(lua_State* l, MumbleClient* client);
+extern MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session);
+extern void mumble_user_raw_get(lua_State* l, MumbleClient* client, uint32_t session);
+extern void mumble_user_remove(lua_State* l, MumbleClient* client, uint32_t session);
 
-MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t channel_id);
-MumbleChannel* mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t channel_id);
-void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_id);
+extern MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t channel_id);
+extern MumbleChannel* mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t channel_id);
+extern void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_id);
 
-int mumble_traceback(lua_State *l);
-void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs);
+extern int mumble_traceback(lua_State *l);
+extern void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs);
 
-void audio_transmission_event(lua_State* l, MumbleClient *client);
-void audio_transmission_stop(AudioTransmission* sound);
-
-#define METATABLE_CLIENT		"mumble.client"
-#define METATABLE_USER			"mumble.user"
-#define METATABLE_CHAN			"mumble.channel"
-#define METATABLE_ENCODER		"mumble.encoder"
-#define METATABLE_VOICETARGET	"mumble.voicetarget"
-#define METATABLE_TIMER			"mumble.timer"
-
-/*--------------------------------
-	ACL PERMISSIONS
---------------------------------*/
-
-enum {
-	ACL_NONE = 0x0,
-	ACL_WRITE = 0x1,
-	ACL_TRAVERSE = 0x2,
-	ACL_ENTER = 0x4,
-	ACL_SPEAK = 0x8,
-	ACL_MUTE_DEAFEN = 0x10,
-	ACL_MOVE = 0x20,
-	ACL_MAKE_CHANNEL = 0x40,
-	ACL_LINK_CHANNEL = 0x80,
-	ACL_WHISPER = 0x100,
-	ACL_TEXT_MESSAGE = 0x200,
-	ACL_MAKE_TEMP_CHANNEL = 0x400,
-	ACL_LISTEN = 0x800,
-
-	// Root channel only
-	ACL_KICK = 0x10000,
-	ACL_BAN = 0x20000,
-	ACL_REGISTER = 0x40000,
-	ACL_SELF_REGISTER = 0x80000,
-	ACL_RESET_USER_CONTENT = 0x100000,
-
-	ACL_CACHED = 0x8000000,
-	ACL_ALL = ACL_WRITE + ACL_TRAVERSE + ACL_ENTER + ACL_SPEAK + ACL_MUTE_DEAFEN + ACL_MOVE
-			+ ACL_MAKE_CHANNEL + ACL_LINK_CHANNEL + ACL_WHISPER + ACL_TEXT_MESSAGE + ACL_MAKE_TEMP_CHANNEL + ACL_LISTEN
-			+ ACL_KICK + ACL_BAN + ACL_REGISTER + ACL_SELF_REGISTER + ACL_RESET_USER_CONTENT,
-};
-
-/*--------------------------------
-	MUMBLE PACKET FUNCTIONS
---------------------------------*/
-
-#define NUM_PACKETS 27
-
-enum {
-	PACKET_VERSION          = 0,
-	PACKET_UDPTUNNEL        = 1,
-	PACKET_AUTHENTICATE     = 2,
-	PACKET_PING             = 3,
-	PACKET_SERVERREJECT     = 4,
-	PACKET_SERVERSYNC       = 5,
-	PACKET_CHANNELREMOVE    = 6,
-	PACKET_CHANNELSTATE     = 7,
-	PACKET_USERREMOVE       = 8,
-	PACKET_USERSTATE        = 9,
-	PACKET_BANLIST          = 10,
-	PACKET_TEXTMESSAGE      = 11,
-	PACKET_PERMISSIONDENIED = 12,
-	PACKET_ACL              = 13,
-	PACKET_QUERYUSERS       = 14,
-	PACKET_CRYPTSETUP       = 15,
-	PACKET_CONTEXTACTIONADD = 16,
-	PACKET_CONTEXTACTION    = 17,
-	PACKET_USERLIST         = 18,
-	PACKET_VOICETARGET      = 19,
-	PACKET_PERMISSIONQUERY  = 20,
-	PACKET_CODECVERSION     = 21,
-	PACKET_USERSTATS        = 22,
-	PACKET_REQUESTBLOB      = 23,
-	PACKET_SERVERCONFIG     = 24,
-	PACKET_SUGGESTCONFIG    = 25,
-	PACKET_PLUGINDATA       = 26,
-};
-
-#define packet_send(client, type, message) packet_sendex(client, type, message, 0)
-int packet_sendex(MumbleClient* client, const int type, const void *message, const int length);
-
-typedef void (*Packet_Handler_Func)(lua_State *lua, MumbleClient *client, Packet *packet);
-
-const Packet_Handler_Func packet_handler[NUM_PACKETS];
+extern void audio_transmission_event(lua_State* l, MumbleClient *client);
+extern void audio_transmission_stop(AudioTransmission* sound);

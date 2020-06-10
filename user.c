@@ -1,6 +1,8 @@
 #include "mumble.h"
 
+#include "channel.h"
 #include "user.h"
+#include "packet.h"
 
 /*--------------------------------
 	MUMBLE USER META METHODS

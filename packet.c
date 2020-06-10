@@ -1,5 +1,7 @@
 #include "mumble.h"
 
+#include "packet.h"
+
 int packet_sendex(MumbleClient* client, const int type, const void *message, const int length)
 {
 	static Packet packet_out;
@@ -1048,7 +1050,7 @@ void packet_plugin_data(lua_State *l, MumbleClient *client, Packet *packet)
 	mumble_proto__plugin_data_transmission__free_unpacked(transmission, NULL);
 }
 
-const Packet_Handler_Func packet_handler[NUM_PACKETS] = {
+const Packet_Handler_Func packet_handler[27] = {
 	/*  0 */ packet_server_version, // Version
 	/*  1 */ packet_udp_tunnel, // UDPTunnel
 	/*  2 */ NULL, // Authenticate

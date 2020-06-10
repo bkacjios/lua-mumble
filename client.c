@@ -2,6 +2,8 @@
 
 #include "client.h"
 #include "channel.h"
+#include "packet.h"
+#include "target.h"
 
 /*--------------------------------
 	MUMBLE CLIENT META METHODS

@@ -3,3 +3,5 @@ proto/Mumble.pb-c.c
 proto/Mumble.pb-c.h
 config/
 *.so
+*.lua
+*.pem

@@ -1,6 +1,8 @@
 #include "mumble.h"
 
+#include "channel.h"
 #include "user.h"
+#include "target.h"
 
 int mumble_target_new(lua_State *l)
 {

@@ -1,11 +1,13 @@
 #include "mumble.h"
 
+#include "acl.h"
 #include "channel.h"
 #include "encoder.h"
 #include "client.h"
 #include "user.h"
 #include "target.h"
 #include "timer.h"
+#include "packet.h"
 
 static void signal_event(struct ev_loop *loop, ev_signal *w_, int revents)
 {
@@ -119,6 +121,8 @@ static void socket_read_event(struct ev_loop *loop, ev_io *w_, int revents)
 		ev_feed_fd_event(loop, w_->fd, revents);
 	}
 }
+
+int MUMBLE_CONNECTIONS;
 
 static int mumble_connect(lua_State *l)
 {
