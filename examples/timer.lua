@@ -21,3 +21,5 @@ client:hook("OnServerSync", function(event)
 		end
 	end, 1, 1)
 end)
+
+mumble.loop()

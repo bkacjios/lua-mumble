@@ -59,6 +59,14 @@ client:hook("OnPermissionDenied", function(event)
 	print("OnPermissionDenied", event)
 end)
 
+client:hook("OnACL", function(event)
+	print("OnACL", event)
+end)
+
+client:hook("OnPermissionQuery", function(event)
+	print("OnPermissionQuery", event)
+end)
+
 client:hook("OnCodecVersion", function(event)
 	print("OnCodecVersion", event)
 end)
