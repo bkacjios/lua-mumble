@@ -3,6 +3,7 @@
 #include "acl.h"
 #include "channel.h"
 #include "encoder.h"
+#include "decoder.h"
 #include "client.h"
 #include "user.h"
 #include "target.h"
@@ -716,6 +717,23 @@ int luaopen_mumble(lua_State *l)
 		}
 		lua_setmetatable(l, -2);
 		lua_setfield(l, -2, "encoder");
+
+		// Register decoder metatable
+		luaL_newmetatable(l, METATABLE_DECODER);
+		{
+			lua_pushvalue(l, -1);
+			lua_setfield(l, -2, "__index");
+		}
+		luaL_register(l, NULL, mumble_decoder);
+
+		// If you call the encoder metatable as a function it will return a new encoder object
+		lua_newtable(l);
+		{
+			lua_pushcfunction(l, mumble_decoder_new);
+			lua_setfield(l, -2, "__call");
+		}
+		lua_setmetatable(l, -2);
+		lua_setfield(l, -2, "decoder");
 
 		// Register voice target metatable
 		luaL_newmetatable(l, METATABLE_VOICETARGET);

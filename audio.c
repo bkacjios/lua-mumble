@@ -1,5 +1,6 @@
 #include "mumble.h"
 #include "packet.h"
+#include "audio.h"
 
 #define STB_VORBIS_HEADER_ONLY
 #include "stb_vorbis.c"
@@ -64,9 +65,6 @@ int64_t util_get_varint(uint8_t buffer[], int *len)
 
 	return i;
 }
-
-#define VOICEPACKET_NORMAL 0
-#define VOICEPACKET_OPUS 4
 
 VoicePacket * voicepacket_init(VoicePacket *packet, uint8_t *buffer)
 {

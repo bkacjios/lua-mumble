@@ -56,6 +56,9 @@
 // Number of audio "channels" for playing multiple sounds at once
 #define AUDIO_MAX_CHANNELS 128
 
+// Maximum length an encoded opus packet can be
+#define AUDIO_MAX_FRAME_SIZE 6*960
+
 // The size of the PCM buffer
 // Technically, it should be FRAMESIZE*SAMPLERATE/100
 #define PCM_BUFFER 4096

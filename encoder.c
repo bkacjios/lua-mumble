@@ -4,13 +4,15 @@
 
 int mumble_encoder_new(lua_State *l)
 {
-	opus_int32 samplerate = luaL_optinteger(l, 1, 48000);
+	// Argument 1 = mumble.encoder table
+	opus_int32 samplerate = luaL_optinteger(l, 2, AUDIO_SAMPLE_RATE);
+	int channels = luaL_optinteger(l, 3, 1);
 
-	OpusEncoder *encoder = lua_newuserdata(l, opus_encoder_get_size(1));
+	OpusEncoder *encoder = lua_newuserdata(l, opus_encoder_get_size(channels));
 	luaL_getmetatable(l, METATABLE_ENCODER);
 	lua_setmetatable(l, -2);
 
-	int error = opus_encoder_init(encoder, samplerate, 1, OPUS_APPLICATION_AUDIO);
+	int error = opus_encoder_init(encoder, samplerate, channels, OPUS_APPLICATION_AUDIO);
 
 	if (error != OPUS_OK) {
 		lua_pushnil(l);
@@ -80,11 +82,19 @@ static int encoder_tostring(lua_State *l)
 	return 1;
 }
 
+static int encoder_gc(lua_State *l)
+{
+	OpusEncoder *encoder = luaL_checkudata(l, 1, METATABLE_ENCODER);
+	//opus_encoder_destroy(encoder); // This calls 'free' which Lua is already doing after a __gc call
+	return 0;
+}
+
 const luaL_Reg mumble_encoder[] = {
 	{"setBitRate", encoder_setBitRate},
 	{"getBitRate", encoder_getBitRate},
 	{"encode", encoder_encode},
 	{"encode_float", encoder_encode_float},
 	{"__tostring", encoder_tostring},
+	{"__gc", encoder_gc},
 	{NULL, NULL}
 };

@@ -59,6 +59,16 @@ mumble.timer = mumble.timer()
 -- A new voicetarget object
 mumble.voicetarget = mumble.voicetarget()
 
+-- A new opus encoder object
+-- Sample rate defaults to 48000
+-- Number of channels defaults to 1
+mumble.encoder = mumble.encoder(Number samplerate = 48000, Number channels = 1)
+
+-- A new opus decoder object
+-- Sample rate defaults to 48000
+-- Number of channels defaults to 1
+mumble.decoder = mumble.decoder(Number samplerate = 48000, Number channels = 1)
+
 -- A timestamp in milliseconds
 Number time = mumble.gettime()
 ```
@@ -77,6 +87,9 @@ Boolean synced = mumble.client:isSynced()
 
 -- Disconnect from a mumble server
 mumble.client:disconnect()
+
+-- Transmit a raw, encoded, opus packet
+mumble.client:transmit(String encoded_opus_packet, Boolean end_of_stream)
 
 -- Play an ogg audio file
 -- Changing the channel value will allow you to play multiple audio files at once
@@ -378,6 +391,38 @@ mumble.voicetarget:setLinks(Boolean followlinks)
 mumble.voicetarget:setChildren(Boolean followchildren)
 ```
 
+### mumble.encoder
+
+``` lua
+-- Set the bitrate that the encoder will use
+mumble.encoder:setBitRate(Number bitrate)
+
+-- Get the bitrate that the encoder is using
+Number bitrate = mumble.encoder:getBitRate()
+
+-- Encode X number of pcm frames into an opus audio packet
+String encoded = mumble.encoder:encode(Number frames, String pcm)
+
+-- Encode X number of pcm float frames into an opus audio packet
+String encoded = mumble.encoder:encode_float(Number frames, String pcm)
+```
+
+### mumble.decoder
+
+``` lua
+-- Set the bitrate that the decoder will use
+mumble.decoder:setBitRate(Number bitrate)
+
+-- Get the bitrate that the decoder is using
+Number bitrate = mumble.decoder:getBitRate()
+
+-- Decode an opus audio packet into raw PCM data
+String decoded = mumble.decoder:decode(String encoded)
+
+-- Decode an opus audio packet into raw PCM float data
+String decoded = mumble.decoder:decode_float(String encoded)
+```
+
 ### mumble.acl
 
 ```lua
@@ -590,6 +635,7 @@ Table event = {
 	["codec"]		= Number codec,
 	["target"]		= Number target,
 	["sequence"]	= Number sequence,
+	["data"]		= String encoded_opus_packet,
 	["speaking"]	= Boolean speaking,
 }
 ```

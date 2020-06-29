@@ -1,5 +1,6 @@
 #include "mumble.h"
 
+#include "audio.h"
 #include "client.h"
 #include "channel.h"
 #include "packet.h"
@@ -80,6 +81,35 @@ static int client_isSynced(lua_State *l)
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_pushboolean(l, client->synced);
 	return 1;
+}
+
+static int client_transmit(lua_State *l) {
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+
+	size_t outputlen;
+	uint8_t* output = (uint8_t*) luaL_checklstring(l, 2, &outputlen);
+
+	bool endofstream = luaL_optboolean(l, 3, false);
+
+	if (outputlen <= 0) return 0;
+
+	uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
+
+	VoicePacket packet;
+	voicepacket_init(&packet, packet_buffer);
+	voicepacket_setheader(&packet, VOICEPACKET_OPUS, client->audio_target, client->audio_sequence);
+
+	if (endofstream) {
+		// Set 14th bit to 1 to signal end of stream.
+		outputlen = ((1 << 13) | outputlen);
+	}
+
+	voicepacket_setframe(&packet, outputlen, output);
+
+	packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
+
+	client->audio_sequence = (client->audio_sequence + 1) % 100000;
+	return 0;
 }
 
 static int client_play(lua_State *l)
@@ -358,6 +388,7 @@ const luaL_Reg mumble_client[] = {
 	{"disconnect", client_disconnect},
 	{"isConnected", client_isConnected},
 	{"isSynced", client_isSynced},
+	{"transmit", client_transmit},
 	{"play", client_play},
 	{"isPlaying", client_isPlaying},
 	{"stopPlaying", client_stopPlaying},
