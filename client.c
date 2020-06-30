@@ -83,6 +83,53 @@ static int client_isSynced(lua_State *l)
 	return 1;
 }
 
+static int client_sendPluginData(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+
+	MumbleProto__PluginDataTransmission data = MUMBLE_PROTO__PLUGIN_DATA_TRANSMISSION__INIT;
+
+	data.has_sendersession = true;
+	data.sendersession = client->session;
+
+	data.dataid = (char*) luaL_checkstring(l, 2);
+
+	ProtobufCBinaryData cbdata;
+	cbdata.data = (uint8_t*) luaL_checklstring(l, 3, &cbdata.len);
+
+	data.has_data = true;
+	data.data = cbdata;
+
+	data.n_receiversessions = 0;
+
+	luaL_checktype(l, 4, LUA_TTABLE);
+	lua_pushvalue(l, 4);
+	lua_pushnil(l);
+
+	int i = 0;
+
+	while (lua_next(l, -2)) {
+		lua_pushvalue(l, -2);
+
+		// Allow a table of users or session IDs
+		if (lua_isuserdata(l, -2)) {
+			MumbleUser *user = lua_touserdata(l, -2);
+			data.receiversessions[i] = user->session;
+		} else if (lua_isnumber(l, -2)) {
+			uint32_t session = (uint32_t) lua_tonumber(l, -2);
+			data.receiversessions[i] = session;
+		}
+
+		lua_pop(l, 2);
+	}
+	lua_pop(l, 1);
+
+	data.n_receiversessions = i;
+
+	packet_send(client, PACKET_PLUGINDATA, &data);
+	return 0;
+}
+
 static int client_transmit(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
@@ -326,6 +373,22 @@ static int client_getVoiceTarget(lua_State *l)
 	return 1;
 }
 
+static int client_setBitrate(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(luaL_checkinteger(l, 2)));
+	return 1;
+}
+
+static int client_getBitrate(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	int bitrate;
+	opus_encoder_ctl(client->encoder, OPUS_GET_BITRATE(&bitrate));
+	lua_pushinteger(l, bitrate);
+	return 1;
+}
+
 static int client_getPing(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
@@ -388,6 +451,7 @@ const luaL_Reg mumble_client[] = {
 	{"disconnect", client_disconnect},
 	{"isConnected", client_isConnected},
 	{"isSynced", client_isSynced},
+	{"sendPluginData", client_sendPluginData},
 	{"transmit", client_transmit},
 	{"play", client_play},
 	{"isPlaying", client_isPlaying},
@@ -404,6 +468,8 @@ const luaL_Reg mumble_client[] = {
 	{"registerVoiceTarget", client_registerVoiceTarget},
 	{"setVoiceTarget", client_setVoiceTarget},
 	{"getVoiceTarget", client_getVoiceTarget},
+	{"setBitrate", client_setBitrate},
+	{"getBitrate", client_getBitrate},
 	{"getPing", client_getPing},
 	{"getUpTime", client_getUpTime},
 	{"__gc", client_gc},

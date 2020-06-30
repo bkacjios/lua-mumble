@@ -88,6 +88,10 @@ Boolean synced = mumble.client:isSynced()
 -- Disconnect from a mumble server
 mumble.client:disconnect()
 
+-- Transmit a plugin data packet
+-- Users table can be a table of mumble.user's OR session numbers
+mumble.client:sendPluginData(String dataID, String plugindata, Table users)
+
 -- Transmit a raw, encoded, opus packet
 mumble.client:transmit(String encoded_opus_packet, Boolean end_of_stream)
 
@@ -140,6 +144,15 @@ mumble.client:setVoiceTarget(Number id)
 
 -- Get the current voice target
 Number id = mumble.client:getVoiceTarget()
+
+-- Set the bitrate of the encoder that `mumble.client:play(...)` uses
+mumble.client:setBitrate(Number bitrate)
+
+-- Get the bitrate of the encoder that `mumble.client:play(...)` uses
+Number bitrate = mumble.client:getBitrate()
+
+-- Get the average ping of the client
+Number ping = mumble.client:getPing()
 
 -- Get the uptime of the current client
 Number time = mumble.client:getUpTime()
