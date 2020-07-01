@@ -140,10 +140,12 @@ static int client_sendPluginData(lua_State *l)
 static int client_transmit(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
-	size_t outputlen;
-	uint8_t* output = (uint8_t*) luaL_checklstring(l, 2, &outputlen);
+	uint8_t codec = (uint8_t) luaL_checkinteger(l, 2);
 
-	bool endofstream = luaL_optboolean(l, 3, false);
+	size_t outputlen;
+	uint8_t* output = (uint8_t*) luaL_checklstring(l, 3, &outputlen);
+
+	bool endofstream = luaL_optboolean(l, 4, false);
 
 	if (outputlen <= 0) return 0;
 
@@ -151,11 +153,14 @@ static int client_transmit(lua_State *l) {
 
 	VoicePacket packet;
 	voicepacket_init(&packet, packet_buffer);
-	voicepacket_setheader(&packet, VOICEPACKET_OPUS, client->audio_target, client->audio_sequence);
+	voicepacket_setheader(&packet, codec, client->audio_target, client->audio_sequence);
 
-	if (endofstream) {
+	if (codec == VOICEPACKET_OPUS && endofstream) {
 		// Set 14th bit to 1 to signal end of stream.
 		outputlen = ((1 << 13) | outputlen);
+	} else if ((codec == UDP_SPEEX || codec == UDP_CELT_ALPHA || codec == UDP_CELT_BETA) && !endofstream) {
+		// This may be wrong
+		outputlen = ((1 << 0) | outputlen) & 0xFF;
 	}
 
 	voicepacket_setframe(&packet, outputlen, output);
@@ -438,10 +443,10 @@ static int client_index(lua_State *l)
 	if (strcmp(lua_tostring(l, 2), "me") == 0 && client->session) {
 		mumble_user_raw_get(l, client, client->session);
 		return 1;
-	} else if (strcmp(lua_tostring(l, 2), "host") == 0&& client->host) {
+	} else if (strcmp(lua_tostring(l, 2), "host") == 0 && client->host) {
 		lua_pushstring(l, client->host);
 		return 1;
-	} else if (strcmp(lua_tostring(l, 2), "port") == 0&& client->port) {
+	} else if (strcmp(lua_tostring(l, 2), "port") == 0 && client->port) {
 		lua_pushinteger(l, client->port);
 		return 1;
 	}
