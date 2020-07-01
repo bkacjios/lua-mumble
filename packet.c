@@ -53,7 +53,11 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 		case PACKET_REQUESTBLOB:
 			payload_size = mumble_proto__request_blob__get_packed_size(message);
 			break;
+		case PACKET_PLUGINDATA:
+			payload_size = mumble_proto__plugin_data_transmission__get_packed_size(message);
+			break;
 		default:
+			printf("WARNING: unable to get payload size for packet #%i\n", type);
 			return 1;
 	}
 	if (payload_size >= PAYLOAD_SIZE_MAX) {
@@ -106,6 +110,12 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 				break;
 			case PACKET_REQUESTBLOB:
 				mumble_proto__request_blob__pack(message, packet_out.buffer + 6);
+				break;
+			case PACKET_PLUGINDATA:
+				mumble_proto__plugin_data_transmission__pack(message, packet_out.buffer + 6);
+				break;
+			default:
+				printf("WARNING: attempted to pack unspported packet #%i\n", type);
 				break;
 		}
 	}
