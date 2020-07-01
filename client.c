@@ -145,26 +145,23 @@ static int client_transmit(lua_State *l) {
 	size_t outputlen;
 	uint8_t* output = (uint8_t*) luaL_checklstring(l, 3, &outputlen);
 
-	bool endofstream = luaL_optboolean(l, 4, false);
-
-	if (outputlen <= 0) return 0;
+	bool speaking = luaL_optboolean(l, 4, true);
 
 	uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
+
+	uint16_t frame_header = outputlen;
+	if (codec == UDP_OPUS && !speaking) {
+		// Set 14th bit to 1 to signal end of stream.
+		frame_header = (1 << 13) | outputlen;
+	} else if ((codec == UDP_SPEEX || codec == UDP_CELT_ALPHA || codec == UDP_CELT_BETA) && speaking) {
+		// Set continuation bit at the MSB if we are not at the end of the stream
+		frame_header = (1 << 0) | outputlen;
+	}
 
 	VoicePacket packet;
 	voicepacket_init(&packet, packet_buffer);
 	voicepacket_setheader(&packet, codec, client->audio_target, client->audio_sequence);
-
-	if (codec == VOICEPACKET_OPUS && endofstream) {
-		// Set 14th bit to 1 to signal end of stream.
-		outputlen = ((1 << 13) | outputlen);
-	} else if ((codec == UDP_SPEEX || codec == UDP_CELT_ALPHA || codec == UDP_CELT_BETA) && !endofstream) {
-		// This may be wrong
-		outputlen = ((1 << 0) | outputlen) & 0xFF;
-	}
-
-	voicepacket_setframe(&packet, outputlen, output);
-
+	voicepacket_setframe(&packet, codec, frame_header, output);
 	packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
 
 	client->audio_sequence = (client->audio_sequence + 1) % 100000;

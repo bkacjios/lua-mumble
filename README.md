@@ -93,7 +93,8 @@ mumble.client:disconnect()
 mumble.client:sendPluginData(String dataID, String plugindata, Table users)
 
 -- Transmit a raw, encoded, opus packet
-mumble.client:transmit(String encoded_opus_packet, Boolean end_of_stream)
+-- Set speaking to false at the end of a stream
+mumble.client:transmit(Number codec, String encoded_audio_packet, Boolean speaking = true)
 
 -- Play an ogg audio file
 -- Changing the channel value will allow you to play multiple audio files at once
@@ -644,12 +645,13 @@ Called when a user starts to transmit voice data.
 
 ``` lua
 Table event = {
-	["user"]		= mumble.user user,
-	["codec"]		= Number codec,
-	["target"]		= Number target,
-	["sequence"]	= Number sequence,
-	["data"]		= String encoded_opus_packet,
-	["speaking"]	= Boolean speaking,
+	["user"]			= mumble.user user,
+	["codec"]			= Number codec,
+	["target"]			= Number target,
+	["sequence"]		= Number sequence,
+	["data"]			= String encoded_opus_packet,
+	["frame_header"]	= Number frame_header, // The frame header usually contains a length and terminator bit
+	["speaking"]		= Boolean speaking,
 }
 ```
 ___

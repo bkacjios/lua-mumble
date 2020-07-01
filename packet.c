@@ -152,15 +152,16 @@ void packet_udp_tunnel(lua_State *l, MumbleClient *client, Packet *packet)
 	MumbleUser* user = mumble_user_get(l, client, session);
 
 	int payload_len = 0;
+	uint16_t frame_header = 0;
 
 	if (codec == UDP_SPEEX || codec == UDP_CELT_ALPHA || codec == UDP_CELT_BETA) {
-		int header = packet->buffer[read++];
-		payload_len = header & 0x7F;
-		speaking = ((header & 0x80) == 0);
+		frame_header = packet->buffer[read++];
+		payload_len = frame_header & 0x7F;
+		speaking = ((frame_header & 0x80) == 0);
 	} else if (codec == UDP_OPUS) {
-		int header = util_get_varint(packet->buffer + read, &read);
-		payload_len = header & 0x1FFF;
-		speaking = ((header & 0x2000) == 0);
+		frame_header = util_get_varint(packet->buffer + read, &read);
+		payload_len = frame_header & 0x1FFF;
+		speaking = ((frame_header & 0x2000) == 0);
 	}
 
 	bool state_change = false;
@@ -188,6 +189,10 @@ void packet_udp_tunnel(lua_State *l, MumbleClient *client, Packet *packet)
 		lua_setfield(l, -2, "speaking");
 		lua_pushlstring(l, packet->buffer + read, payload_len);
 		lua_setfield(l, -2, "data");
+		lua_pushinteger(l, header);
+		lua_setfield(l, -2, "header");
+		lua_pushinteger(l, frame_header);
+		lua_setfield(l, -2, "frame_header");
 	mumble_hook_call(l, client, "OnUserSpeak", 1);
 
 	if (state_change && !speaking) {
