@@ -33,19 +33,20 @@ static int client_auth(lua_State *l)
 		lua_pushnil(l);
 
 		int i = 0;
+		int len = lua_objlen(l, 4);
+
+		auth.tokens = malloc(sizeof(char*) * len);
+		auth.n_tokens = len;
 
 		while (lua_next(l, -2)) {
 			lua_pushvalue(l, -2);
-
-			char *value = (char*) lua_tostring(l, -2);
-
-			auth.tokens[i] = value;
-
+			if (i < len) {
+				char *value = (char*) lua_tostring(l, -2);
+				auth.tokens[i++] = value;
+			}
 			lua_pop(l, 2);
 		}
 		lua_pop(l, 1);
-
-		auth.n_tokens = i;
 	}
 
 	struct utsname unameData;
@@ -59,6 +60,10 @@ static int client_auth(lua_State *l)
 
 	packet_send(client, PACKET_VERSION, &version);
 	packet_send(client, PACKET_AUTHENTICATE, &auth);
+
+	if (auth.tokens != NULL)
+		free(auth.tokens);
+
 	return 0;
 }
 
@@ -100,33 +105,35 @@ static int client_sendPluginData(lua_State *l)
 	data.has_data = true;
 	data.data = cbdata;
 
-	data.n_receiversessions = 0;
-
 	luaL_checktype(l, 4, LUA_TTABLE);
 	lua_pushvalue(l, 4);
 	lua_pushnil(l);
 
 	int i = 0;
+	int len = lua_objlen(l, 4);
+
+	data.receiversessions = malloc(sizeof(uint32_t) * len);
+	data.n_receiversessions = len;
 
 	while (lua_next(l, -2)) {
 		lua_pushvalue(l, -2);
-
-		// Allow a table of users or session IDs
-		if (lua_isuserdata(l, -2)) {
-			MumbleUser *user = lua_touserdata(l, -2);
-			data.receiversessions[i] = user->session;
-		} else if (lua_isnumber(l, -2)) {
-			uint32_t session = (uint32_t) lua_tonumber(l, -2);
-			data.receiversessions[i] = session;
+		if (i < len) {
+			// Allow a table of users or session IDs
+			if (lua_isuserdata(l, -2)) {
+				MumbleUser *user = lua_touserdata(l, -2);
+				data.receiversessions[i++] = user->session;
+			} else if (lua_isnumber(l, -2)) {
+				uint32_t session = (uint32_t) lua_tonumber(l, -2);
+				data.receiversessions[i++] = session;
+			}
 		}
-
 		lua_pop(l, 2);
 	}
 	lua_pop(l, 1);
 
-	data.n_receiversessions = i;
-
 	packet_send(client, PACKET_PLUGINDATA, &data);
+
+	free(data.receiversessions);
 	return 0;
 }
 
@@ -346,7 +353,6 @@ static int client_registerVoiceTarget(lua_State *l)
 	int n_targets = lua_gettop(l) - 2;
 
 	msg.n_targets = n_targets;
-
 	msg.targets = malloc(sizeof(MumbleProto__VoiceTarget__Target) * n_targets);
 
 	for (int i=0; i < n_targets; i++) {
