@@ -161,7 +161,7 @@ static int client_transmit(lua_State *l) {
 	VoicePacket packet;
 	voicepacket_init(&packet, packet_buffer);
 	voicepacket_setheader(&packet, codec, client->audio_target, client->audio_sequence);
-	voicepacket_setframe(&packet, codec, frame_header, output);
+	voicepacket_setframe(&packet, codec, frame_header, output, outputlen);
 	packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
 
 	client->audio_sequence = (client->audio_sequence + 1) % 100000;

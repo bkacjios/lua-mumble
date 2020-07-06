@@ -18,7 +18,7 @@ static void mumble_lua_timer(EV_P_ ev_timer *w_, int revents)
 	// Call the callback with our custom error handler function
 	if (lua_pcall(l, 1, 0, -3) != 0) {
 		fprintf(stderr, "%s\n", lua_tostring(l, -1));
-		lua_pop(L, 1); // Pop the error
+		lua_pop(l, 1); // Pop the error
 	}
 
 	// Pop the error handler

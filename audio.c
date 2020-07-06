@@ -92,20 +92,11 @@ int voicepacket_setheader(VoicePacket *packet, const uint8_t type, const uint8_t
 	return 1;
 }
 
-int voicepacket_setframe(VoicePacket *packet, const uint8_t type, const uint16_t frame_header, uint8_t *buffer)
+int voicepacket_setframe(VoicePacket *packet, const uint8_t type, const uint16_t frame_header, uint8_t *buffer, size_t buffer_len)
 {
 	int offset;
 
-	// Strip out the 14th bit that contains end of stream flag to get actual length of packet
-	uint16_t length = 0;
-
-	if (type == UDP_OPUS) {
-		length = (frame_header & 0x1FFF);
-	} else if (type == UDP_SPEEX || type == UDP_CELT_ALPHA || type == UDP_CELT_BETA) {
-		length = (frame_header & 0x7F);
-	}
-
-	if (packet == NULL || buffer == NULL || length <= 0 || length >= 0x2000) {
+	if (packet == NULL || buffer == NULL || buffer_len <= 0 || buffer_len >= 0x2000) {
 		return -1;
 	}
 	if (packet->header_length <= 0) {
@@ -124,8 +115,8 @@ int voicepacket_setframe(VoicePacket *packet, const uint8_t type, const uint16_t
 	if (offset <= 0) {
 		return -3;
 	}
-	memmove(packet->buffer + packet->header_length + offset, buffer, length);
-	packet->length = packet->header_length + length + offset;
+	memmove(packet->buffer + packet->header_length + offset, buffer, buffer_len);
+	packet->length = packet->header_length + buffer_len + offset;
 	return 1;
 }
 
@@ -231,8 +222,8 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 	// Nothing to do..
 	if (biggest_read <= 0) return;
 
-	uint8_t output[0x1FFF];
-	opus_int32 encoded_len = opus_encode_float(client->encoder, client->audio_buffer, enc_frame_size, output, sizeof(output));
+	uint8_t encoded[0x1FFF];
+	opus_int32 encoded_len = opus_encode_float(client->encoder, client->audio_buffer, enc_frame_size, encoded, sizeof(encoded));
 
 	if (encoded_len <= 0) return;
 
@@ -241,14 +232,16 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 	voicepacket_init(&packet, packet_buffer);
 	voicepacket_setheader(&packet, UDP_OPUS, client->audio_target, client->audio_sequence);
 
+	uint32_t frame_header = encoded_len;
+
 	// If the largest PCM buffer is smaller than our frame size, it has to be the last frame available
 	if (biggest_read < enc_frame_size) {
 		// Set 14th bit to 1 to signal end of stream.
-		encoded_len = ((1 << 13) | encoded_len);
+		frame_header = ((1 << 13) | frame_header);
 		mumble_hook_call(l, client, "OnAudioStreamEnd", 0);
 	}
 
-	voicepacket_setframe(&packet, UDP_OPUS, encoded_len, output);
+	voicepacket_setframe(&packet, UDP_OPUS, frame_header, encoded, encoded_len);
 
 	packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
 
