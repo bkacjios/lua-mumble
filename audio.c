@@ -248,7 +248,6 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 		mumble_hook_call(l, client, "OnAudioStreamEnd", 0);
 	}
 
-	printf("encoded_len: %x\n", encoded_len);
 	voicepacket_setframe(&packet, UDP_OPUS, encoded_len, output);
 
 	packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));

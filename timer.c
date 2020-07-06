@@ -8,19 +8,20 @@ static void mumble_lua_timer(EV_P_ ev_timer *w_, int revents)
 
 	lua_State *l = w->l;
 
+	// Push our error handler
+	lua_pushcfunction(l, mumble_traceback);
+
 	// Push the callback function from the registry
 	lua_rawgeti(l, LUA_REGISTRYINDEX, w->callback);
 	lua_rawgeti(l, LUA_REGISTRYINDEX, w->self);
 
-	int base = lua_gettop(l) - 1;
-	lua_pushcfunction(l, mumble_traceback);
-	lua_insert(l, base);
-
-	if (lua_pcall(l, 1, 0, base) != 0) {
+	// Call the callback with our custom error handler function
+	if (lua_pcall(l, 1, 0, -3) != 0) {
 		fprintf(stderr, "%s\n", lua_tostring(l, -1));
 	}
 
-	lua_remove(l, base);
+	// Pop the error handler
+	lua_pop(l, 1);
 }
 
 int mumble_timer_new(lua_State *l)

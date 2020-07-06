@@ -187,7 +187,7 @@ static int client_play(lua_State *l)
 	//luaL_getmetatable(l, METATABLE_AUDIO);
 	//lua_setmetatable(l, -2);
 
-	AudioTransmission *sound = malloc(sizeof *sound);
+	AudioTransmission *sound = malloc(sizeof(AudioTransmission));
 
 	sound->playing = true;
 	sound->client = client;
