@@ -65,6 +65,11 @@ void debugstack(lua_State *l, const char* text)
 	}
 }
 
+int luaL_typerror(lua_State *L, int narg, const char *tname) {
+	const char *msg = lua_pushfstring(L, "%s expected, got %s", tname, luaL_typename(L, narg));
+	return luaL_argerror(L, narg, msg);
+}
+
 int luaL_checkboolean(lua_State *L, int i){
 	if(!lua_isboolean(L,i))
 		luaL_typerror(L,i,"boolean");

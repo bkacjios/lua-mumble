@@ -9,9 +9,12 @@
 
 #include <ev.h>
 
+#define LUA_COMPAT_MODULE
+#define LUA_COMPAT_5_1
+
 #include <lua.h>
-#include <lualib.h>
 #include <lauxlib.h>
+#include <lualib.h>
 
 #include <signal.h>
 #include <netdb.h>
@@ -234,6 +237,7 @@ extern double gettime();
 extern void bin_to_strhex(char *bin, size_t binsz, char **result);
 
 extern void debugstack(lua_State *l, const char* text);
+extern int luaL_typerror(lua_State *L, int narg, const char *tname);
 extern int luaL_checkboolean(lua_State *L, int i);
 extern int luaL_optboolean(lua_State *L, int i, int d);
 extern const char* eztype(lua_State *L, int i);
