@@ -159,7 +159,7 @@ void packet_udp_tunnel(lua_State *l, MumbleClient *client, Packet *packet)
 	int sequence = util_get_varint(packet->buffer + read, &read);
 	
 	bool speaking = false;
-	MumbleUser* user = mumble_user_get(l, client, session);
+	MumbleUser* user = mumble_user_get(l, client, session); lua_pop(l, 1);
 
 	int payload_len = 0;
 	uint16_t frame_header = 0;
@@ -453,76 +453,116 @@ void packet_user_state(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
-	MumbleUser* user = mumble_user_get(l, client, state->session);
+	MumbleUser* user = mumble_user_get(l, client, state->session); lua_pop(l, 1);
 
 	lua_newtable(l);
 		if (state->has_actor) {
 			mumble_user_raw_get(l, client, state->actor);
 			lua_setfield(l, -2, "actor");
 		}
+
+		user->session = state->session;
+		if (state->name != NULL) {
+			user->name = strdup(state->name);
+			lua_pushstring(l, user->name);
+			lua_setfield(l, -2, "name");
+		}
+		if (state->has_channel_id) {
+			if (user->connected == true && client->synced == true && user->channel_id != state->channel_id) {
+				lua_newtable(l);
+					if (state->has_actor) {
+						mumble_user_raw_get(l, client, state->actor);
+						lua_setfield(l, -2, "actor");
+					}
+					mumble_channel_raw_get(l, client, user->channel_id);
+					lua_setfield(l, -2, "from");
+					mumble_channel_raw_get(l, client, state->channel_id);
+					lua_setfield(l, -2, "to");
+					mumble_user_raw_get(l, client, state->session);
+					lua_setfield(l, -2, "user");
+				mumble_hook_call(l, client, "OnUserChannel", 1);
+			}
+			user->channel_id = state->channel_id;
+			mumble_channel_raw_get(l, client, user->channel_id);
+			lua_setfield(l, -2, "channel");
+		}
+		if (state->has_user_id) {
+			user->user_id = state->user_id;
+			lua_pushinteger(l, user->user_id);
+			lua_setfield(l, -2, "user_id");
+		}
+		if (state->has_mute) {
+			user->mute = state->mute;
+			lua_pushboolean(l, user->mute);
+			lua_setfield(l, -2, "mute");
+		}
+		if (state->has_deaf) {
+			user->deaf = state->deaf;
+			lua_pushboolean(l, user->deaf);
+			lua_setfield(l, -2, "deaf");
+		}
+		if (state->has_self_mute) {
+			user->self_mute = state->self_mute;
+			lua_pushboolean(l, user->self_mute);
+			lua_setfield(l, -2, "self_mute");
+		}
+		if (state->has_self_deaf) {
+			user->self_deaf = state->self_deaf;
+			lua_pushboolean(l, user->self_deaf);
+			lua_setfield(l, -2, "self_deaf");
+		}
+		if (state->has_suppress) {
+			user->suppress = state->suppress;
+			lua_pushboolean(l, user->suppress);
+			lua_setfield(l, -2, "suppress");
+		}
+		if (state->comment != NULL) {
+			user->comment = strdup(state->comment);
+			lua_pushstring(l, user->comment);
+			lua_setfield(l, -2, "comment");
+		}
+		if (state->has_recording) {
+			user->recording = state->recording;
+			lua_pushboolean(l, user->recording);
+			lua_setfield(l, -2, "recording");
+		}
+		if (state->has_priority_speaker) {
+			user->priority_speaker = state->priority_speaker;
+			lua_pushboolean(l, user->priority_speaker);
+			lua_setfield(l, -2, "priority_speaker");
+		}
+		if (state->has_texture) {
+			user->texture = (char*) strdup((const char*)state->texture.data);
+			lua_pushstring(l, user->texture);
+			lua_setfield(l, -2, "texture");
+		}
+		if (state->hash != NULL) {
+			user->hash = (char*) strdup((const char*)state->hash);
+			lua_pushstring(l, user->hash);
+			lua_setfield(l, -2, "hash");
+		}
+		if (state->has_comment_hash) {
+			user->comment_hash = (char*) strdup((const char*)state->comment_hash.data);
+			user->comment_hash_len = state->comment_hash.len;
+
+			char* result;
+			bin_to_strhex(user->comment_hash, user->comment_hash_len, &result);
+			lua_pushstring(l, result);
+			lua_setfield(l, -2, "comment_hash");
+			free(result);
+		}
+		if (state->has_texture_hash) {
+			user->texture_hash = (char*) strdup((const char*)state->texture_hash.data);
+			user->texture_hash_len = state->texture_hash.len;
+
+			char* result;
+			bin_to_strhex(user->texture_hash, user->texture_hash_len, &result);
+			lua_pushstring(l, result);
+			lua_setfield(l, -2, "texture_hash");
+			free(result);
+		}
+
 		mumble_user_raw_get(l, client, state->session);
-			user->session = state->session;
-			if (state->name != NULL) {
-				user->name = strdup(state->name);
-			}
-			if (state->has_channel_id) {
-				if (user->channel_id != state->channel_id) {
-					lua_newtable(l);
-						if (state->has_actor) {
-							mumble_user_raw_get(l, client, state->actor);
-							lua_setfield(l, -2, "actor");
-						}
-						mumble_channel_raw_get(l, client, user->channel_id);
-						lua_setfield(l, -2, "from");
-						mumble_channel_raw_get(l, client, state->channel_id);
-						lua_setfield(l, -2, "to");
-						mumble_user_raw_get(l, client, state->session);
-						lua_setfield(l, -2, "user");
-					mumble_hook_call(l, client, "OnUserChannel", 1);
-				}
-				user->channel_id = state->channel_id;
-			}
-			if (state->has_user_id) {
-				user->user_id = state->user_id;
-			}
-			if (state->has_mute) {
-				user->mute = state->mute;
-			}
-			if (state->has_deaf) {
-				user->deaf = state->deaf;
-			}
-			if (state->has_self_mute) {
-				user->self_mute = state->self_mute;
-			}
-			if (state->has_self_deaf) {
-				user->self_deaf = state->self_deaf;
-			}
-			if (state->has_suppress) {
-				user->suppress = state->suppress;
-			}
-			if (state->comment != NULL) {
-				user->comment = strdup(state->comment);
-			}
-			if (state->has_recording) {
-				user->recording = state->recording;
-			}
-			if (state->has_priority_speaker) {
-				user->priority_speaker = state->priority_speaker;
-			}
-			if (state->has_texture) {
-				user->texture = (char*) strdup((const char*)state->texture.data);
-			}
-			if (state->hash != NULL) {
-				user->hash = (char*) strdup((const char*)state->hash);
-			}
-			if (state->has_comment_hash) {
-				user->comment_hash = (char*) strdup((const char*)state->comment_hash.data);
-				user->comment_hash_len = state->comment_hash.len;
-			}
-			if (state->has_texture_hash) {
-				user->texture_hash = (char*) strdup((const char*)state->texture_hash.data);
-				user->texture_hash_len = state->texture_hash.len;
-			}
 		lua_setfield(l, -2, "user");
 
 		if (user->connected == false && client->synced == true) {

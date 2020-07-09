@@ -31,12 +31,20 @@ client:hook("OnChannelState", function(channel)
 	print("OnChannelState", channel)
 end)
 
+client:hook("OnUserConnected", function(user)
+	print("OnUserConnected", user)
+end)
+
 client:hook("OnUserRemove", function(event)
 	print("OnUserRemove", event)
 end)
 
 client:hook("OnUserState", function(event)
 	print("OnUserState", event)
+end)
+
+client:hook("OnUserChannel", function(event)
+	print("OnUserChannel", event)
 end)
 
 client:hook("OnUserStartSpeaking", function(user)

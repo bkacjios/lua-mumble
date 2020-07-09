@@ -620,11 +620,27 @@ ___
 ### `OnUserState (Table event)`
 
 Called when a mumble.user state has changed.. Like updating their comment, moving channels, muted, deafened, etc..
+Not every value will always be set. Only the field that is currently changing will be set!
 
 ``` lua
 Table event = {
-	["actor"]	= mumble.user actor,
-	["user"]	= mumble.user user,
+	["user_id"]				= Number user_id,
+	["actor"]				= mumble.user actor,
+	["user"]				= mumble.user user,
+	["channel"]				= mumble.channel channel,
+	["mute"]				= Boolean mute,
+	["deaf"]				= Boolean deaf,
+	["self_mute"]			= Boolean self_mute,
+	["self_deaf"]			= Boolean self_deaf,
+	["suppress"]			= Boolean suppress,
+	["recording"]			= Boolean recording,
+	["priority_speaker"]	= Boolean priority_speaker,
+	["name"]				= String name,
+	["comment"]				= String comment,
+	["texture"]				= String texture,
+	["hash"]				= String hash,
+	["comment_hash"]		= String comment_hash,
+	["texture_hash"]		= String texture_hash,
 }
 ```
 ___

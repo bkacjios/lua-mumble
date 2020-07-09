@@ -115,6 +115,7 @@ static void socket_read_event(struct ev_loop *loop, ev_io *w_, int revents)
 	if (handler != NULL) {
 		// Call our packet handler functions
 		handler(l, client, &packet_read);
+		lua_settop(l, 0); // Incase anything gets left on the stack, remove it
 	}
 
 	if (SSL_pending(client->ssl) > 0) {
