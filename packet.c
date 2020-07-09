@@ -26,6 +26,15 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 		case PACKET_CHANNELSTATE:
 			payload_size = mumble_proto__channel_state__get_packed_size(message);
 			break;
+		case PACKET_USERREMOVE:
+			payload_size = mumble_proto__user_remove__get_packed_size(message);
+			break;
+		case PACKET_USERSTATE:
+			payload_size = mumble_proto__user_state__get_packed_size(message);
+			break;
+		case PACKET_BANLIST:
+			payload_size = mumble_proto__ban_list__get_packed_size(message);
+			break;
 		case PACKET_TEXTMESSAGE:
 			payload_size = mumble_proto__text_message__get_packed_size(message);
 			break;
@@ -35,11 +44,8 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 		case PACKET_PERMISSIONQUERY:
 			payload_size = mumble_proto__permission_query__get_packed_size(message);
 			break;
-		case PACKET_USERREMOVE:
-			payload_size = mumble_proto__user_remove__get_packed_size(message);
-			break;
-		case PACKET_USERSTATE:
-			payload_size = mumble_proto__user_state__get_packed_size(message);
+		case PACKET_USERLIST:
+			payload_size = mumble_proto__user_list__get_packed_size(message);
 			break;
 		case PACKET_VOICETARGET:
 			payload_size = mumble_proto__voice_target__get_packed_size(message);
@@ -84,6 +90,15 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 			case PACKET_CHANNELSTATE:
 				mumble_proto__channel_state__pack(message, packet_out.buffer + 6);
 				break;
+			case PACKET_USERREMOVE:
+				mumble_proto__user_remove__pack(message, packet_out.buffer + 6);
+				break;
+			case PACKET_USERSTATE:
+				mumble_proto__user_state__pack(message, packet_out.buffer + 6);
+				break;
+			case PACKET_BANLIST:
+				mumble_proto__ban_list__pack(message, packet_out.buffer + 6);
+				break;
 			case PACKET_TEXTMESSAGE:
 				mumble_proto__text_message__pack(message, packet_out.buffer + 6);
 				break;
@@ -93,11 +108,8 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 			case PACKET_PERMISSIONQUERY:
 				mumble_proto__permission_query__pack(message, packet_out.buffer + 6);
 				break;
-			case PACKET_USERREMOVE:
-				mumble_proto__user_remove__pack(message, packet_out.buffer + 6);
-				break;
-			case PACKET_USERSTATE:
-				mumble_proto__user_state__pack(message, packet_out.buffer + 6);
+			case PACKET_USERLIST:
+				mumble_proto__user_list__pack(message, packet_out.buffer + 6);
 				break;
 			case PACKET_VOICETARGET:
 				mumble_proto__voice_target__pack(message, packet_out.buffer + 6);
@@ -575,6 +587,86 @@ void packet_user_state(lua_State *l, MumbleClient *client, Packet *packet)
 	mumble_proto__user_state__free_unpacked(state, NULL);
 }
 
+void packet_ban_list(lua_State *l, MumbleClient *client, Packet *packet)
+{
+	MumbleProto__BanList *list = mumble_proto__ban_list__unpack(NULL, packet->length, packet->buffer);
+	if (list == NULL) {
+		return;
+	}
+
+	lua_newtable(l);
+	if (list->n_bans > 0) {
+		for (uint32_t i = 0; i < list->n_bans; i++) {
+			MumbleProto__BanList__BanEntry *ban = list->bans[i];
+			lua_pushinteger(l, i+1);
+			lua_newtable(l);
+				lua_newtable(l);
+					uint8_t* bytes = (uint8_t*) ban->address.data;
+					uint64_t* addr = (uint64_t*) ban->address.data;
+					uint16_t* shorts = (uint16_t*) ban->address.data;
+
+					if (addr[0] != 0ULL || shorts[4] != 0 || shorts[5] != 0xFFFF) {
+						char ipv6[40];
+						sprintf(ipv6,"%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+							bytes[0], bytes[1], bytes[2], bytes[3],
+							bytes[4], bytes[5], bytes[5], bytes[7],
+							bytes[8], bytes[9], bytes[10], bytes[11],
+							bytes[12], bytes[13], bytes[14], bytes[15]);
+
+						lua_pushboolean(l, true);
+						lua_setfield(l, -2, "ipv6");
+						lua_pushstring(l, ipv6);
+						lua_setfield(l, -2, "string");
+					} else {
+						char ipv4[16];
+						sprintf(ipv4, "%d.%d.%d.%d", bytes[12], bytes[13], bytes[14], bytes[15]);
+						
+						lua_pushboolean(l, true);
+						lua_setfield(l, -2, "ipv4");
+						lua_pushstring(l, ipv4);
+						lua_setfield(l, -2, "string");
+					}
+
+					lua_newtable(l);
+						for (uint32_t k = 0; k < ban->address.len; k++) {
+							lua_pushinteger(l, k+1);
+							lua_pushinteger(l, ban->address.data[k]);
+							lua_settable(l, -3);
+						}
+					lua_setfield(l, -2, "data");
+				lua_setfield(l, -2, "address");
+
+				lua_pushinteger(l, ban->mask);
+				lua_setfield(l, -2, "mask");
+				if (ban->name != NULL) {
+					lua_pushstring(l, ban->name);
+					lua_setfield(l, -2, "name");
+				}
+				if (ban->hash != NULL) {
+					lua_pushstring(l, ban->hash);
+					lua_setfield(l, -2, "hash");
+				}
+				if (ban->reason != NULL) {
+					lua_pushstring(l, ban->reason);
+					lua_setfield(l, -2, "reason");
+				}
+				if (ban->start != NULL) {
+					lua_pushstring(l, ban->start);
+					lua_setfield(l, -2, "start");
+				}
+				if (ban->has_duration) {
+					lua_pushinteger(l, ban->duration);
+					lua_setfield(l, -2, "duration");
+				}
+
+			lua_settable(l, -3);
+		}
+	}
+	mumble_hook_call(l, client, "OnBanList", 1);
+
+	mumble_proto__ban_list__free_unpacked(list, NULL);
+}
+
 void packet_text_message(lua_State *l, MumbleClient *client, Packet *packet)
 {
 	MumbleProto__TextMessage *msg = mumble_proto__text_message__unpack(NULL, packet->length, packet->buffer);
@@ -759,6 +851,41 @@ void packet_acl(lua_State *l, MumbleClient *client, Packet *packet)
 	mumble_hook_call(l, client, "OnACL", 1);
 
 	mumble_proto__acl__free_unpacked(acl, NULL);
+}
+
+void packet_user_list(lua_State *l, MumbleClient *client, Packet *packet)
+{
+	MumbleProto__UserList *list = mumble_proto__user_list__unpack(NULL, packet->length, packet->buffer);
+	if (list == NULL) {
+		return;
+	}
+
+	lua_newtable(l);
+	if (list->n_users > 0) {
+		for (uint32_t i = 0; i < list->n_users; i++) {
+			MumbleProto__UserList__User *user = list->users[i];
+			lua_pushinteger(l, i+1);
+			lua_newtable(l);
+				lua_pushinteger(l, user->user_id);
+				lua_setfield(l, -2, "user_id");
+				if(user->name != NULL) {
+					lua_pushstring(l, user->name);
+					lua_setfield(l, -2, "name");
+				}
+				if(user->last_seen != NULL) {
+					lua_pushstring(l, user->last_seen);
+					lua_setfield(l, -2, "last_seen");
+				}
+				if(user->has_last_channel) {
+					mumble_channel_raw_get(l, client, user->last_channel);
+					lua_setfield(l, -2, "last_channel");
+				}
+			lua_settable(l, -3);
+		}
+	}
+	mumble_hook_call(l, client, "OnUserList", 1);
+
+	mumble_proto__user_list__free_unpacked(list, NULL);
 }
 
 void packet_permission_query(lua_State *l, MumbleClient *client, Packet *packet)
@@ -1119,7 +1246,7 @@ const Packet_Handler_Func packet_handler[NUM_PACKETS] = {
 	/*  7 */ packet_channel_state,
 	/*  8 */ packet_user_remove,
 	/*  9 */ packet_user_state,
-	/* 10 */ NULL, // Banlist
+	/* 10 */ packet_ban_list, // Banlist
 	/* 11 */ packet_text_message,
 	/* 12 */ packet_permission_denied,
 	/* 13 */ packet_acl, // ACL
@@ -1127,7 +1254,7 @@ const Packet_Handler_Func packet_handler[NUM_PACKETS] = {
 	/* 15 */ NULL, // CryptSetup
 	/* 16 */ NULL, // ContextActionAdd
 	/* 17 */ NULL, // Context Action
-	/* 18 */ NULL, // UserList
+	/* 18 */ packet_user_list, // UserList
 	/* 19 */ NULL, // VoiceTarget
 	/* 20 */ packet_permission_query, // PermissionQuery
 	/* 21 */ packet_codec_version, // CodecVersion

@@ -67,6 +67,37 @@ static int client_auth(lua_State *l)
 	return 0;
 }
 
+static int client_setTokens(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+
+	MumbleProto__Authenticate auth = MUMBLE_PROTO__AUTHENTICATE__INIT;
+
+	luaL_checktype(l, 2, LUA_TTABLE);
+
+	lua_pushvalue(l, 2);
+	lua_pushnil(l);
+
+	int i = 0;
+	int len = lua_objlen(l, 2);
+
+	auth.tokens = malloc(sizeof(char*) * len);
+	auth.n_tokens = len;
+
+	while (lua_next(l, -2)) {
+		lua_pushvalue(l, -2);
+		if (i < len) {
+			char *value = (char*) lua_tostring(l, -2);
+			auth.tokens[i++] = value;
+		}
+		lua_pop(l, 2);
+	}
+	lua_pop(l, 1);
+
+	packet_send(client, PACKET_AUTHENTICATE, &auth);
+	return 0;
+}
+
 static int client_disconnect(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
@@ -86,6 +117,26 @@ static int client_isSynced(lua_State *l)
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_pushboolean(l, client->synced);
 	return 1;
+}
+
+static int client_requestBanList(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+
+	MumbleProto__BanList list = MUMBLE_PROTO__BAN_LIST__INIT;
+	list.has_query = true;
+	list.query = true;
+	packet_send(client, PACKET_BANLIST, &list);
+	return 0;
+}
+
+static int client_requestUserList(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+
+	MumbleProto__UserList list = MUMBLE_PROTO__USER_LIST__INIT;
+	packet_send(client, PACKET_USERLIST, &list);
+	return 0;
 }
 
 static int client_sendPluginData(lua_State *l)
@@ -456,9 +507,12 @@ static int client_index(lua_State *l)
 
 const luaL_Reg mumble_client[] = {
 	{"auth", client_auth},
+	{"setTokens", client_setTokens},
 	{"disconnect", client_disconnect},
 	{"isConnected", client_isConnected},
 	{"isSynced", client_isSynced},
+	{"requestBanList", client_requestBanList},
+	{"requestUserList", client_requestUserList},
 	{"sendPluginData", client_sendPluginData},
 	{"transmit", client_transmit},
 	{"play", client_play},

@@ -79,11 +79,22 @@ Number time = mumble.gettime()
 -- Authenticate as a user
 mumble.client:auth(String username, String password, Table tokens)
 
+-- Set the bots access tokens
+mumble.client:setTokens(Table tokens)
+
 -- Check if the client is connected
 Boolean connected = mumble.client:isConnected()
 
 -- Check if the client has fully synced all users and channels
 Boolean synced = mumble.client:isSynced()
+
+-- Request the registered ban list from the server
+-- When server responds, it will call the 'OnBanList' hook
+mumble.client:requestBanList()
+
+-- Request the registered user list from the server
+-- When server responds, it will call the 'OnUserList' hook
+mumble.client:requestUserList()
 
 -- Disconnect from a mumble server
 mumble.client:disconnect()
@@ -672,6 +683,31 @@ Table event = {
 ```
 ___
 
+### `OnBanList (Table banlist)`
+
+Called on response to a `mumble.client:requestBanList()` call
+
+```lua
+Table banlist = {
+	[1] = {
+		["address"] = {
+			["string"]	= String ipaddress,
+			["ipv4"]	= Boolean isipv4,
+			["ipv6"]	= Boolean isipv6,
+			["data"]	= Table raw,
+		},
+		["mask"]		= Number ip_mask,
+		["name"]		= String name,
+		["hash"]		= String hash,
+		["reason"]		= String reason,
+		["start"]		= String start,
+		["duration"]	= Number duration
+	},
+	...
+}
+```
+___
+
 ### `OnMessage (Table event)`
 
 Called when the bot receives a text message
@@ -742,6 +778,23 @@ Table event = {
 		},
 		...
 	},
+}
+```
+___
+
+### `OnUserList (Table userlist)`
+
+Called on response to a `mumble.client:requestUsers()` call
+
+```lua
+Table userlist = {
+	[1] = {
+		["user_id"]			= Number user_id,
+		["name"]			= String name,
+		["last_seen"]		= String last_seen,
+		["last_channel"]	= mumble.channel last_channel,
+	},
+	...
 }
 ```
 ___
@@ -862,6 +915,7 @@ Table event = {
 	["data"]   = String data,        -- The data sent (can be binary data)
 	["receivers"]				= {  -- A table of who is receiving this data
 		[1] = mumble.user,
+		...
 	},
 }
 ```
