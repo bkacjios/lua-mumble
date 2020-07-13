@@ -55,6 +55,8 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 		lua_pushinteger(l, ts);
 		lua_setfield(l, -2, "timestamp");
 	mumble_hook_call(l, client, "OnClientPing", 1);
+	lua_settop(l, 0);
+
 	packet_send(client, PACKET_PING, &ping);
 }
 

@@ -23,6 +23,8 @@ static void mumble_lua_timer(EV_P_ ev_timer *w_, int revents)
 
 	// Pop the error handler
 	lua_pop(l, 1);
+
+	lua_settop(l, 0);
 }
 
 int mumble_timer_new(lua_State *l)
