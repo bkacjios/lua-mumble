@@ -23,8 +23,11 @@ static void mumble_audio_timer(EV_P_ ev_timer *w_, int revents)
 	my_timer *w = (my_timer *) w_;
 	MumbleClient *client = w->client;
 
-	if (client->connected)
+	if (client->connected) {
+		lua_stackguard_entry(w->l);
 		audio_transmission_event(w->l, client);
+		lua_stackguard_exit(w->l);
+	}
 }
 
 static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
@@ -49,15 +52,21 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 	
 	ping.has_tcp_ping_var = true;
 	ping.tcp_ping_var = client->tcp_ping_var;
+	
+	lua_stackguard_entry(l);
 
 	lua_newtable(l);
 		// Push the timestamp we are sending to the server
 		lua_pushinteger(l, ts);
 		lua_setfield(l, -2, "timestamp");
 	mumble_hook_call(l, client, "OnClientPing", 1);
+
+	// Safety clear stack
 	lua_settop(l, 0);
 
 	packet_send(client, PACKET_PING, &ping);
+
+	lua_stackguard_exit(l);
 }
 
 static void socket_read_event(struct ev_loop *loop, ev_io *w_, int revents)
@@ -116,8 +125,10 @@ static void socket_read_event(struct ev_loop *loop, ev_io *w_, int revents)
 
 	if (handler != NULL) {
 		// Call our packet handler functions
+		lua_stackguard_entry(l);
 		handler(l, client, &packet_read);
 		lua_settop(l, 0); // Incase anything gets left on the stack, remove it
+		lua_stackguard_exit(l);
 	}
 
 	if (SSL_pending(client->ssl) > 0) {
@@ -381,6 +392,8 @@ int mumble_traceback(lua_State *l)
 
 void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs)
 {
+	lua_stackguard_entry(l);
+
 	int top = lua_gettop(l);
 
 	// Get hook table
@@ -396,6 +409,9 @@ void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int 
 	if (lua_isnil(l, -1) == 1 || lua_istable(l, -1) == 0) {
 		// Pop the nil or nontable value
 		lua_pop(l, 1);
+
+		// Call exit early, since mumble_hook_call removes the function called and its arguments from the stack
+		lua_stackguard_exit(l);
 
 		// Remove the arguments anyway despite no hook call
 		for (int i = top; i < top + nargs; i++) {
@@ -452,6 +468,9 @@ void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int 
 
 	// Pop the hook table
 	lua_pop(l, 1);
+
+	// Call exit early, since mumble_hook_call removes the function called and its arguments from the stack
+	lua_stackguard_exit(l);
 
 	// Remove the original arguments
 	for (int i = top; i < top + nargs; i++) {

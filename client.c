@@ -232,7 +232,7 @@ static int client_play(lua_State *l)
 	if (channel > AUDIO_MAX_CHANNELS)
 		channel = AUDIO_MAX_CHANNELS;
 
-	audio_transmission_stop(client->audio_jobs[channel - 1]);
+	audio_transmission_stop(l, client, client->audio_jobs[channel - 1], channel);
 
 	//AudioTransmission *sound = lua_newuserdata(l, sizeof(AudioTransmission));
 	//luaL_getmetatable(l, METATABLE_AUDIO);
@@ -279,9 +279,8 @@ static int client_stopPlaying(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
 	int channel				= luaL_optinteger(l, 2, 1);
-
-	audio_transmission_stop(client->audio_jobs[channel - 1]);
-	return 1;
+	audio_transmission_stop(l, client, client->audio_jobs[channel - 1], channel);
+	return 0;
 }
 
 static int client_setVolume(lua_State *l)

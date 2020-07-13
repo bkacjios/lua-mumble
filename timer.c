@@ -8,6 +8,8 @@ static void mumble_lua_timer(EV_P_ ev_timer *w_, int revents)
 
 	lua_State *l = w->l;
 
+	lua_stackguard_entry(l);
+
 	// Push our error handler
 	lua_pushcfunction(l, mumble_traceback);
 
@@ -24,7 +26,10 @@ static void mumble_lua_timer(EV_P_ ev_timer *w_, int revents)
 	// Pop the error handler
 	lua_pop(l, 1);
 
+	// Safety clear stack
 	lua_settop(l, 0);
+
+	lua_stackguard_exit(l);
 }
 
 int mumble_timer_new(lua_State *l)

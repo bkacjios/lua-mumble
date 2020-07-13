@@ -16,6 +16,9 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
+#define lua_stackguard_entry(L) int __lua_stackguard_entry=lua_gettop(L);
+#define lua_stackguard_exit(L) assert(__lua_stackguard_entry == lua_gettop(L));
+
 #include <signal.h>
 #include <netdb.h>
 
@@ -258,6 +261,3 @@ extern void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t c
 
 extern int mumble_traceback(lua_State *l);
 extern void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs);
-
-extern void audio_transmission_event(lua_State* l, MumbleClient *client);
-extern void audio_transmission_stop(AudioTransmission* sound);

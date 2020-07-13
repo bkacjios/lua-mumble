@@ -579,7 +579,7 @@ void packet_user_state(lua_State *l, MumbleClient *client, Packet *packet)
 
 		if (user->connected == false && client->synced == true) {
 			user->connected = true;
-			lua_pushvalue(l, -1);
+			lua_pushvalue(l, -1); // Push a copy of the event table we will send to the 'OnUserState' hook
 			mumble_hook_call(l, client, "OnUserConnected", 1);
 		}
 	mumble_hook_call(l, client, "OnUserState", 1);

@@ -128,11 +128,13 @@ int voicepacket_getlength(const VoicePacket *packet)
 	return packet->length;
 }
 
-void audio_transmission_stop(AudioTransmission* sound)
+void audio_transmission_stop(lua_State*l, MumbleClient *client, AudioTransmission* sound, int channel)
 {
 	if (sound == NULL) return;
 	if (sound->ogg != NULL) {
 		stb_vorbis_close(sound->ogg);
+		lua_pushinteger(l, channel); // Push the channel number
+		mumble_hook_call(l, client, "OnAudioFinished", 1);
 	}
 }
 
@@ -205,9 +207,7 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 
 		// If the number of samples we read from the OGG file are less than the request sample size, it must be the last bit of audio
 		if (read < sample_size) {
-			lua_pushinteger(l, i + 1); // Push the channel number
-			mumble_hook_call(l, client, "OnAudioFinished", 1);
-			audio_transmission_stop(sound);
+			audio_transmission_stop(l, client, sound, i + 1);
 			client->audio_jobs[i] = NULL;
 		}
 
@@ -246,4 +246,7 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 	packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
 
 	client->audio_sequence = (client->audio_sequence + 1) % 100000;
+
+	// Safety stack clear
+	lua_settop(l, 0);
 }
