@@ -1,5 +1,6 @@
 #include "mumble.h"
 
+#include "audio.h"
 #include "acl.h"
 #include "channel.h"
 #include "encoder.h"
@@ -361,6 +362,10 @@ void mumble_disconnect(lua_State *l, MumbleClient *client)
 	if (client->connected) {
 		mumble_hook_call(l, client, "OnDisconnect", 0);
 		client->connected = false;
+
+		// Remove ourself from the list of connections
+		lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CONNECTIONS);
+		luaL_unref(l, -1, client->self);
 	}
 
 	if (client->ssl)
@@ -368,6 +373,18 @@ void mumble_disconnect(lua_State *l, MumbleClient *client)
 
 	if (client->socket)
 		close(client->socket);
+
+	// Get table of connections
+	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CONNECTIONS);
+
+	// If we have no more connections...
+	if (lua_objlen(l, -1) <= 0) {
+		// Break out of the mumble.loop() call to end the script
+		ev_break(EV_DEFAULT, EVBREAK_ALL);
+	}
+
+	// Clear the stack
+	lua_settop(l, 0);
 }
 
 static int mumble_gettime(lua_State *l)
@@ -394,7 +411,8 @@ void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int 
 {
 	lua_stackguard_entry(l);
 
-	int top = lua_gettop(l);
+	const int callargs = nargs + 1;
+	const int top = lua_gettop(l);
 
 	// Get hook table
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->hooks);
@@ -432,7 +450,8 @@ void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int 
 			// Copy function
 			lua_pushvalue(l, -2);
 
-			//mumble_client_raw_get(l, client);
+			// Push the client the hook is for
+			mumble_client_raw_get(l, client);
 
 			for (int i = 1; i <= nargs; i++) {
 				// Copy number of arguments
@@ -445,13 +464,13 @@ void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int 
 			// Call
 			if (erroring == true) {
 				// If the user errors within the OnError hook, PANIC
-				lua_call(l, nargs, 0);
+				lua_call(l, callargs, 0);
 			} else {
-				int base = lua_gettop(l) - nargs;
+				const int base = lua_gettop(l) - callargs;
 				lua_pushcfunction(l, mumble_traceback);
 				lua_insert(l, base);
 
-				if (lua_pcall(l, nargs, 0, base) != 0) {
+				if (lua_pcall(l, callargs, 0, base) != 0) {
 					// Call the OnError hook
 					erroring = true;
 					fprintf(stderr, "%s\n", lua_tostring(l, -1));

@@ -10,7 +10,7 @@ local afk = {
 	message = "You have been idle for %i minutes..</br>You will be moved to <i>%s</i> in %i minutes!",
 }
 
-function afk.checkStats(event)
+function afk.checkStats(client, event)
 	local user = event.user
 	local afkchannel = client:getChannel(afk.channel)
 
@@ -36,7 +36,7 @@ function afk.checkStats(event)
 	end
 end
 
-function afk.queryUsers()
+function afk.queryUsers(client)
 	for k,user in pairs(client:getUsers()) do
 		if user ~= client.me then
 			user:requestStats()

@@ -467,7 +467,6 @@ static int client_gc(lua_State *l)
 
 	mumble_disconnect(l, client);
 
-	luaL_unref(l, LUA_REGISTRYINDEX, client->self);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->hooks);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->users);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->channels);

@@ -3,103 +3,103 @@ local mumble = require("mumble")
 local client = assert(mumble.connect("raspberrypi.lan", 64738, "bot.pem", "bot.key"))
 client:auth("Mumble-Bot")
 
-client:hook("OnServerVersion", function(event)
+client:hook("OnServerVersion", function(client, event)
 	print("OnServerVersion", event)
 end)
 
-client:hook("OnServerReject", function(event)
+client:hook("OnServerReject", function(client, event)
 	print("OnServerReject", event)
 end)
 
-client:hook("OnServerSync", function(event)
+client:hook("OnServerSync", function(client, event)
 	print("OnServerSync", event)
 end)
 
-client:hook("OnClientPing", function(event)
+client:hook("OnClientPing", function(client, event)
 	print("OnClientPing", event)
 end)
 
-client:hook("OnServerPing", function(event)
+client:hook("OnServerPing", function(client, event)
 	print("OnServerPing", event)
 end)
 
-client:hook("OnChannelRemove", function(channel)
+client:hook("OnChannelRemove", function(client, channel)
 	print("OnChannelRemove", channel)
 end)
 
-client:hook("OnChannelState", function(channel)
+client:hook("OnChannelState", function(client, channel)
 	print("OnChannelState", channel)
 end)
 
-client:hook("OnUserConnected", function(user)
+client:hook("OnUserConnected", function(client, user)
 	print("OnUserConnected", user)
 end)
 
-client:hook("OnUserRemove", function(event)
+client:hook("OnUserRemove", function(client, event)
 	print("OnUserRemove", event)
 end)
 
-client:hook("OnUserState", function(event)
+client:hook("OnUserState", function(client, event)
 	print("OnUserState", event)
 end)
 
-client:hook("OnUserChannel", function(event)
+client:hook("OnUserChannel", function(client, event)
 	print("OnUserChannel", event)
 end)
 
-client:hook("OnUserStartSpeaking", function(user)
+client:hook("OnUserStartSpeaking", function(client, user)
 	print("OnUserStartSpeaking", user)
 end)
 
-client:hook("OnUserSpeak", function(event)
+client:hook("OnUserSpeak", function(client, event)
 	print("OnUserSpeak", event)
 end)
 
-client:hook("OnUserStopSpeaking", function(user)
+client:hook("OnUserStopSpeaking", function(client, user)
 	print("OnUserStopSpeaking", user)
 end)
 
-client:hook("OnMessage", function(event)
+client:hook("OnMessage", function(client, event)
 	print("OnMessage", event)
 end)
 
-client:hook("OnPermissionDenied", function(event)
+client:hook("OnPermissionDenied", function(client, event)
 	print("OnPermissionDenied", event)
 end)
 
-client:hook("OnACL", function(event)
+client:hook("OnACL", function(client, event)
 	print("OnACL", event)
 end)
 
-client:hook("OnPermissionQuery", function(event)
+client:hook("OnPermissionQuery", function(client, event)
 	print("OnPermissionQuery", event)
 end)
 
-client:hook("OnCodecVersion", function(event)
+client:hook("OnCodecVersion", function(client, event)
 	print("OnCodecVersion", event)
 end)
 
-client:hook("OnUserStats", function(event)
+client:hook("OnUserStats", function(client, event)
 	print("OnUserStats", event)
 end)
 
-client:hook("OnServerConfig", function(event)
+client:hook("OnServerConfig", function(client, event)
 	print("OnServerConfig", event)
 end)
 
-client:hook("OnSuggestConfig", function(event)
+client:hook("OnSuggestConfig", function(client, event)
 	print("OnSuggestConfig", event)
 end)
 
-client:hook("OnAudioFinished", function(channel)
+client:hook("OnAudioFinished", function(client, channel)
 	print("OnAudioFinished", channel)
 end)
 
-client:hook("OnAudioStreamEnd", function()
+client:hook("OnAudioStreamEnd", function(client)
 	print("OnAudioStreamEnd")
 end)
 
-client:hook("OnDisconnect", function()
+client:hook("OnDisconnect", function(client)
 	print("OnDisconnect")
 end)
 
