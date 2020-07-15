@@ -27,12 +27,12 @@ client:hook("OnChannelRemove", function(client, channel)
 	print("OnChannelRemove", channel)
 end)
 
-client:hook("OnChannelState", function(client, channel)
-	print("OnChannelState", channel)
+client:hook("OnChannelState", function(client, event)
+	print("OnChannelState", event)
 end)
 
-client:hook("OnUserConnected", function(client, user)
-	print("OnUserConnected", user)
+client:hook("OnUserConnected", function(client, event)
+	print("OnUserConnected", event)
 end)
 
 client:hook("OnUserRemove", function(client, event)

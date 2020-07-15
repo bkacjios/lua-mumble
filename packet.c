@@ -372,53 +372,98 @@ void packet_channel_state(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
-	MumbleChannel* channel = mumble_channel_get(l, client, state->channel_id);
+	MumbleChannel* channel = mumble_channel_get(l, client, state->channel_id); lua_pop(l, 1);
+
+	lua_newtable(l);
+	mumble_channel_raw_get(l, client, channel->channel_id);
+	lua_setfield(l , -2, "channel");
+
+	lua_pushinteger(l, channel->channel_id);
+	lua_setfield(l , -2, "channel_id");
+
 	if (state->has_parent) {
 		channel->parent = state->parent;
+		mumble_channel_raw_get(l, client, channel->parent);
+		lua_setfield(l , -2, "parent");
 	}
 	if (state->name != NULL) {
 		channel->name = strdup(state->name);
+		lua_pushstring(l, channel->name);
+		lua_setfield(l , -2, "name");
 	}
 	if (state->description != NULL) {
 		channel->description = strdup(state->description);
+		lua_pushstring(l, channel->description);
+		lua_setfield(l , -2, "description");
 	}
 	if (state->has_temporary) {
 		channel->temporary = state->temporary;
+		lua_pushboolean(l, channel->temporary);
+		lua_setfield(l , -2, "temporary");
 	}
 	if (state->has_position) {
 		channel->position = state->position;
+		lua_pushinteger(l, channel->position);
+		lua_setfield(l , -2, "position");
 	}
 	if (state->has_description_hash) {
 		channel->description_hash = (char*) strdup((const char*)state->description_hash.data);
 		channel->description_hash_len = state->description_hash.len;
+
+		char* result;
+		bin_to_strhex(channel->description_hash, channel->description_hash_len, &result);
+		lua_pushstring(l, result);
+		lua_setfield(l, -2, "description_hash");
+		free(result);
 	}
 	if (state->has_max_users) {
 		channel->max_users = state->max_users;
+		lua_pushinteger(l, channel->max_users);
+		lua_setfield(l , -2, "max_users");
 	}
 	if (state->n_links_add > 0) {
 		// Add the new entries to the head of the list
+		lua_newtable(l);
 		for (uint32_t i = 0; i < state->n_links_add; i++) {
 			list_add(&channel->links, state->links_add[i]);
+			lua_pushinteger(l, i+1);
+			mumble_channel_raw_get(l, client, state->links_add[i]);
+			lua_settable(l, -3);
 		}
+		lua_setfield(l , -2, "links_add");
 	}
 	if (state->n_links_remove > 0) {
+		lua_newtable(l);
 		for (uint32_t i = 0; i < state->n_links_remove; i++) {
 			list_remove(&channel->links, state->links_remove[i]);
+			lua_pushinteger(l, i+1);
+			mumble_channel_raw_get(l, client, state->links_remove[i]);
+			lua_settable(l, -3);
 		}
+		lua_setfield(l , -2, "links_remove");
 	}
 	if (state->n_links > 0) {
 		list_clear(&channel->links);
 
+		lua_newtable(l);
 		// Store links in new list
 		for (uint32_t i = 0; i < state->n_links; i++) {
 			list_add(&channel->links, state->links[i]);
+			lua_pushinteger(l, i+1);
+			mumble_channel_raw_get(l, client, state->links[i]);
+			lua_settable(l, -3);
 		}
+		lua_setfield(l , -2, "links");
 	}
 	if (state->has_is_enter_restricted) {
 		channel->is_enter_restricted = state->is_enter_restricted;
+		lua_pushboolean(l, channel->is_enter_restricted);
+		lua_setfield(l , -2, "is_enter_restricted");
 	}
 	if (state->has_can_enter) {
 		channel->can_enter = state->can_enter;
+		lua_pushboolean(l, channel->can_enter);
+		lua_setfield(l , -2, "can_enter");
 	}
 
 	mumble_hook_call(l, client, "OnChannelState", 1);
@@ -474,6 +519,9 @@ void packet_user_state(lua_State *l, MumbleClient *client, Packet *packet)
 		}
 
 		user->session = state->session;
+		lua_pushinteger(l, user->session);
+		lua_setfield(l, -2, "session");
+
 		if (state->name != NULL) {
 			user->name = strdup(state->name);
 			lua_pushstring(l, user->name);

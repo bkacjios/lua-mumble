@@ -517,7 +517,7 @@ Table mumble.deny = {
 
 ## hooks
 
-### `OnServerVersion (Table event)`
+### `OnServerVersion (mumble.client client, Table event)`
 
 Called when the server version information is recieved.
 
@@ -531,7 +531,7 @@ Table event = {
 ```
 ___
 
-### `OnServerPing (Table event)`
+### `OnServerPing (mumble.client client, Table event)`
 
 Called when the server sends a responce to a ping request.
 The mumble.client will automatically ping the server every 30 seconds within mumble.loop()
@@ -554,7 +554,7 @@ Table event = {
 ```
 ___
 
-### `OnServerReject (Table event)`
+### `OnServerReject (mumble.client client, Table event)`
 
 Called when you are rejected from connecting to the server.
 
@@ -566,7 +566,7 @@ Table event = {
 ```
 ___
 
-### `OnServerSync (Table event)`
+### `OnServerSync (mumble.client client, Table event)`
 
 Called after the bot has recieved all the mumble.user and mumble.channel states.
 
@@ -580,17 +580,46 @@ Table event = {
 ```
 ___
 
-### `OnChannelRemove (mumble.channel channel)`
+### `OnChannelRemove (mumble.client client, mumble.channel channel)`
 
 Called when a mumble.channel is removed.
 ___
 
-### `OnChannelState (mumble.channel channel)`
+### `OnChannelState (mumble.client client, Table event)`
 
 Called when a mumble.channel state has changed.. Like updating the name, description, position, comment, etc..
+Not every value will always be set. Only the fields that are currently changing will be set!
+
+``` lua
+Table event = {
+	["channel"]				= mumble.channel channel,
+	["parent"]				= mumble.channel parent,
+	["channel_id"]			= Number channel_id,
+	["position"]			= Number position,
+	["max_users"]			= Number max_users,
+	["name"]				= String name,
+	["description"]			= String description,
+	["description_hash"]	= String description_hash,
+	["temporary"]			= Boolean temporary,
+	["is_enter_restricted"]	= Boolean is_enter_restricted,
+	["can_enter"]			= Boolean can_enter,
+	["links"]				= {
+		[1] = mumble.channel channel,
+		...
+	},
+	["links_add"]			= {
+		[1] = mumble.channel channel,
+		...
+	},
+	["links_remove"]		= {
+		[1] = mumble.channel channel,
+		...
+	}
+}
+```
 ___
 
-### `OnUserChannel (Table event)`
+### `OnUserChannel (mumble.client client, Table event)`
 
 Called when a mumble.user changes their channel
 
@@ -603,7 +632,7 @@ Table event = {
 }
 ```
 
-### `OnUserRemove (Table event)`
+### `OnUserRemove (mumble.client client, Table event)`
 
 Called when a mumble.user disconnects or is kicked from the server
 
@@ -617,25 +646,27 @@ Table event = {
 ```
 ___
 
-### `OnUserConnected (Table event)`
+### `OnUserConnected (mumble.client client, Table event)`
 
 Called when a mumble.user has connected to the server
 
 ``` lua
 Table event = {
 	["user"]	= mumble.user user,
+	...
 }
 ```
 ___
 
-### `OnUserState (Table event)`
+### `OnUserState (mumble.client client, Table event)`
 
 Called when a mumble.user state has changed.. Like updating their comment, moving channels, muted, deafened, etc..
-Not every value will always be set. Only the field that is currently changing will be set!
+Not every value will always be set. Only the fields that are currently changing will be set!
 
 ``` lua
 Table event = {
 	["user_id"]				= Number user_id,
+	["session"]				= Number session,
 	["actor"]				= mumble.user actor,
 	["user"]				= mumble.user user,
 	["channel"]				= mumble.channel channel,
@@ -661,12 +692,12 @@ ___
 Called when a user starts to transmit voice data.
 ___
 
-### `OnUserStopSpeaking (mumble.user)`
+### `OnUserStopSpeaking (mumble.client client, mumble.user)`
 
 Called when a user stops transmitting voice data.
 ___
 
-### `OnUserSpeak (Table event)`
+### `OnUserSpeak (mumble.client client, Table event)`
 
 Called when a user starts to transmit voice data.
 
@@ -683,7 +714,7 @@ Table event = {
 ```
 ___
 
-### `OnBanList (Table banlist)`
+### `OnBanList (mumble.client client, Table banlist)`
 
 Called on response to a `mumble.client:requestBanList()` call
 
@@ -708,7 +739,7 @@ Table banlist = {
 ```
 ___
 
-### `OnMessage (Table event)`
+### `OnMessage (mumble.client client, Table event)`
 
 Called when the bot receives a text message
 
@@ -722,7 +753,7 @@ Table event = {
 ```
 ___
 
-### `OnPermissionDenied (Table event)`
+### `OnPermissionDenied (mumble.client client, Table event)`
 
 Called when an action is performed that you don't have permission to do
 
@@ -738,12 +769,12 @@ Table event = {
 ```
 ___
 
-### `OnACL (Table event)`
+### `OnACL (mumble.client client, Table acl)`
 
 Called when ACL data is received from a `mumble.channel:requestACL()` request
 
 ```lua
-Table event = {
+Table acl = {
 	["channel"]      = mumble.channel channel,
 	["inherit_acls"] = Boolean inherit_acls,
 	["groups"]       = {
@@ -782,7 +813,7 @@ Table event = {
 ```
 ___
 
-### `OnUserList (Table userlist)`
+### `OnUserList (mumble.client client, Table userlist)`
 
 Called on response to a `mumble.client:requestUsers()` call
 
@@ -799,7 +830,7 @@ Table userlist = {
 ```
 ___
 
-### `OnPermissionQuery (Table event)`
+### `OnPermissionQuery (mumble.client client, Table event)`
 
 Called when the bot recieves permissions for a channel.
 
@@ -812,7 +843,7 @@ Table event = {
 ```
 ___
 
-### `OnCodecVersion (Table event)`
+### `OnCodecVersion (mumble.client client, Table event)`
 
 Called when the bot recieves the codec info from the server.
 
@@ -826,7 +857,7 @@ Table event = {
 ```
 ___
 
-### `OnUserStats (Table event)`
+### `OnUserStats (mumble.client client, Table event)`
 
 Called when the mumble.user's detailed statistics are received from the server.
 Only sent if mumble.user:requestStats() is called.
@@ -874,7 +905,7 @@ Table event = {
 ```
 ___
 
-### `OnServerConfig (Table event)`
+### `OnServerConfig (mumble.client client, Table event)`
 
 Called when the servers settings are received.
 Usually called after OnServerSync
@@ -891,7 +922,7 @@ Table event = {
 ```
 ___
 
-### `OnSuggestConfig (Table event)`
+### `OnSuggestConfig (mumble.client client, Table event)`
 
 Called when the servers suggest the client to use specific settings.
 
@@ -904,7 +935,7 @@ Table event = {
 ```
 ___
 
-### `OnPluginData (Table event)`
+### `OnPluginData (mumble.client client, Table event)`
 
 Called when the servers suggest the client to use specific settings.
 
@@ -921,13 +952,13 @@ Table event = {
 ```
 ___
 
-### `OnError (String error)`
+### `OnError (mumble.client client, String error)`
 
 Called when an error occurs inside a hook.
 WARNING: Erroring within this hook will cause an error on the line where mumble.loop() is called, causing the script to exit
 ___
 
-### `OnClientPing (Table event)`
+### `OnClientPing (mumble.client client, Table event)`
 
 Called just before a ping is sent to the server.
 
@@ -938,12 +969,12 @@ Table event = {
 ```
 ___
 
-### `OnAudioFinished (Number channel)`
+### `OnAudioFinished (mumble.client client, Number channel)`
 
 Called when a sound file has finished playing.
 Passes the number of the audio channel that finished.
 ___
 
-### `OnAudioStreamEnd ()`
+### `OnAudioStreamEnd (mumble.client client)`
 
 Called when all audio channels have finished playing.
