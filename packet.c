@@ -187,13 +187,14 @@ void packet_udp_tunnel(lua_State *l, MumbleClient *client, Packet *packet)
 	}
 
 	bool state_change = false;
+	bool one_frame = (user->speaking == false && speaking == false); // This will only be true if the user only sent exactly one audio packet
 
 	if (user->speaking != speaking) {
 		user->speaking = speaking;
 		state_change = true;
 	}
 
-	if (state_change && speaking) {
+	if (one_frame || state_change && speaking) {
 		mumble_user_raw_get(l, client, session);
 		mumble_hook_call(l, client, "OnUserStartSpeaking", 1);
 	}
@@ -213,11 +214,13 @@ void packet_udp_tunnel(lua_State *l, MumbleClient *client, Packet *packet)
 		lua_setfield(l, -2, "data");
 		lua_pushinteger(l, header);
 		lua_setfield(l, -2, "header");
+		lua_pushinteger(l, AUDIO_SAMPLE_RATE);
+		lua_setfield(l, -2, "samplerate");
 		lua_pushinteger(l, frame_header);
 		lua_setfield(l, -2, "frame_header");
 	mumble_hook_call(l, client, "OnUserSpeak", 1);
 
-	if (state_change && !speaking) {
+	if (one_frame || state_change && !speaking) {
 		mumble_user_raw_get(l, client, session);
 		mumble_hook_call(l, client, "OnUserStopSpeaking", 1);
 	}
