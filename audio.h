@@ -4,7 +4,7 @@
 #define VOICEPACKET_OPUS 4
 
 extern void audio_transmission_event(lua_State* l, MumbleClient *client);
-extern void audio_transmission_stop(lua_State*l, MumbleClient *client, AudioTransmission* sound, int channel);
+extern void audio_transmission_stop(lua_State*l, MumbleClient *client, int channel);
 
 extern int util_set_varint(uint8_t buffer[], const uint64_t value);
 extern int64_t util_get_varint(uint8_t buffer[], int *len);

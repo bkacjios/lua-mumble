@@ -178,6 +178,9 @@ static int mumble_connect(lua_State *l)
 	client->audio_target = 0;
 	client->audio_frames = AUDIO_DEFAULT_FRAMES;
 
+	for(int i = 0; i < AUDIO_MAX_CHANNELS; ++i)
+		client->audio_jobs[i] = NULL;
+
 	client->tcp_packets = 0;
 	client->tcp_ping_avg = 0;
 	client->tcp_ping_var = 0;
@@ -359,6 +362,12 @@ static int mumble_loop(lua_State *l)
 
 void mumble_disconnect(lua_State *l, MumbleClient *client)
 {
+	if (client->audio_jobs) {
+		for(int i = 1; i <= AUDIO_MAX_CHANNELS; ++i) {
+			audio_transmission_stop(l, client, i);
+		}
+	}
+
 	if (client->connected) {
 		mumble_hook_call(l, client, "OnDisconnect", 0);
 		client->connected = false;
