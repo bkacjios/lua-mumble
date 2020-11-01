@@ -244,7 +244,7 @@ static int client_play(lua_State *l)
 	sound->client = client;
 	sound->volume = volume;
 
-	int error;
+	int error = VORBIS__no_error;
 	sound->ogg = stb_vorbis_open_filename(filepath, &error, NULL);
 
 	if (error != VORBIS__no_error) {
@@ -270,7 +270,7 @@ static int client_play(lua_State *l)
 static int client_isPlaying(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
-	int channel = luaL_optinteger(l, 1, 1);
+	int channel = luaL_optinteger(l, 2, 1);
 	lua_pushboolean(l, client->audio_jobs[channel - 1] != NULL);
 	return 1;
 }
