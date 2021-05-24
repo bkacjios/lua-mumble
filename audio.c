@@ -14,6 +14,24 @@ int util_set_varint(uint8_t buffer[], const uint64_t value)
 		buffer[0] = (value >> 8) | 0x80;
 		buffer[1] = value & 0xFF;
 		return 2;
+	} else if (value < 0x200000) {
+		buffer[0] = (value >> 16) | 0xC0;
+		buffer[1] = (value >> 8) & 0xFF;
+		buffer[2] = value & 0xFF;
+		return 3;
+	} else if (value < 0x10000000) {
+		buffer[0] = (value >> 24) | 0xE0;
+		buffer[1] = (value >> 16) & 0xFF;
+		buffer[2] = (value >> 8) & 0xFF;
+		buffer[3] = value & 0xFF;
+		return 4;
+	} else if (value < 0x100000000) {
+		buffer[0] = 0xF0;
+		buffer[1] = (value >> 24) | 0xFF;
+		buffer[2] = (value >> 16) & 0xFF;
+		buffer[3] = (value >> 8) & 0xFF;
+		buffer[4] = value & 0xFF;
+		return 5;
 	}
 	return -1;
 }
