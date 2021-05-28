@@ -71,6 +71,16 @@ mumble.decoder = mumble.decoder(Number samplerate = 48000, Number channels = 1)
 
 -- A timestamp in milliseconds
 Number time = mumble.gettime()
+
+-- A table of all currect clients
+Table clients = mumble.getClients()
+
+-- Structure
+Table clients = {
+	mumble.client,
+	mumble.client,
+	...
+}
 ```
 
 ### mumble.client
@@ -784,7 +794,7 @@ Table event = {
 	["actor"]		= mumble.user actor,
 	["message"]		= String message,
 	["users"]		= Table users,
-	["channels"]	= Table channels
+	["channels"]	= Table channels -- will be nil when receiving a direct message
 }
 ```
 ___

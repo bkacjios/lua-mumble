@@ -238,9 +238,10 @@ void packet_server_ping(lua_State *l, MumbleClient *client, Packet *packet)
 	lua_newtable(l);
 		if (ping->has_timestamp) {
 			ms = (gettime() * 1000) - ping->timestamp;
-			client->tcp_ping_total += ms;
-			client->tcp_packets += 1;
-			client->tcp_ping_avg = client->tcp_ping_total / client->tcp_packets;
+
+			uint32_t n = client->tcp_packets + 1;
+			client->tcp_packets = n;
+			client->tcp_ping_avg = client->tcp_ping_avg * (n-1)/n + ms/n;
 			client->tcp_ping_var = powf(fabs(ms - client->tcp_ping_avg), 2);
 
 			lua_pushnumber(l, ms);

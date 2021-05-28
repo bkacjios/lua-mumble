@@ -148,7 +148,6 @@ struct MumbleClient {
 	uint8_t				audio_target;
 
 	uint32_t	tcp_packets;
-	double		tcp_ping_total;
 	float		tcp_ping_avg;
 	float		tcp_ping_var; 
 };

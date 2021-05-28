@@ -139,7 +139,7 @@ static void socket_read_event(struct ev_loop *loop, ev_io *w_, int revents)
 	}
 }
 
-int MUMBLE_CONNECTIONS;
+int MUMBLE_CLIENTS;
 
 static int mumble_connect(lua_State *l)
 {
@@ -155,7 +155,7 @@ static int mumble_connect(lua_State *l)
 	luaL_getmetatable(l, METATABLE_CLIENT);
 	lua_setmetatable(l, -2);
 
-	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CONNECTIONS);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
 	lua_pushvalue(l, -2);
 
 	client->self = luaL_ref(l, -2);
@@ -374,7 +374,7 @@ void mumble_disconnect(lua_State *l, MumbleClient *client)
 		client->connected = false;
 
 		// Remove ourself from the list of connections
-		lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CONNECTIONS);
+		lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
 		luaL_unref(l, -1, client->self);
 	}
 
@@ -385,7 +385,7 @@ void mumble_disconnect(lua_State *l, MumbleClient *client)
 		close(client->socket);
 
 	// Get table of connections
-	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CONNECTIONS);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
 
 	// If we have no more connections...
 	if (lua_objlen(l, -1) <= 0) {
@@ -405,7 +405,7 @@ static int mumble_gettime(lua_State *l)
 
 static int mumble_getConnections(lua_State *l)
 {
-	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CONNECTIONS);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
 	return 1;
 }
 
@@ -545,6 +545,7 @@ MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session
 			user->texture_hash = "";
 			user->texture_hash_len = 0;
 			user->hash = "";
+			user->listens = NULL;
 		}
 		luaL_getmetatable(l, METATABLE_USER);
 		lua_setmetatable(l, -2);
@@ -559,7 +560,7 @@ MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session
 }
 
 void mumble_client_raw_get(lua_State* l, MumbleClient* client) {
-	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CONNECTIONS);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
 	lua_pushinteger(l, client->self);
 	lua_gettable(l, -2);
 	lua_remove(l, -2);
@@ -668,7 +669,7 @@ int mumble_push_address(lua_State* l, ProtobufCBinaryData address)
 			char ipv4[INET_ADDRSTRLEN];
 
 			sprintf(ipv4, "%d.%d.%d.%d", bytes[12], bytes[13], bytes[14], bytes[15]);
-			
+
 			lua_pushboolean(l, true);
 			lua_setfield(l, -2, "ipv4");
 			lua_pushstring(l, ipv4);
@@ -691,6 +692,7 @@ const luaL_Reg mumble[] = {
 	{"loop", mumble_loop},
 	{"gettime", mumble_gettime},
 	{"getConnections", mumble_getConnections},
+	{"getClients", mumble_getConnections},
 	{NULL, NULL}
 };
 
@@ -884,7 +886,7 @@ int luaopen_mumble(lua_State *l)
 	}
 
 	lua_newtable(l);
-	MUMBLE_CONNECTIONS = luaL_ref(l, LUA_REGISTRYINDEX);
+	MUMBLE_CLIENTS = luaL_ref(l, LUA_REGISTRYINDEX);
 
 	return 0;
 }
