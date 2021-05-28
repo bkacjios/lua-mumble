@@ -14,10 +14,15 @@ static int user_message(lua_State *l)
 
 	MumbleProto__TextMessage msg = MUMBLE_PROTO__TEXT_MESSAGE__INIT;
 
+	msg.message = (char*) luaL_checkstring(l, 2);
+	
 	msg.n_session = 1;
 	msg.session = malloc(sizeof(uint32_t) * msg.n_session);
+
+	if (msg.session == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
 	msg.session[0] = user->session;
-	msg.message = (char*) luaL_checkstring(l, 2);
 
 	packet_send(user->client, PACKET_TEXTMESSAGE, &msg);
 	free(msg.session);
@@ -309,6 +314,9 @@ static int user_listen(lua_State *l)
 	msg.n_listening_channel_add = lua_gettop(l) - 1;
 	msg.listening_channel_add = malloc(sizeof(uint32_t) * msg.n_listening_channel_add);
 
+	if (msg.listening_channel_add == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
 	// Loop through each argument and add the channel_id to the array
 	for (int i = 0; i < msg.n_listening_channel_add; i++) {
 		MumbleChannel *listen = luaL_checkudata(l, i+2, METATABLE_CHAN);
@@ -332,6 +340,9 @@ static int user_unlisten(lua_State *l)
 	// Get the number of channels we want to unlink
 	msg.n_listening_channel_remove = lua_gettop(l) - 1;
 	msg.listening_channel_remove = malloc(sizeof(uint32_t) * msg.n_listening_channel_remove);
+
+	if (msg.listening_channel_remove == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
 	for (int i = 0; i < msg.n_listening_channel_remove; i++) {
 		MumbleChannel *listen = luaL_checkudata(l, i+2, METATABLE_CHAN);
@@ -381,6 +392,10 @@ static int user_sendPluginData(lua_State *l)
 
 	data.n_receiversessions = 1;
 	data.receiversessions = malloc(sizeof(uint32_t) * data.n_receiversessions);
+
+	if (data.receiversessions == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
 	data.receiversessions[0] = user->session;
 
 	packet_send(user->client, PACKET_PLUGINDATA, &data);
@@ -396,6 +411,10 @@ static int user_requestTextureBlob(lua_State *l)
 
 	msg.n_session_texture = 1;
 	msg.session_texture = malloc(sizeof(uint32_t) * msg.n_session_texture);
+
+	if (msg.session_texture == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
 	msg.session_texture[0] = user->session;
 
 	packet_send(user->client, PACKET_USERSTATE, &msg);
@@ -411,6 +430,10 @@ static int user_requestCommentBlob(lua_State *l)
 
 	msg.n_session_comment = 1;
 	msg.session_comment = malloc(sizeof(uint32_t) * msg.n_session_comment);
+
+	if (msg.session_comment == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
 	msg.session_comment[0] = user->session;
 
 	packet_send(user->client, PACKET_USERSTATE, &msg);

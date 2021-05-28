@@ -34,14 +34,15 @@ static int client_auth(lua_State *l)
 		lua_pushnil(l);
 
 		int i = 0;
-		int len = lua_objlen(l, 4);
-
-		auth.tokens = malloc(sizeof(char*) * len);
-		auth.n_tokens = len;
+		auth.n_tokens = lua_objlen(l, 4);
+		auth.tokens = malloc(sizeof(char*) * auth.n_tokens);
+		
+		if (auth.tokens == NULL)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
 		while (lua_next(l, -2)) {
 			lua_pushvalue(l, -2);
-			if (i < len) {
+			if (i < auth.n_tokens) {
 				char *value = (char*) lua_tostring(l, -2);
 				auth.tokens[i++] = value;
 			}
@@ -80,14 +81,15 @@ static int client_setTokens(lua_State *l)
 	lua_pushnil(l);
 
 	int i = 0;
-	int len = lua_objlen(l, 2);
-
-	auth.tokens = malloc(sizeof(char*) * len);
-	auth.n_tokens = len;
+	auth.n_tokens = lua_objlen(l, 2);
+	auth.tokens = malloc(sizeof(char*) * auth.n_tokens);
+	
+	if (auth.tokens == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
 	while (lua_next(l, -2)) {
 		lua_pushvalue(l, -2);
-		if (i < len) {
+		if (i < auth.n_tokens) {
 			char *value = (char*) lua_tostring(l, -2);
 			auth.tokens[i++] = value;
 		}
@@ -159,6 +161,9 @@ static int client_sendPluginData(lua_State *l)
 
 	data.n_receiversessions = lua_gettop(l) - 3;
 	data.receiversessions = malloc(sizeof(uint32_t) * data.n_receiversessions);
+	
+	if (data.receiversessions == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
 	for (int i = 0; i < data.n_receiversessions; i++) {
 		int sp = 4+i;
@@ -236,6 +241,9 @@ static int client_play(lua_State *l)
 	//lua_setmetatable(l, -2);
 
 	AudioTransmission *sound = malloc(sizeof(AudioTransmission));
+	
+	if (sound == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
 	sound->playing = true;
 	sound->client = client;
@@ -404,6 +412,9 @@ static int client_registerVoiceTarget(lua_State *l)
 	msg.n_targets = n_targets;
 	msg.targets = malloc(sizeof(MumbleProto__VoiceTarget__Target) * n_targets);
 
+	if (msg.targets == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
 	for (int i=0; i < n_targets; i++) {
 		msg.targets[i] = luaL_checkudata(l, i + 3, METATABLE_VOICETARGET);
 	}
@@ -468,6 +479,9 @@ static int client_requestTextureBlob(lua_State *l)
 	msg.n_session_texture = lua_gettop(l) - 1;
 	msg.session_texture = malloc(sizeof(uint32_t) * msg.n_session_texture);
 
+	if (msg.session_texture == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
 	for (int i = 0; i < msg.n_session_texture; i++) {
 		int sp = 2+i;
 		switch (lua_type(l, sp)) {
@@ -503,6 +517,9 @@ static int client_requestCommentBlob(lua_State *l)
 	msg.n_session_comment = lua_gettop(l) - 1;
 	msg.session_comment = malloc(sizeof(uint32_t) * msg.n_session_comment);
 
+	if (msg.session_comment == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
 	for (int i = 0; i < msg.n_session_comment; i++) {
 		int sp = 2+i;
 		switch (lua_type(l, sp)) {
@@ -537,6 +554,9 @@ static int client_requestDescriptionBlob(lua_State *l)
 	// Get the number of channels we want to unlink
 	msg.n_channel_description = lua_gettop(l) - 1;
 	msg.channel_description = malloc(sizeof(uint32_t) * msg.n_channel_description);
+
+	if (msg.channel_description == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
 	for (int i = 0; i < msg.n_channel_description; i++) {
 		int sp = 2+i;

@@ -24,6 +24,10 @@ static int channel_message(lua_State *l)
 	msg.message = (char*) luaL_checkstring(l, 2);
 	msg.n_channel_id = 1;
 	msg.channel_id = malloc(sizeof(uint32_t) * msg.n_channel_id);
+	
+	if (msg.channel_id == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
 	msg.channel_id[0] = channel->channel_id;
 
 	packet_send(channel->client, PACKET_TEXTMESSAGE, &msg);
@@ -194,6 +198,9 @@ static int channel_link(lua_State *l)
 	// Get the number of channels we want to link
 	msg.n_links_add = lua_gettop(l) - 1;
 	msg.links_add = malloc(sizeof(uint32_t) * msg.n_links_add);
+	
+	if (msg.links_add == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
 	// Loop through each argument and add the channel_id to the array
 	for (int i = 0; i < msg.n_links_add; i++) {
@@ -218,6 +225,9 @@ static int channel_unlink(lua_State *l)
 	// Get the number of channels we want to unlink
 	msg.n_links_remove = lua_gettop(l) - 1;
 	msg.links_remove = malloc(sizeof(uint32_t) * msg.n_links_remove);
+	
+	if (msg.links_remove == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
 	for (int i = 0; i < msg.n_links_remove; i++) {
 		MumbleChannel *link = luaL_checkudata(l, i+2, METATABLE_CHAN);
@@ -356,6 +366,10 @@ static int channel_requestDescriptionBlob(lua_State *l)
 
 	msg.n_channel_description = 1;
 	msg.channel_description = malloc(sizeof(uint32_t) * msg.n_channel_description);
+	
+	if (msg.channel_description == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+	
 	msg.channel_description[0] = channel->channel_id;
 
 	packet_send(channel->client, PACKET_USERSTATE, &msg);

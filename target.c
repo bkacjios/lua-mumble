@@ -18,12 +18,12 @@ static int target_addUser(lua_State *l)
 	MumbleProto__VoiceTarget__Target *target = luaL_checkudata(l, 1, METATABLE_VOICETARGET);
 	MumbleUser *user = luaL_checkudata(l, 2, METATABLE_USER);
 
-	uint32_t* new = realloc(target->session, sizeof(uint32_t) * (target->n_session + 1));
+	uint32_t* session = realloc(target->session, sizeof(uint32_t) * (target->n_session + 1));
 
-	if (new == NULL)
-		return luaL_error(l, "out of memory");
+	if (session == NULL)
+		return luaL_error(l, "failed to realloc: %s", strerror(errno));
 
-	target->session = new;
+	target->session = session;
 	target->session[target->n_session] = user->session;
 	target->n_session++;
 	return 0;
