@@ -205,6 +205,21 @@ Table channels = {
 	[id] = mumble.channel,
 	...
 }
+
+-- Request a users full texture data blob
+-- Server will respond with a "OnUserState" with the requested data filled out
+-- After the hook is called, mumble.user:getTexture() will also return the full data
+mumble.client:requestTextureBlob([mumble.user, Number session] ...)
+
+-- Request a users full comment data blob
+-- Server will respond with a "OnUserState" with the requested data filled out
+-- After the hook is called, mumble.user:getComment() will also return the full data
+mumble.client:requestCommentBlob([mumble.user, Number session] ...)
+
+-- Request a channels full description data blob
+-- Server will respond with a "OnChannelState" with the requested data filled out
+-- After the hook is called, mumble.channel:getDescription() will also return the full data
+mumble.client:requestDescriptionBlob([mumble.channel, Number channel_id] ...)
 ```
 
 ### mumble.user
@@ -312,6 +327,19 @@ Table channels = {
 	[id] = mumble.channel,
 	...
 }
+
+-- Transmit a plugin data packet to this user
+mumble.user:sendPluginData(String dataID, String plugindata)
+
+-- Request a users full texture data blob
+-- Server will respond with a "OnUserState" with the requested data filled out
+-- After the hook is called, mumble.user:getTexture() will also return the full data
+mumble.user:requestTextureBlob()
+
+-- Request a users full comment data blob
+-- Server will respond with a "OnUserState" with the requested data filled out
+-- After the hook is called, mumble.user:getComment() will also return the full data
+mumble.user:requestCommentBlob()
 ```
 
 ### mumble.channel
@@ -393,6 +421,11 @@ Number permissions = mumble.channel:getPermissions()
 
 -- Gets the permissions value for the channel
 Boolean permission = mumble.channel:hasPermission(mumble.acl flag)
+
+-- Request a users full texture data blob
+-- Server will respond with a "OnChannelState" with the requested data filled out
+-- After the hook is called, mumble.channel:getDescription() will also return the full data
+mumble.channel:requestTextureBlob()
 ```
 
 ### mumble.timer

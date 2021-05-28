@@ -157,18 +157,16 @@ static int client_sendPluginData(lua_State *l)
 	data.has_data = true;
 	data.data = cbdata;
 
-	int n_receiversessions = lua_gettop(l) - 3;
+	data.n_receiversessions = lua_gettop(l) - 3;
+	data.receiversessions = malloc(sizeof(uint32_t) * data.n_receiversessions);
 
-	data.n_receiversessions = n_receiversessions;
-	data.receiversessions = malloc(sizeof(uint32_t) * n_receiversessions);
-
-	for (int i = 0; i < n_receiversessions; i++) {
+	for (int i = 0; i < data.n_receiversessions; i++) {
 		int sp = 4+i;
 		switch (lua_type(l, sp)) {
 			case LUA_TNUMBER:
 			{
 				// Use direct session number
-				uint32_t session = (uint32_t) lua_tonumber(l, sp);
+				uint32_t session = (uint32_t) luaL_checkinteger(l, sp);
 				data.receiversessions[i] = session;
 				break;
 			}
@@ -460,6 +458,111 @@ static int client_getUpTime(lua_State *l)
 	return 1;
 }
 
+static int client_requestTextureBlob(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+
+	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
+
+	// Get the number of channels we want to unlink
+	msg.n_session_texture = lua_gettop(l) - 1;
+	msg.session_texture = malloc(sizeof(uint32_t) * msg.n_session_texture);
+
+	for (int i = 0; i < msg.n_session_texture; i++) {
+		int sp = 2+i;
+		switch (lua_type(l, sp)) {
+			case LUA_TNUMBER:
+			{
+				// Use direct session number
+				uint32_t session = (uint32_t) luaL_checkinteger(l, sp);
+				msg.session_texture[i] = session;
+				break;
+			}
+			case LUA_TTABLE:
+			{
+				// Make sure the "table" is a user metatable
+				MumbleUser *user = luaL_checkudata(l, sp, METATABLE_USER);
+				msg.session_texture[i] = user->session;
+				break;
+			}
+		}
+	}
+
+	packet_send(client, PACKET_USERSTATE, &msg);
+	free(msg.session_texture);
+	return 0;
+}
+
+static int client_requestCommentBlob(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+
+	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
+
+	// Get the number of channels we want to unlink
+	msg.n_session_comment = lua_gettop(l) - 1;
+	msg.session_comment = malloc(sizeof(uint32_t) * msg.n_session_comment);
+
+	for (int i = 0; i < msg.n_session_comment; i++) {
+		int sp = 2+i;
+		switch (lua_type(l, sp)) {
+			case LUA_TNUMBER:
+			{
+				// Use direct session number
+				uint32_t session = (uint32_t) luaL_checkinteger(l, sp);
+				msg.session_comment[i] = session;
+				break;
+			}
+			case LUA_TTABLE:
+			{
+				// Make sure the "table" is a user metatable
+				MumbleUser *user = luaL_checkudata(l, sp, METATABLE_USER);
+				msg.session_comment[i] = user->session;
+				break;
+			}
+		}
+	}
+
+	packet_send(client, PACKET_USERSTATE, &msg);
+	free(msg.session_comment);
+	return 0;
+}
+
+static int client_requestDescriptionBlob(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+
+	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
+
+	// Get the number of channels we want to unlink
+	msg.n_channel_description = lua_gettop(l) - 1;
+	msg.channel_description = malloc(sizeof(uint32_t) * msg.n_channel_description);
+
+	for (int i = 0; i < msg.n_channel_description; i++) {
+		int sp = 2+i;
+		switch (lua_type(l, sp)) {
+			case LUA_TNUMBER:
+			{
+				// Use direct channel_id number
+				uint32_t channel_id = (uint32_t) luaL_checkinteger(l, sp);
+				msg.channel_description[i] = channel_id;
+				break;
+			}
+			case LUA_TTABLE:
+			{
+				// Make sure the "table" is a user metatable
+				MumbleUser *channel = luaL_checkudata(l, sp, METATABLE_USER);
+				msg.channel_description[i] = channel->channel_id;
+				break;
+			}
+		}
+	}
+
+	packet_send(client, PACKET_USERSTATE, &msg);
+	free(msg.channel_description);
+	return 0;
+}
+
 static int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
@@ -531,6 +634,9 @@ const luaL_Reg mumble_client[] = {
 	{"getBitrate", client_getBitrate},
 	{"getPing", client_getPing},
 	{"getUpTime", client_getUpTime},
+	{"requestTextureBlob", client_requestTextureBlob},
+	{"requestCommentBlob", client_requestCommentBlob},
+	{"requestDescriptionBlob", client_requestDescriptionBlob},
 	{"__gc", client_gc},
 	{"__tostring", client_tostring},
 	{"__index", client_index},

@@ -15,12 +15,11 @@ static int user_message(lua_State *l)
 	MumbleProto__TextMessage msg = MUMBLE_PROTO__TEXT_MESSAGE__INIT;
 
 	msg.n_session = 1;
-	msg.session = malloc(sizeof(uint32_t));
+	msg.session = malloc(sizeof(uint32_t) * msg.n_session);
 	msg.session[0] = user->session;
 	msg.message = (char*) luaL_checkstring(l, 2);
 
 	packet_send(user->client, PACKET_TEXTMESSAGE, &msg);
-
 	free(msg.session);
 	return 0;
 }
@@ -307,14 +306,11 @@ static int user_listen(lua_State *l)
 	msg.session = user->session;
 
 	// Get the number of channels we want to listen to
-	int n_listening_channel_add = lua_gettop(l) - 1;
-
-	msg.n_listening_channel_add = n_listening_channel_add;
-
-	msg.listening_channel_add = malloc(sizeof(uint32_t) * n_listening_channel_add);
+	msg.n_listening_channel_add = lua_gettop(l) - 1;
+	msg.listening_channel_add = malloc(sizeof(uint32_t) * msg.n_listening_channel_add);
 
 	// Loop through each argument and add the channel_id to the array
-	for (int i = 0; i < n_listening_channel_add; i++) {
+	for (int i = 0; i < msg.n_listening_channel_add; i++) {
 		MumbleChannel *listen = luaL_checkudata(l, i+2, METATABLE_CHAN);
 		msg.listening_channel_add[i] = listen->channel_id;
 	}
@@ -334,12 +330,10 @@ static int user_unlisten(lua_State *l)
 	msg.session = user->session;
 
 	// Get the number of channels we want to unlink
-	int n_listening_channel_remove = lua_gettop(l) - 1;
+	msg.n_listening_channel_remove = lua_gettop(l) - 1;
+	msg.listening_channel_remove = malloc(sizeof(uint32_t) * msg.n_listening_channel_remove);
 
-	msg.n_listening_channel_remove = n_listening_channel_remove;
-	msg.listening_channel_remove = malloc(sizeof(uint32_t) * n_listening_channel_remove);
-
-	for (int i = 0; i < n_listening_channel_remove; i++) {
+	for (int i = 0; i < msg.n_listening_channel_remove; i++) {
 		MumbleChannel *listen = luaL_checkudata(l, i+2, METATABLE_CHAN);
 		msg.listening_channel_remove[i] = listen->channel_id;
 	}
@@ -362,11 +356,66 @@ static int user_getListens(lua_State *l)
 		lua_pushinteger(l, current->data);
 		mumble_channel_raw_get(l, user->client, current->data);
 		lua_settable(l, -3);
-
         current = current->next;
     }
 
 	return 1;
+}
+
+static int user_sendPluginData(lua_State *l)
+{
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+
+	MumbleProto__PluginDataTransmission data = MUMBLE_PROTO__PLUGIN_DATA_TRANSMISSION__INIT;
+
+	data.has_sendersession = true;
+	data.sendersession = user->client->session;
+
+	data.dataid = (char*) luaL_checkstring(l, 2);
+
+	ProtobufCBinaryData cbdata;
+	cbdata.data = (uint8_t*) luaL_checklstring(l, 3, &cbdata.len);
+
+	data.has_data = true;
+	data.data = cbdata;
+
+	data.n_receiversessions = 1;
+	data.receiversessions = malloc(sizeof(uint32_t) * data.n_receiversessions);
+	data.receiversessions[0] = user->session;
+
+	packet_send(user->client, PACKET_PLUGINDATA, &data);
+	free(data.receiversessions);
+	return 0;
+}
+
+static int user_requestTextureBlob(lua_State *l)
+{
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+
+	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
+
+	msg.n_session_texture = 1;
+	msg.session_texture = malloc(sizeof(uint32_t) * msg.n_session_texture);
+	msg.session_texture[0] = user->session;
+
+	packet_send(user->client, PACKET_USERSTATE, &msg);
+	free(msg.session_texture);
+	return 0;
+}
+
+static int user_requestCommentBlob(lua_State *l)
+{
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+
+	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
+
+	msg.n_session_comment = 1;
+	msg.session_comment = malloc(sizeof(uint32_t) * msg.n_session_comment);
+	msg.session_comment[0] = user->session;
+
+	packet_send(user->client, PACKET_USERSTATE, &msg);
+	free(msg.session_comment);
+	return 0;
 }
 
 static int user_gc(lua_State *l)
@@ -439,6 +488,8 @@ const luaL_Reg mumble_user[] = {
 	{"listen", user_listen},
 	{"unlisten", user_unlisten},
 	{"getListens", user_getListens},
+	{"requestTextureBlob", user_requestTextureBlob},
+	{"requestCommentBlob", user_requestCommentBlob},
 
 	{"__gc", user_gc},
 	{"__tostring", user_tostring},

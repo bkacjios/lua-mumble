@@ -24,7 +24,6 @@ static int banentry_setAddress(lua_State *l)
 	return 0;
 }
 
-
 static int banentry_getAddress(lua_State *l)
 {
 	MumbleProto__BanList__BanEntry *entry = luaL_checkudata(l, 1, METATABLE_BANENTRY);
@@ -53,7 +52,6 @@ static int banentry_setName(lua_State *l)
 	return 0;
 }
 
-
 static int banentry_getName(lua_State *l)
 {
 	MumbleProto__BanList__BanEntry *entry = luaL_checkudata(l, 1, METATABLE_BANENTRY);
@@ -68,7 +66,6 @@ static int banentry_setHash(lua_State *l)
 	return 0;
 }
 
-
 static int banentry_getHash(lua_State *l)
 {
 	MumbleProto__BanList__BanEntry *entry = luaL_checkudata(l, 1, METATABLE_BANENTRY);
@@ -82,7 +79,6 @@ static int banentry_setReason(lua_State *l)
 	entry->reason = (char*) luaL_checkstring(l, 2);
 	return 0;
 }
-
 
 static int banentry_getReason(lua_State *l)
 {
@@ -128,7 +124,6 @@ static int banentry_tostring(lua_State *l)
 	lua_pushfstring(l, "%s: %p", METATABLE_BANENTRY, entry);
 	return 1;
 }
-
 
 const luaL_Reg mumble_banentry[] = {
 	{"setAddress", banentry_setAddress},

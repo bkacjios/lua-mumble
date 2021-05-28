@@ -23,11 +23,10 @@ static int channel_message(lua_State *l)
 
 	msg.message = (char*) luaL_checkstring(l, 2);
 	msg.n_channel_id = 1;
-	msg.channel_id = malloc(sizeof(uint32_t));
+	msg.channel_id = malloc(sizeof(uint32_t) * msg.n_channel_id);
 	msg.channel_id[0] = channel->channel_id;
 
 	packet_send(channel->client, PACKET_TEXTMESSAGE, &msg);
-
 	free(msg.channel_id);
 	return 0;
 }
@@ -193,22 +192,17 @@ static int channel_link(lua_State *l)
 	msg.channel_id = channel->channel_id;
 
 	// Get the number of channels we want to link
-	int n_links_add = lua_gettop(l) - 1;
-
-	msg.n_links_add = n_links_add;
-
-	msg.links_add = malloc(sizeof(uint32_t) * n_links_add);
+	msg.n_links_add = lua_gettop(l) - 1;
+	msg.links_add = malloc(sizeof(uint32_t) * msg.n_links_add);
 
 	// Loop through each argument and add the channel_id to the array
-	for (int i = 0; i < n_links_add; i++) {
+	for (int i = 0; i < msg.n_links_add; i++) {
 		MumbleChannel *link = luaL_checkudata(l, i+2, METATABLE_CHAN);
 		msg.links_add[i] = link->channel_id;
 	}
 
 	packet_send(channel->client, PACKET_CHANNELSTATE, &msg);
-
 	free(msg.links_add);
-
 	return 0;
 }
 
@@ -222,20 +216,16 @@ static int channel_unlink(lua_State *l)
 	msg.channel_id = channel->channel_id;
 
 	// Get the number of channels we want to unlink
-	int n_links_remove = lua_gettop(l) - 1;
+	msg.n_links_remove = lua_gettop(l) - 1;
+	msg.links_remove = malloc(sizeof(uint32_t) * msg.n_links_remove);
 
-	msg.n_links_remove = n_links_remove;
-	msg.links_remove = malloc(sizeof(uint32_t) * n_links_remove);
-
-	for (int i = 0; i < n_links_remove; i++) {
+	for (int i = 0; i < msg.n_links_remove; i++) {
 		MumbleChannel *link = luaL_checkudata(l, i+2, METATABLE_CHAN);
 		msg.links_remove[i] = link->channel_id;
 	}
 
 	packet_send(channel->client, PACKET_CHANNELSTATE, &msg);
-
 	free(msg.links_remove);
-
 	return 0;
 }
 
@@ -358,6 +348,21 @@ int channel_call(lua_State *l)
 	return 1;
 }
 
+static int channel_requestDescriptionBlob(lua_State *l)
+{
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+
+	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
+
+	msg.n_channel_description = 1;
+	msg.channel_description = malloc(sizeof(uint32_t) * msg.n_channel_description);
+	msg.channel_description[0] = channel->channel_id;
+
+	packet_send(channel->client, PACKET_USERSTATE, &msg);
+	free(msg.channel_description);
+	return 0;
+}
+
 static int channel_gc(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
@@ -425,6 +430,7 @@ const luaL_Reg mumble_channel[] = {
 	{"getPermissions", channel_getPermissions},
 	{"hasPermission", channel_hasPermission},
 	{"hasPermissions", channel_hasPermission},
+	{"requestDescriptionBlob", channel_requestDescriptionBlob},
 
 	{"__call", channel_call},
 	{"__gc", channel_gc},
