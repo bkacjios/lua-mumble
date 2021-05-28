@@ -101,7 +101,7 @@ mumble.client:disconnect()
 
 -- Transmit a plugin data packet
 -- Users table can be a table of mumble.user's OR session numbers
-mumble.client:sendPluginData(String dataID, String plugindata, Table users)
+mumble.client:sendPluginData(String dataID, String plugindata, [mumble.user, Number session] ...)
 
 -- Transmit a raw, encoded, opus packet
 -- Set speaking to false at the end of a stream
@@ -143,7 +143,8 @@ Table hooks = {
 	["OnServerPing"] = {
 		["hook"] = function: 0xffffffff,
 		["do stuff on ping"] = function: 0xffffffff,
-	}
+	},
+	...
 }
 
 -- Register a mumble.voicetarget to the server
@@ -178,15 +179,13 @@ Table users = mumble.client:getUsers()
 Table users = {
 	[session] = mumble.user,
 	[session] = mumble.user,
-	[session] = mumble.user,
-	[session] = mumble.user,
-	[session] = mumble.user,
+	...
 }
+
+mumble.channel channel = mumble.client:getChannel(String path)
 
 -- Returns a table of all mumble.channels
 Table channels = mumble.client:getChannels()
-
-mumble.channel channel = mumble.client:getChannel(String path)
 
 -- Structure
 -- Key:		channel id
@@ -194,9 +193,7 @@ mumble.channel channel = mumble.client:getChannel(String path)
 Table channels = {
 	[id] = mumble.channel,
 	[id] = mumble.channel,
-	[id] = mumble.channel,
-	[id] = mumble.channel,
-	[id] = mumble.channel,
+	...
 }
 ```
 
@@ -287,6 +284,24 @@ String hash = mumble.user:getHash()
 
 -- Sets the users avatar image using a string of bytes
 mumble.user:setTexure(String bytes)
+
+-- Adds a channel to the list of channels the user is listening to
+mumble.user:listen(mumble.channel ...)
+
+-- Removes a channel from the list of channels the user is listening to
+mumble.user:unlisten(mumble.channel ...)
+
+-- Returns a table of all channels the user is currently listening to
+Table listens = mumble.user:getListens()
+
+-- Structure
+-- Key:		channel id
+-- Value:	mumble.channel
+Table channels = {
+	[id] = mumble.channel,
+	[id] = mumble.channel,
+	...
+}
 ```
 
 ### mumble.channel
@@ -400,6 +415,18 @@ mumble.timer:stop()
 -- Add a user to whisper to
 mumble.voicetarget:addUser(mumble.user user)
 
+-- Return a table of all the users currently in the voicetarget
+Table users = mumble.voicetarget:getUsers()
+
+-- Structure
+-- Key:		index
+-- Value:	Number session
+Table channels = {
+	Number session,
+	Number session,
+	...
+}
+
 -- Sets the channel that is be shouted to
 mumble.voicetarget:setChannel(mumble.channel channel)
 
@@ -409,11 +436,20 @@ mumble.voicetarget:getChannel()
 -- Sets the specific user group to whisper to
 mumble.voicetarget:setGroup(String group)
 
+-- Gets the group name we are whispering to
+String group = mumble.voicetarget:getGroup()
+
 -- Shout to the linked channels of the set channel
 mumble.voicetarget:setLinks(Boolean followlinks)
 
+-- Returns if we are currently shouting to linked channels of the set channel
+Boolean links = mumble.voicetarget:getLinks()
+
 -- Shout to the children of the set channel
 mumble.voicetarget:setChildren(Boolean followchildren)
+
+-- Returns if we are currently shouting to children of the set channel
+Boolean children = mumble.voicetarget:getChildren()
 ```
 
 ### mumble.encoder
@@ -937,7 +973,7 @@ ___
 
 ### `OnPluginData (mumble.client client, Table event)`
 
-Called when the servers suggest the client to use specific settings.
+Called when the client receives plugin data from the server.
 
 ``` lua
 Table event = {

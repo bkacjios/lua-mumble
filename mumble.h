@@ -205,6 +205,7 @@ struct MumbleUser
 	char*			texture_hash;
 	size_t			texture_hash_len;
 	char*			hash;
+	LinkNode*		listens;
 };
 
 typedef struct {
@@ -258,6 +259,8 @@ extern void mumble_user_remove(lua_State* l, MumbleClient* client, uint32_t sess
 extern MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t channel_id);
 extern MumbleChannel* mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t channel_id);
 extern void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_id);
+
+extern int mumble_push_address(lua_State* l, ProtobufCBinaryData address);
 
 extern int mumble_traceback(lua_State *l);
 extern void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs);

@@ -2,6 +2,7 @@
 
 #include "audio.h"
 #include "acl.h"
+#include "banentry.h"
 #include "channel.h"
 #include "encoder.h"
 #include "decoder.h"
@@ -640,6 +641,46 @@ void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_
 	lua_pop(l, 1);
 }
 
+int mumble_push_address(lua_State* l, ProtobufCBinaryData address)
+{
+	lua_newtable(l);
+		uint8_t* bytes = (uint8_t*) address.data;
+		uint64_t* addr = (uint64_t*) address.data;
+		uint16_t* shorts = (uint16_t*) address.data;
+
+		if (addr[0] != 0ULL || shorts[4] != 0 || shorts[5] != 0xFFFF) {
+			char ipv6[40];
+			sprintf(ipv6,"%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+				bytes[0], bytes[1], bytes[2], bytes[3],
+				bytes[4], bytes[5], bytes[5], bytes[7],
+				bytes[8], bytes[9], bytes[10], bytes[11],
+				bytes[12], bytes[13], bytes[14], bytes[15]);
+
+			lua_pushboolean(l, true);
+			lua_setfield(l, -2, "ipv6");
+			lua_pushstring(l, ipv6);
+			lua_setfield(l, -2, "string");
+		} else {
+			char ipv4[16];
+			sprintf(ipv4, "%d.%d.%d.%d", bytes[12], bytes[13], bytes[14], bytes[15]);
+			
+			lua_pushboolean(l, true);
+			lua_setfield(l, -2, "ipv4");
+			lua_pushstring(l, ipv4);
+			lua_setfield(l, -2, "string");
+		}
+
+		lua_newtable(l);
+			for (uint32_t k = 0; k < address.len; k++) {
+				lua_pushinteger(l, k+1);
+				lua_pushinteger(l, address.data[k]);
+				lua_settable(l, -3);
+			}
+		lua_setfield(l, -2, "data");
+
+	return 1;
+}
+
 const luaL_Reg mumble[] = {
 	{"connect", mumble_connect},
 	{"loop", mumble_loop},
@@ -784,6 +825,23 @@ int luaopen_mumble(lua_State *l)
 		}
 		lua_setmetatable(l, -2);
 		lua_setfield(l, -2, "decoder");
+
+		// Register voice target metatable
+		luaL_newmetatable(l, METATABLE_BANENTRY);
+		{
+			lua_pushvalue(l, -1);
+			lua_setfield(l, -2, "__index");
+		}
+		luaL_register(l, NULL, mumble_banentry);
+
+		// If you call the voice target metatable as a function it will return a new voice target object
+		lua_newtable(l);
+		{
+			lua_pushcfunction(l, mumble_banentry_new);
+			lua_setfield(l, -2, "__call");
+		}
+		lua_setmetatable(l, -2);
+		lua_setfield(l, -2, "banentry");
 
 		// Register voice target metatable
 		luaL_newmetatable(l, METATABLE_VOICETARGET);

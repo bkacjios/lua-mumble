@@ -297,6 +297,78 @@ static int user_tostring(lua_State *l)
 	return 1;
 }
 
+static int user_listen(lua_State *l)
+{
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+
+	MumbleProto__UserState msg = MUMBLE_PROTO__USER_STATE__INIT;
+
+	msg.has_session = true;
+	msg.session = user->session;
+
+	// Get the number of channels we want to listen to
+	int n_listening_channel_add = lua_gettop(l) - 1;
+
+	msg.n_listening_channel_add = n_listening_channel_add;
+
+	msg.listening_channel_add = malloc(sizeof(uint32_t) * n_listening_channel_add);
+
+	// Loop through each argument and add the channel_id to the array
+	for (int i = 0; i < n_listening_channel_add; i++) {
+		MumbleChannel *listen = luaL_checkudata(l, i+2, METATABLE_CHAN);
+		msg.listening_channel_add[i] = listen->channel_id;
+	}
+
+	packet_send(user->client, PACKET_USERSTATE, &msg);
+	free(msg.listening_channel_add);
+	return 0;
+}
+
+static int user_unlisten(lua_State *l)
+{
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+
+	MumbleProto__UserState msg = MUMBLE_PROTO__USER_STATE__INIT;
+
+	msg.has_session = true;
+	msg.session = user->session;
+
+	// Get the number of channels we want to unlink
+	int n_listening_channel_remove = lua_gettop(l) - 1;
+
+	msg.n_listening_channel_remove = n_listening_channel_remove;
+	msg.listening_channel_remove = malloc(sizeof(uint32_t) * n_listening_channel_remove);
+
+	for (int i = 0; i < n_listening_channel_remove; i++) {
+		MumbleChannel *listen = luaL_checkudata(l, i+2, METATABLE_CHAN);
+		msg.listening_channel_remove[i] = listen->channel_id;
+	}
+
+	packet_send(user->client, PACKET_USERSTATE, &msg);
+	free(msg.listening_channel_remove);
+	return 0;
+}
+
+static int user_getListens(lua_State *l)
+{
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+
+	lua_newtable(l);
+
+	LinkNode * current = user->listens;
+
+	// Add all linked channels to the table
+    while (current != NULL) {
+		lua_pushinteger(l, current->data);
+		mumble_channel_raw_get(l, user->client, current->data);
+		lua_settable(l, -3);
+
+        current = current->next;
+    }
+
+	return 1;
+}
+
 static int user_gc(lua_State *l)
 {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
@@ -364,6 +436,9 @@ const luaL_Reg mumble_user[] = {
 	{"getTextureHash", user_getTextureHash},
 	{"getHash", user_getHash},
 	{"setTexture", user_setTexture},
+	{"listen", user_listen},
+	{"unlisten", user_unlisten},
+	{"getListens", user_getListens},
 
 	{"__gc", user_gc},
 	{"__tostring", user_tostring},

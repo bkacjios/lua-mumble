@@ -5,6 +5,7 @@
 #include "channel.h"
 #include "packet.h"
 #include "target.h"
+#include "user.h"
 
 /*--------------------------------
 	MUMBLE CLIENT META METHODS
@@ -156,34 +157,32 @@ static int client_sendPluginData(lua_State *l)
 	data.has_data = true;
 	data.data = cbdata;
 
-	luaL_checktype(l, 4, LUA_TTABLE);
-	lua_pushvalue(l, 4);
-	lua_pushnil(l);
+	int n_receiversessions = lua_gettop(l) - 3;
 
-	int i = 0;
-	int len = lua_objlen(l, 4);
+	data.n_receiversessions = n_receiversessions;
+	data.receiversessions = malloc(sizeof(uint32_t) * n_receiversessions);
 
-	data.receiversessions = malloc(sizeof(uint32_t) * len);
-	data.n_receiversessions = len;
-
-	while (lua_next(l, -2)) {
-		lua_pushvalue(l, -2);
-		if (i < len) {
-			// Allow a table of users or session IDs
-			if (lua_isuserdata(l, -2)) {
-				MumbleUser *user = lua_touserdata(l, -2);
-				data.receiversessions[i++] = user->session;
-			} else if (lua_isnumber(l, -2)) {
-				uint32_t session = (uint32_t) lua_tonumber(l, -2);
-				data.receiversessions[i++] = session;
+	for (int i = 0; i < n_receiversessions; i++) {
+		int sp = 4+i;
+		switch (lua_type(l, sp)) {
+			case LUA_TNUMBER:
+			{
+				// Use direct session number
+				uint32_t session = (uint32_t) lua_tonumber(l, sp);
+				data.receiversessions[i] = session;
+				break;
+			}
+			case LUA_TTABLE:
+			{
+				// Make sure the "table" is a user metatable
+				MumbleUser *user = luaL_checkudata(l, sp, METATABLE_USER);
+				data.receiversessions[i] = user->session;
+				break;
 			}
 		}
-		lua_pop(l, 2);
 	}
-	lua_pop(l, 1);
 
 	packet_send(client, PACKET_PLUGINDATA, &data);
-
 	free(data.receiversessions);
 	return 0;
 }
