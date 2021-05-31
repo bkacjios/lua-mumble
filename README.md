@@ -119,7 +119,8 @@ mumble.client:transmit(Number codec, String encoded_audio_packet, Boolean speaki
 
 -- Play an ogg audio file
 -- Changing the channel value will allow you to play multiple audio files at once
-mumble.client:play(String ogg file path, Number volume = 1.0, Number channel = 1)
+-- If success = false, it will pass along an error string as to why it couldn't play the file
+Boolean success, [ String error ] = mumble.client:play(String ogg file path, Number volume = 1.0, Number channel = 1)
 
 -- Checks if the client is currently playing an audio file on the specified audio channel
 Boolean playing = mumble.client:isPlaying(Number channel = 1)
