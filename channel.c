@@ -7,14 +7,6 @@
 	MUMBLE CHANNEL META METHODS
 --------------------------------*/
 
-static int channel_add(lua_State *l)
-{
-	//MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
-
-	// TODO: Figure out how channel adding works
-	return 0;
-}
-
 static int channel_message(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
@@ -118,7 +110,6 @@ static int channel_getChildren(lua_State *l)
 	}
 
 	lua_pop(l, 1);
-
 	return 1;
 }
 
@@ -144,7 +135,6 @@ static int channel_getUsers(lua_State *l)
 	}
 
 	lua_pop(l, 1);
-
 	return 1;
 }
 
@@ -377,6 +367,23 @@ static int channel_requestDescriptionBlob(lua_State *l)
 	return 0;
 }
 
+static int channel_create(lua_State *l)
+{
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+
+	MumbleProto__ChannelState msg = MUMBLE_PROTO__CHANNEL_STATE__INIT;
+
+	msg.parent = channel->channel_id;
+	msg.name = (char*) luaL_checkstring(l, 2);
+	msg.description = (char*) luaL_optstring(l, 3, "");
+	msg.position = luaL_optinteger(l, 4, 0);
+	msg.temporary = luaL_optboolean(l, 5, false);
+	msg.max_users = luaL_optinteger(l, 6, 0);
+
+	packet_send(channel->client, PACKET_CHANNELSTATE, &msg);
+	return 0;
+}
+
 static int channel_gc(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
@@ -422,7 +429,6 @@ const luaL_Reg mumble_channel[] = {
 	{"message", channel_message},
 	{"setDescription", channel_setDescription},
 	{"remove", channel_remove},
-
 	{"getClient", channel_getClient},
 	{"getName", channel_getName},
 	{"getID", channel_getID},
@@ -445,6 +451,7 @@ const luaL_Reg mumble_channel[] = {
 	{"hasPermission", channel_hasPermission},
 	{"hasPermissions", channel_hasPermission},
 	{"requestDescriptionBlob", channel_requestDescriptionBlob},
+	{"create", channel_create},
 
 	{"__call", channel_call},
 	{"__gc", channel_gc},

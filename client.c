@@ -583,6 +583,23 @@ static int client_requestDescriptionBlob(lua_State *l)
 	return 0;
 }
 
+static int client_createChannel(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+
+	MumbleProto__ChannelState msg = MUMBLE_PROTO__CHANNEL_STATE__INIT;
+
+	msg.parent = 0;
+	msg.name = (char*) luaL_checkstring(l, 2);
+	msg.description = (char*) luaL_optstring(l, 3, "");
+	msg.position = luaL_optinteger(l, 4, 0);
+	msg.temporary = luaL_optboolean(l, 5, false);
+	msg.max_users = luaL_optinteger(l, 6, 0);
+
+	packet_send(client, PACKET_CHANNELSTATE, &msg);
+	return 0;
+}
+
 static int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
@@ -657,6 +674,7 @@ const luaL_Reg mumble_client[] = {
 	{"requestTextureBlob", client_requestTextureBlob},
 	{"requestCommentBlob", client_requestCommentBlob},
 	{"requestDescriptionBlob", client_requestDescriptionBlob},
+	{"createChannel", client_createChannel},
 	{"__gc", client_gc},
 	{"__tostring", client_tostring},
 	{"__index", client_index},

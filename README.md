@@ -220,6 +220,10 @@ mumble.client:requestCommentBlob([mumble.user, Number session] ...)
 -- Server will respond with a "OnChannelState" with the requested data filled out
 -- After the hook is called, mumble.channel:getDescription() will also return the full data
 mumble.client:requestDescriptionBlob([mumble.channel, Number channel_id] ...)
+
+-- Creates a channel
+-- Will be parented to the root channel
+mumble.client:createChannel(String name, String description = "", Number position = 0, Boolean temporary = false, Number max_users = 0)
 ```
 
 ### mumble.user
@@ -426,6 +430,10 @@ Boolean permission = mumble.channel:hasPermission(mumble.acl flag)
 -- Server will respond with a "OnChannelState" with the requested data filled out
 -- After the hook is called, mumble.channel:getDescription() will also return the full data
 mumble.channel:requestTextureBlob()
+
+-- Creates a channel
+-- Will be parented to the channel that this method was called from
+mumble.channel:create(String name, String description = "", Number position = 0, Boolean temporary = false, Number max_users = 0)
 ```
 
 ### mumble.timer
