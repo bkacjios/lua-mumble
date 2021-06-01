@@ -92,6 +92,7 @@ typedef struct my_io my_io;
 typedef struct my_timer my_timer;
 typedef struct lua_timer lua_timer;
 typedef struct my_signal my_signal;
+typedef struct mumble_crypt mumble_crypt;
 
 struct my_io {
 	ev_io io;
@@ -120,7 +121,8 @@ struct my_signal {
 
 struct MumbleClient {
 	int					self;
-	int					socket;
+	int					socket_tcp;
+	int					socket_udp;
 	SSL_CTX				*ssl_context;
 	SSL					*ssl;
 	bool				connected;
@@ -147,9 +149,16 @@ struct MumbleClient {
 	OpusEncoder*		encoder;
 	uint8_t				audio_target;
 
-	uint32_t	tcp_packets;
-	float		tcp_ping_avg;
-	float		tcp_ping_var; 
+	uint32_t			tcp_packets;
+	float				tcp_ping_avg;
+	float				tcp_ping_var;
+
+	uint32_t			udp_packets;
+	float				udp_ping_avg;
+	float				udp_ping_var;
+
+	uint32_t			resync;
+	mumble_crypt*		crypt;
 };
 
 struct LinkNode

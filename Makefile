@@ -9,7 +9,7 @@ default: all
 PROTO_SOURCES	= $(wildcard proto/*.proto)
 PROTO_C 		= $(PROTO_SOURCES:.proto=.pb-c.c)
 
-SOURCES			= $(wildcard *.c)
+SOURCES			= $(wildcard mumble/*.c)
 OBJECTS			= $(PROTO_SOURCES:.proto=.o) $(SOURCES:.c=.o)
 
 
@@ -30,7 +30,7 @@ uninstall:
 	rm /usr/local/lib/lua/5.1/mumble.so
 
 clean:
-	rm *.o *.so proto/*.o proto/*.c proto/*.h
+	rm mumble/*.o *.so proto/*.o proto/*.c proto/*.h
 
 proto/%.pb-c.c: proto/%.proto
 	protoc-c --c_out=. $<
@@ -38,7 +38,7 @@ proto/%.pb-c.c: proto/%.proto
 proto/%.o: proto/%.pb-c.c
 	$(CC) -c $(INCLUDES) $(CFLAGS) -o $@ $^
 
-%.o: %.c
+mumble/%.o: mumble/%.c
 	$(CC) -c $(INCLUDES) $(CFLAGS) -o $@ $^
 
 mumble.so: $(OBJECTS)

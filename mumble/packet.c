@@ -1,6 +1,7 @@
 #include "mumble.h"
 
 #include "packet.h"
+#include "ocb.h"
 
 int packet_sendex(MumbleClient* client, const int type, const void *message, const int length)
 {
@@ -40,6 +41,9 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 			break;
 		case PACKET_ACL:
 			payload_size = mumble_proto__acl__get_packed_size(message);
+			break;
+		case PACKET_CRYPTSETUP:
+			payload_size = mumble_proto__crypt_setup__get_packed_size(message);
 			break;
 		case PACKET_PERMISSIONQUERY:
 			payload_size = mumble_proto__permission_query__get_packed_size(message);
@@ -104,6 +108,9 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 				break;
 			case PACKET_ACL:
 				mumble_proto__acl__pack(message, packet_out.buffer + 6);
+				break;
+			case PACKET_CRYPTSETUP:
+				mumble_proto__crypt_setup__pack(message, packet_out.buffer + 6);
 				break;
 			case PACKET_PERMISSIONQUERY:
 				mumble_proto__permission_query__pack(message, packet_out.buffer + 6);
@@ -893,6 +900,63 @@ void packet_acl(lua_State *l, MumbleClient *client, Packet *packet)
 	mumble_proto__acl__free_unpacked(acl, NULL);
 }
 
+void packet_crypt_setup(lua_State *l, MumbleClient *client, Packet *packet)
+{
+	MumbleProto__CryptSetup *crypt = mumble_proto__crypt_setup__unpack(NULL, packet->length, packet->buffer);
+	if (crypt == NULL) {
+		return;
+	}
+
+	if (crypt->has_key && crypt->has_client_nonce && crypt->has_server_nonce) {
+		if (!crypt_setKey(client->crypt, crypt->key, crypt->client_nonce, crypt->server_nonce)) {
+			printf("CryptState: Cipher resync failed: Invalid key/nonce from the server\n");
+		}
+	} else if (crypt->has_server_nonce) {
+		client->resync++;
+		if (!crypt_setDecryptIV(client->crypt, crypt->server_nonce)) {
+			printf("CryptState: Cipher resync failed: Invalid nonce from the server\n");
+		}
+	} else {
+		MumbleProto__CryptSetup msg = MUMBLE_PROTO__CRYPT_SETUP__INIT;
+		msg.has_client_nonce = true;
+		msg.client_nonce.len = AES_BLOCK_SIZE;
+		msg.client_nonce.data = (uint8_t*) crypt_getEncryptIV(client->crypt);
+		packet_send(client, PACKET_CRYPTSETUP, &msg);
+	}
+
+	if (crypt_isValid(client->crypt)) {
+		printf("CryptState: VALID\n");
+	} else {
+		printf("CryptState: INVALID\n");
+	}
+
+	lua_newtable(l);
+	if(crypt->has_key) {
+		char* result;
+		bin_to_strhex(crypt->key.data, crypt->key.len, &result);
+		lua_pushstring(l, result);
+		lua_setfield(l, -2, "key");
+		free(result);
+	}
+	if(crypt->has_client_nonce) {
+		char* result;
+		bin_to_strhex(crypt->client_nonce.data, crypt->client_nonce.len, &result);
+		lua_pushstring(l, result);
+		lua_setfield(l, -2, "client_nonce");
+		free(result);
+	}
+	if(crypt->has_server_nonce) {
+		char* result;
+		bin_to_strhex(crypt->server_nonce.data, crypt->server_nonce.len, &result);
+		lua_pushstring(l, result);
+		lua_setfield(l, -2, "server_nonce");
+		free(result);
+	}
+	mumble_hook_call(l, client, "OnCryptSetup", 1);
+
+	mumble_proto__crypt_setup__free_unpacked(crypt, NULL);
+}
+
 void packet_user_list(lua_State *l, MumbleClient *client, Packet *packet)
 {
 	MumbleProto__UserList *list = mumble_proto__user_list__unpack(NULL, packet->length, packet->buffer);
@@ -1258,7 +1322,7 @@ const Packet_Handler_Func packet_handler[NUM_PACKETS] = {
 	/* 12 */ packet_permission_denied,
 	/* 13 */ packet_acl, // ACL
 	/* 14 */ NULL, // QueryUsers
-	/* 15 */ NULL, // CryptSetup
+	/* 15 */ packet_crypt_setup, // CryptSetup
 	/* 16 */ NULL, // ContextActionAdd
 	/* 17 */ NULL, // Context Action
 	/* 18 */ packet_user_list, // UserList

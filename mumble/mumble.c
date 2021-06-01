@@ -11,6 +11,7 @@
 #include "target.h"
 #include "timer.h"
 #include "packet.h"
+#include "ocb.h"
 
 static void signal_event(struct ev_loop *loop, ev_signal *w_, int revents)
 {
@@ -54,6 +55,9 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 	
 	ping.has_tcp_ping_var = true;
 	ping.tcp_ping_var = client->tcp_ping_var;
+
+	ping.has_resync = true;
+	ping.resync = client->resync;
 	
 	lua_stackguard_entry(l);
 
@@ -186,6 +190,14 @@ static int mumble_connect(lua_State *l)
 	client->tcp_ping_avg = 0;
 	client->tcp_ping_var = 0;
 
+	client->crypt = crypt_new();
+
+	if (client->crypt == NULL) {
+		lua_pushnil(l);
+		lua_pushfstring(l, "could not initialize ocb cryptstate");
+		return 2;
+	}
+
 	int err;
 	client->encoder = opus_encoder_create(AUDIO_SAMPLE_RATE, 1, OPUS_APPLICATION_AUDIO, &err);
 
@@ -231,8 +243,8 @@ static int mumble_connect(lua_State *l)
 		return 2;
 	}
 
-	client->socket = socket(server_host->ai_family, server_host->ai_socktype, 0);
-	if (client->socket < 0) {
+	client->socket_tcp = socket(server_host->ai_family, server_host->ai_socktype, 0);
+	if (client->socket_tcp < 0) {
 		freeaddrinfo(server_host);
 		lua_pushnil(l);
 		lua_pushfstring(l, "could not create socket: %s", strerror(errno));
@@ -243,14 +255,14 @@ static int mumble_connect(lua_State *l)
 	timeout.tv_sec = 5;
 	timeout.tv_usec = 0;
 
-	if (setsockopt(client->socket, SOL_SOCKET, (SO_RCVTIMEO | SO_SNDTIMEO), (char *)&timeout, sizeof(timeout)) < 0) {
+	if (setsockopt(client->socket_tcp, SOL_SOCKET, (SO_RCVTIMEO | SO_SNDTIMEO), (char *)&timeout, sizeof(timeout)) < 0) {
 		freeaddrinfo(server_host);
 		lua_pushnil(l);
 		lua_pushfstring(l, "setsockopt failed: %s", strerror(errno));
 		return 2;
 	}
 
-	if (connect(client->socket, server_host->ai_addr, server_host->ai_addrlen) != 0) {
+	if (connect(client->socket_tcp, server_host->ai_addr, server_host->ai_addrlen) != 0) {
 		freeaddrinfo(server_host);
 		lua_pushnil(l);
 		lua_pushfstring(l, "could not connect to server: %s", strerror(errno));
@@ -267,7 +279,7 @@ static int mumble_connect(lua_State *l)
 		return 2;
 	}
 
-	if (SSL_set_fd(client->ssl, client->socket) == 0) {
+	if (SSL_set_fd(client->ssl, client->socket_tcp) == 0) {
 		lua_pushnil(l);
 		lua_pushstring(l, "could not set SSL file descriptor");
 		return 2;
@@ -297,7 +309,7 @@ static int mumble_connect(lua_State *l)
 	ev_signal_start(EV_DEFAULT, &client->signal.signal);
 
 	// Create a callback for when the socket is ready to be read from
-	ev_io_init(&client->socket_io.io, socket_read_event, client->socket, EV_READ);
+	ev_io_init(&client->socket_io.io, socket_read_event, client->socket_tcp, EV_READ);
 	ev_io_start(EV_DEFAULT, &client->socket_io.io);
 
 	// Create a timer to ping the server every X seconds
@@ -369,6 +381,9 @@ void mumble_disconnect(lua_State *l, MumbleClient *client)
 		}
 	}
 
+	if (client->crypt)
+		free(client->crypt);
+
 	if (client->connected) {
 		mumble_hook_call(l, client, "OnDisconnect", 0);
 		client->connected = false;
@@ -381,8 +396,8 @@ void mumble_disconnect(lua_State *l, MumbleClient *client)
 	if (client->ssl)
 		SSL_shutdown(client->ssl);
 
-	if (client->socket)
-		close(client->socket);
+	if (client->socket_tcp)
+		close(client->socket_tcp);
 
 	// Get table of connections
 	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
