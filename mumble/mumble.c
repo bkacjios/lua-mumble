@@ -17,7 +17,6 @@ static void signal_event(struct ev_loop *loop, ev_signal *w_, int revents)
 {
 	my_signal *w = (my_signal *) w_;
 	MumbleClient *client = w->client;
-	mumble_disconnect(w->l, client);
 	ev_break(EV_DEFAULT, EVBREAK_ALL);
 }
 
@@ -56,15 +55,53 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 	ping.has_tcp_ping_var = true;
 	ping.tcp_ping_var = client->tcp_ping_var;
 
+	ping.has_good = true;
+	ping.good = crypt_getGood(client->crypt);
+
+	ping.has_late = true;
+	ping.late = crypt_getLate(client->crypt);
+
+	ping.has_lost = true;
+	ping.lost = crypt_getLost(client->crypt);
+
 	ping.has_resync = true;
 	ping.resync = client->resync;
+
+	ping.has_udp_packets = true;
+	ping.udp_packets = client->udp_packets;
+
+	ping.has_udp_ping_avg = true;
+	ping.tcp_ping_avg = client->udp_ping_avg;
+	
+	ping.has_udp_ping_var = true;
+	ping.udp_ping_var = client->udp_ping_var;
 	
 	lua_stackguard_entry(l);
 
 	lua_newtable(l);
 		// Push the timestamp we are sending to the server
-		lua_pushinteger(l, ts);
+		lua_pushinteger(l, ping.timestamp);
 		lua_setfield(l, -2, "timestamp");
+		lua_pushinteger(l, ping.tcp_packets);
+		lua_setfield(l, -2, "tcp_packets");
+		lua_pushinteger(l, ping.tcp_ping_avg);
+		lua_setfield(l, -2, "tcp_ping_avg");
+		lua_pushinteger(l, ping.tcp_ping_var);
+		lua_setfield(l, -2, "tcp_ping_var");
+		lua_pushinteger(l, ping.good);
+		lua_setfield(l, -2, "good");
+		lua_pushinteger(l, ping.late);
+		lua_setfield(l, -2, "late");
+		lua_pushinteger(l, ping.lost);
+		lua_setfield(l, -2, "lost");
+		lua_pushinteger(l, ping.resync);
+		lua_setfield(l, -2, "resync");
+		lua_pushinteger(l, ping.udp_packets);
+		lua_setfield(l, -2, "udp_packets");
+		lua_pushinteger(l, ping.udp_ping_avg);
+		lua_setfield(l, -2, "udp_ping_avg");
+		lua_pushinteger(l, ping.udp_ping_var);
+		lua_setfield(l, -2, "udp_ping_var");
 	mumble_hook_call(l, client, "OnClientPing", 1);
 
 	// Safety clear stack
@@ -75,7 +112,7 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 	lua_stackguard_exit(l);
 }
 
-static void socket_read_event(struct ev_loop *loop, ev_io *w_, int revents)
+static void socket_read_event_tcp(struct ev_loop *loop, ev_io *w_, int revents)
 {
 	my_io *w = (my_io *) w_;
 
@@ -143,6 +180,23 @@ static void socket_read_event(struct ev_loop *loop, ev_io *w_, int revents)
 	}
 }
 
+static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
+{
+	my_io *w = (my_io *) w_;
+
+	MumbleClient *client = w->client;
+	lua_State *l = w->l;
+
+	int caddrlen;
+	struct sockaddr_in cliaddr;
+	char readbuf[UDP_BUFFER_MAX];
+
+	if (recvfrom(client->socket_udp, readbuf, UDP_BUFFER_MAX, 0, (struct sockaddr*) &cliaddr, &caddrlen) > 0)
+	{
+		
+	}
+}
+
 int MUMBLE_CLIENTS;
 
 static int mumble_connect(lua_State *l)
@@ -183,12 +237,18 @@ static int mumble_connect(lua_State *l)
 	client->audio_target = 0;
 	client->audio_frames = AUDIO_DEFAULT_FRAMES;
 
-	for(int i = 0; i < AUDIO_MAX_CHANNELS; ++i)
+	for(int i = 0; i < AUDIO_MAX_STREAMS; ++i)
 		client->audio_jobs[i] = NULL;
 
 	client->tcp_packets = 0;
 	client->tcp_ping_avg = 0;
 	client->tcp_ping_var = 0;
+
+	client->udp_packets = 0;
+	client->udp_ping_avg = 0;
+	client->udp_ping_var = 0;
+
+	client->udp_tunnel = true;
 
 	client->crypt = crypt_new();
 
@@ -199,7 +259,7 @@ static int mumble_connect(lua_State *l)
 	}
 
 	int err;
-	client->encoder = opus_encoder_create(AUDIO_SAMPLE_RATE, 1, OPUS_APPLICATION_AUDIO, &err);
+	client->encoder = opus_encoder_create(AUDIO_SAMPLE_RATE, AUDIO_PLAYBACK_CHANNELS, OPUS_APPLICATION_AUDIO, &err);
 
 	if (err != OPUS_OK) {
 		lua_pushnil(l);
@@ -229,13 +289,13 @@ static int mumble_connect(lua_State *l)
 		}
 	}
 
-	struct addrinfo hint;
-	memset(&hint, 0, sizeof(hint));
-	hint.ai_family = AF_UNSPEC;
-	hint.ai_socktype = SOCK_STREAM;
+	struct addrinfo hint_tcp;
+	memset(&hint_tcp, 0, sizeof(hint_tcp));
+	hint_tcp.ai_family = AF_UNSPEC;
+	hint_tcp.ai_socktype = SOCK_STREAM;
 
-	struct addrinfo* server_host;
-	err = getaddrinfo(server_host_str, port_str, &hint, &server_host);
+	struct addrinfo* server_host_tcp;
+	err = getaddrinfo(server_host_str, port_str, &hint_tcp, &server_host_tcp);
 	
 	if(err != 0) {
 		lua_pushnil(l);
@@ -243,11 +303,11 @@ static int mumble_connect(lua_State *l)
 		return 2;
 	}
 
-	client->socket_tcp = socket(server_host->ai_family, server_host->ai_socktype, 0);
+	client->socket_tcp = socket(server_host_tcp->ai_family, server_host_tcp->ai_socktype, 0);
 	if (client->socket_tcp < 0) {
-		freeaddrinfo(server_host);
+		freeaddrinfo(server_host_tcp);
 		lua_pushnil(l);
-		lua_pushfstring(l, "could not create socket: %s", strerror(errno));
+		lua_pushfstring(l, "could not create tcp socket: %s", strerror(errno));
 		return 2;
 	}
 
@@ -256,20 +316,20 @@ static int mumble_connect(lua_State *l)
 	timeout.tv_usec = 0;
 
 	if (setsockopt(client->socket_tcp, SOL_SOCKET, (SO_RCVTIMEO | SO_SNDTIMEO), (char *)&timeout, sizeof(timeout)) < 0) {
-		freeaddrinfo(server_host);
+		freeaddrinfo(server_host_tcp);
 		lua_pushnil(l);
 		lua_pushfstring(l, "setsockopt failed: %s", strerror(errno));
 		return 2;
 	}
 
-	if (connect(client->socket_tcp, server_host->ai_addr, server_host->ai_addrlen) != 0) {
-		freeaddrinfo(server_host);
+	if (connect(client->socket_tcp, server_host_tcp->ai_addr, server_host_tcp->ai_addrlen) != 0) {
+		freeaddrinfo(server_host_tcp);
 		lua_pushnil(l);
-		lua_pushfstring(l, "could not connect to server: %s", strerror(errno));
+		lua_pushfstring(l, "could not connect to tcp server: %s", strerror(errno));
 		return 2;
 	}
 
-	freeaddrinfo(server_host);
+	freeaddrinfo(server_host_tcp);
 	
 	client->ssl = SSL_new(client->ssl_context);
 
@@ -291,11 +351,46 @@ static int mumble_connect(lua_State *l)
 		return 2;
 	}
 
+#ifdef ENABLE_UDP
+	// UDP Connection
+
+	struct addrinfo hint_udp;
+	memset(&hint_udp, 0, sizeof(hint_udp));
+	hint_udp.ai_family = AF_UNSPEC;
+	hint_udp.ai_socktype = SOCK_DGRAM;
+
+	struct addrinfo* server_host_udp;
+	err = getaddrinfo(server_host_str, port_str, &hint_udp, &server_host_udp);
+
+	if(err != 0) {
+		lua_pushnil(l);
+		lua_pushfstring(l, "could not parse server address: %s", gai_strerror(err));
+		return 2;
+	}
+
+	client->socket_udp = socket(server_host_udp->ai_family, server_host_udp->ai_socktype, 0);
+	if (client->socket_udp < 0) {
+		freeaddrinfo(server_host_udp);
+		lua_pushnil(l);
+		lua_pushfstring(l, "could not create udp socket: %s", strerror(errno));
+		return 2;
+	}
+
+	client->socket_udp_io.l = l;
+	client->socket_udp_io.client = client;
+
+	// Create a callback for when the udp socket is ready to be read from
+	ev_io_init(&client->socket_udp_io.io, socket_read_event_udp, client->socket_udp, EV_READ);
+	ev_io_start(EV_DEFAULT, &client->socket_udp_io.io);
+
+	freeaddrinfo(server_host_udp);
+#endif
+
 	client->signal.l = l;
 	client->signal.client = client;
 
-	client->socket_io.l = l;
-	client->socket_io.client = client;
+	client->socket_tcp_io.l = l;
+	client->socket_tcp_io.client = client;
 
 	client->audio_timer.l = l;
 	client->audio_timer.client = client;
@@ -308,14 +403,13 @@ static int mumble_connect(lua_State *l)
 	ev_signal_init(&client->signal.signal, signal_event, SIGINT);
 	ev_signal_start(EV_DEFAULT, &client->signal.signal);
 
-	// Create a callback for when the socket is ready to be read from
-	ev_io_init(&client->socket_io.io, socket_read_event, client->socket_tcp, EV_READ);
-	ev_io_start(EV_DEFAULT, &client->socket_io.io);
+	// Create a callback for when the tcp socket is ready to be read from
+	ev_io_init(&client->socket_tcp_io.io, socket_read_event_tcp, client->socket_tcp, EV_READ);
+	ev_io_start(EV_DEFAULT, &client->socket_tcp_io.io);
 
 	// Create a timer to ping the server every X seconds
 	ev_timer_init(&client->ping_timer.timer, mumble_ping_timer, PING_TIMEOUT, PING_TIMEOUT);
 	ev_timer_start(EV_DEFAULT, &client->ping_timer.timer);
-
 	return 1;
 }
 
@@ -376,13 +470,15 @@ static int mumble_loop(lua_State *l)
 void mumble_disconnect(lua_State *l, MumbleClient *client)
 {
 	if (client->audio_jobs) {
-		for(int i = 1; i <= AUDIO_MAX_CHANNELS; ++i) {
+		for(int i = 1; i <= AUDIO_MAX_STREAMS; ++i) {
 			audio_transmission_stop(l, client, i);
 		}
 	}
 
-	if (client->crypt)
+	if (client->crypt) {
 		free(client->crypt);
+		client->crypt = NULL;
+	}
 
 	if (client->connected) {
 		mumble_hook_call(l, client, "OnDisconnect", 0);
@@ -393,11 +489,17 @@ void mumble_disconnect(lua_State *l, MumbleClient *client)
 		luaL_unref(l, -1, client->self);
 	}
 
-	if (client->ssl)
+	if (client->ssl) {
 		SSL_shutdown(client->ssl);
+	}
 
-	if (client->socket_tcp)
+	if (client->socket_tcp) {
 		close(client->socket_tcp);
+	}
+
+	if (client->socket_udp) {
+		close(client->socket_udp);
+	}
 
 	// Get table of connections
 	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);

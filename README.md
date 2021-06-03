@@ -118,15 +118,15 @@ mumble.client:sendPluginData(String dataID, String plugindata, [mumble.user, Num
 mumble.client:transmit(Number codec, String encoded_audio_packet, Boolean speaking = true)
 
 -- Play an ogg audio file
--- Changing the channel value will allow you to play multiple audio files at once
+-- Changing the stream value will allow you to play multiple audio files at once
 -- If success = false, it will pass along an error string as to why it couldn't play the file
-Boolean success, [ String error ] = mumble.client:play(String ogg file path, Number volume = 1.0, Number channel = 1)
+Boolean success, [ String error ] = mumble.client:play(String ogg file path, Number stream = 1, Number volume = 1.0)
 
--- Checks if the client is currently playing an audio file on the specified audio channel
-Boolean playing = mumble.client:isPlaying(Number channel = 1)
+-- Checks if the client is currently playing an audio file on the specified audio stream
+Boolean playing = mumble.client:isPlaying(Number stream = 1)
 
--- Stops playing the current audio on the specified audio channel
-mumble.client:stopPlaying(Number channel = 1)
+-- Stops playing the current audio on the specified audio stream
+mumble.client:stopPlaying(Number stream = 1)
 
 -- Sets the global volume level
 -- Consider this the master volume level
@@ -1052,15 +1052,25 @@ Called just before a ping is sent to the server.
 
 ``` lua
 Table event = {
-	["timestamp"]	= Number timestamp,
+	["timestamp"]		= Number timestamp,
+	["good"]			= Number good,
+	["late"]			= Number late,
+	["lost"]			= Number lost,
+	["resync"]			= Number resync,
+	["udp_packets"]		= Number udp_packets,
+	["tcp_packets"]		= Number tcp_packets,
+	["udp_ping_avg"]	= Number udp_ping_avg,
+	["udp_ping_var"]	= Number udp_ping_var,
+	["tcp_ping_avg"]	= Number tcp_ping_avg,
+	["tcp_ping_var"]	= Number tcp_ping_var,
 }
 ```
 ___
 
-### `OnAudioFinished (mumble.client client, Number channel)`
+### `OnAudioFinished (mumble.client client, Number stream)`
 
 Called when a sound file has finished playing.
-Passes the number of the audio channel that finished.
+Passes the number of the audio stream that finished.
 ___
 
 ### `OnAudioStreamEnd (mumble.client client)`

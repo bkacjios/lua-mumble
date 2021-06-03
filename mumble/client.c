@@ -225,16 +225,16 @@ static int client_play(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
 	const char* filepath	= luaL_checkstring(l, 2);
-	float volume			= (float) luaL_optnumber(l, 3, 1);
-	int channel				= luaL_optinteger(l, 4, 1);
+	int stream				= luaL_optinteger(l, 3, 1);
+	float volume			= (float) luaL_optnumber(l, 4, 1);
 
-	if (channel < 1)
-		channel = 1;
+	if (stream < 1)
+		stream = 1;
 
-	if (channel > AUDIO_MAX_CHANNELS)
-		channel = AUDIO_MAX_CHANNELS;
+	if (stream > AUDIO_MAX_STREAMS)
+		stream = AUDIO_MAX_STREAMS;
 
-	audio_transmission_stop(l, client, channel);
+	audio_transmission_stop(l, client, stream);
 
 	//AudioTransmission *sound = lua_newuserdata(l, sizeof(AudioTransmission));
 	//luaL_getmetatable(l, METATABLE_AUDIO);
@@ -266,7 +266,7 @@ static int client_play(lua_State *l)
 		return 2;
 	}*/
 
-	client->audio_jobs[channel - 1] = sound;
+	client->audio_jobs[stream - 1] = sound;
 
 	lua_pushboolean(l, true);
 	return 1;
@@ -275,16 +275,16 @@ static int client_play(lua_State *l)
 static int client_isPlaying(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
-	int channel = luaL_optinteger(l, 2, 1);
-	lua_pushboolean(l, client->audio_jobs[channel - 1] != NULL);
+	int stream = luaL_optinteger(l, 2, 1);
+	lua_pushboolean(l, client->audio_jobs[stream - 1] != NULL);
 	return 1;
 }
 
 static int client_stopPlaying(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
-	int channel				= luaL_optinteger(l, 2, 1);
-	audio_transmission_stop(l, client, channel);
+	int stream				= luaL_optinteger(l, 2, 1);
+	audio_transmission_stop(l, client, stream);
 	return 0;
 }
 

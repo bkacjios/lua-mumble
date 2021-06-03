@@ -3,6 +3,11 @@
 #include "packet.h"
 #include "ocb.h"
 
+int packet_sendudp(MumbleClient* client, const int type, const void *message, const int length)
+{
+
+}
+
 int packet_sendex(MumbleClient* client, const int type, const void *message, const int length)
 {
 	static Packet packet_out;
@@ -41,6 +46,9 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 			break;
 		case PACKET_ACL:
 			payload_size = mumble_proto__acl__get_packed_size(message);
+			break;
+		case PACKET_QUERYUSERS:
+			payload_size = mumble_proto__query_users__get_packed_size(message);
 			break;
 		case PACKET_CRYPTSETUP:
 			payload_size = mumble_proto__crypt_setup__get_packed_size(message);
@@ -108,6 +116,9 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 				break;
 			case PACKET_ACL:
 				mumble_proto__acl__pack(message, packet_out.buffer + 6);
+				break;
+			case PACKET_QUERYUSERS:
+				mumble_proto__query_users__pack(message, packet_out.buffer + 6);
 				break;
 			case PACKET_CRYPTSETUP:
 				mumble_proto__crypt_setup__pack(message, packet_out.buffer + 6);
@@ -418,7 +429,7 @@ void packet_channel_state(lua_State *l, MumbleClient *client, Packet *packet)
 		lua_setfield(l , -2, "position");
 	}
 	if (state->has_description_hash) {
-		channel->description_hash = (char*) strdup((const char*)state->description_hash.data);
+		channel->description_hash = (char*) strndup((const char*)state->description_hash.data, state->description_hash.len);
 		channel->description_hash_len = state->description_hash.len;
 
 		char* result;
@@ -603,8 +614,8 @@ void packet_user_state(lua_State *l, MumbleClient *client, Packet *packet)
 			lua_setfield(l, -2, "priority_speaker");
 		}
 		if (state->has_texture) {
-			user->texture = (char*) strdup((const char*)state->texture.data);
-			lua_pushstring(l, user->texture);
+			user->texture = (char*) strndup((const char*)state->texture.data, state->texture.len);
+			lua_pushlstring(l, user->texture, state->texture.len);
 			lua_setfield(l, -2, "texture");
 		}
 		if (state->hash != NULL) {
@@ -613,7 +624,7 @@ void packet_user_state(lua_State *l, MumbleClient *client, Packet *packet)
 			lua_setfield(l, -2, "hash");
 		}
 		if (state->has_comment_hash) {
-			user->comment_hash = (char*) strdup((const char*)state->comment_hash.data);
+			user->comment_hash = (char*) strndup((const char*)state->comment_hash.data, state->comment_hash.len);
 			user->comment_hash_len = state->comment_hash.len;
 
 			char* result;
@@ -623,7 +634,7 @@ void packet_user_state(lua_State *l, MumbleClient *client, Packet *packet)
 			free(result);
 		}
 		if (state->has_texture_hash) {
-			user->texture_hash = (char*) strdup((const char*)state->texture_hash.data);
+			user->texture_hash = (char*) strndup((const char*)state->texture_hash.data, state->texture_hash.len);
 			user->texture_hash_len = state->texture_hash.len;
 
 			char* result;
@@ -900,6 +911,31 @@ void packet_acl(lua_State *l, MumbleClient *client, Packet *packet)
 	mumble_proto__acl__free_unpacked(acl, NULL);
 }
 
+void packet_query_users(lua_State *l, MumbleClient *client, Packet *packet)
+{
+	MumbleProto__QueryUsers *users = mumble_proto__query_users__unpack(NULL, packet->length, packet->buffer);
+	if (users == NULL) {
+		return;
+	}
+
+	lua_newtable(l);
+	if(users->n_ids > 0 && users->n_ids == users->n_names)
+	{
+		for (uint32_t i; i < users->n_ids; i++)
+		{
+			uint32_t id = users->ids[i];
+			char* name = users->names[i];
+
+			lua_pushinteger(l, id);
+			lua_pushstring(l, name);
+			lua_settable(l, -3);
+		}
+	}
+	mumble_hook_call(l, client, "OnQueryUsers", 1);
+
+	mumble_proto__query_users__free_unpacked(users, NULL);
+}
+
 void packet_crypt_setup(lua_State *l, MumbleClient *client, Packet *packet)
 {
 	MumbleProto__CryptSetup *crypt = mumble_proto__crypt_setup__unpack(NULL, packet->length, packet->buffer);
@@ -907,6 +943,7 @@ void packet_crypt_setup(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
+#ifdef ENABLE_UDP
 	if (crypt->has_key && crypt->has_client_nonce && crypt->has_server_nonce) {
 		if (!crypt_setKey(client->crypt, crypt->key, crypt->client_nonce, crypt->server_nonce)) {
 			printf("CryptState: Cipher resync failed: Invalid key/nonce from the server\n");
@@ -929,6 +966,7 @@ void packet_crypt_setup(lua_State *l, MumbleClient *client, Packet *packet)
 	} else {
 		printf("CryptState: INVALID\n");
 	}
+#endif
 
 	lua_newtable(l);
 	if(crypt->has_key) {
@@ -1321,7 +1359,7 @@ const Packet_Handler_Func packet_handler[NUM_PACKETS] = {
 	/* 11 */ packet_text_message,
 	/* 12 */ packet_permission_denied,
 	/* 13 */ packet_acl, // ACL
-	/* 14 */ NULL, // QueryUsers
+	/* 14 */ packet_query_users, // QueryUsers
 	/* 15 */ packet_crypt_setup, // CryptSetup
 	/* 16 */ NULL, // ContextActionAdd
 	/* 17 */ NULL, // Context Action

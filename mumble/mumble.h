@@ -41,6 +41,9 @@
 
 #include "proto/Mumble.pb-c.h"
 
+// Incomplete feature (used for development)
+#define ENABLE_UDP 0
+
 #define STB_VORBIS_HEADER_ONLY
 #include "stb_vorbis.c"
 
@@ -56,11 +59,14 @@
 // 1 = Lower latency, 4 = Better quality
 #define AUDIO_DEFAULT_FRAMES 2
 
+// How many channels the ogg file playback should handle
+#define AUDIO_PLAYBACK_CHANNELS 2
+
 // The sample rate in which all ogg files should be encoded to
 #define AUDIO_SAMPLE_RATE 48000
 
-// Number of audio "channels" for playing multiple sounds at once
-#define AUDIO_MAX_CHANNELS 128
+// Number of audio "streams" for playing multiple sounds at once
+#define AUDIO_MAX_STREAMS 128
 
 // Maximum length an encoded opus packet can be
 #define AUDIO_MAX_FRAME_SIZE 6*960
@@ -72,6 +78,8 @@
 #define PAYLOAD_SIZE_MAX (1024 * 8 - 1)
 
 #define PING_TIMEOUT 30
+
+#define UDP_BUFFER_MAX 1024
 
 #define UDP_CELT_ALPHA 0
 #define UDP_PING 1
@@ -85,6 +93,7 @@
 
 typedef struct MumbleClient MumbleClient;
 typedef struct AudioTransmission AudioTransmission;
+typedef struct AudioFrame AudioFrame;
 typedef struct MumbleChannel MumbleChannel;
 typedef struct MumbleUser MumbleUser;
 typedef struct LinkNode LinkNode;
@@ -119,6 +128,21 @@ struct my_signal {
 	lua_State* l;
 };
 
+struct AudioFrame {
+	float l;
+	float r;
+};
+
+struct AudioTransmission {
+	lua_State *lua;
+	stb_vorbis *ogg;
+	MumbleClient *client;
+	bool playing;
+	float volume;
+	AudioFrame buffer[PCM_BUFFER];
+	stb_vorbis_info info;
+};
+
 struct MumbleClient {
 	int					self;
 	int					socket_tcp;
@@ -137,14 +161,15 @@ struct MumbleClient {
 	double				time;
 	uint32_t			session;
 	float				volume;
-	my_io				socket_io;
+	my_io				socket_tcp_io;
+	my_io				socket_udp_io;
 	my_timer			audio_timer;
 	my_timer			ping_timer;
 	my_signal           signal;
-	float				audio_buffer[PCM_BUFFER];
-	float				audio_rebuffer[PCM_BUFFER];
+	AudioFrame			audio_buffer[PCM_BUFFER];
+	AudioFrame			audio_rebuffer[PCM_BUFFER];
 	uint32_t			audio_sequence;
-	AudioTransmission*	audio_jobs[AUDIO_MAX_CHANNELS];
+	AudioTransmission*	audio_jobs[AUDIO_MAX_STREAMS];
 	int					audio_frames;
 	OpusEncoder*		encoder;
 	uint8_t				audio_target;
@@ -152,6 +177,8 @@ struct MumbleClient {
 	uint32_t			tcp_packets;
 	float				tcp_ping_avg;
 	float				tcp_ping_var;
+
+	bool				udp_tunnel;
 
 	uint32_t			udp_packets;
 	float				udp_ping_avg;
@@ -221,16 +248,6 @@ typedef struct {
 	uint32_t length;
 	uint8_t buffer[PAYLOAD_SIZE_MAX + 6];
 } Packet;
-
-struct AudioTransmission {
-	lua_State *lua;
-	stb_vorbis *ogg;
-	MumbleClient *client;
-	bool playing;
-	float volume;
-	float buffer[PCM_BUFFER];
-	stb_vorbis_info info;
-};
 
 typedef struct {
 	uint8_t *buffer;

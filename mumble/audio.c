@@ -167,17 +167,19 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 	long read;
 	long biggest_read = 0;
 
-	const uint32_t enc_frame_size = client->audio_frames * AUDIO_SAMPLE_RATE / 100;
+	// How big each frame of audio data should be
+	const uint32_t frame_size = client->audio_frames * AUDIO_SAMPLE_RATE / 100;
 
 	memset(client->audio_buffer, 0, sizeof(client->audio_buffer));
 
 	// Loop through all available audio channels
-	for (int i = 0; i < AUDIO_MAX_CHANNELS; i++) {
+	for (int i = 0; i < AUDIO_MAX_STREAMS; i++) {
 		AudioTransmission *sound = client->audio_jobs[i];
 
 		// No sound playing = skip
 		if (sound == NULL) continue;
 
+		// How many channels the audio file has
 		const int channels = sound->info.channels;
 		const uint32_t source_rate = sound->info.sample_rate;
 
@@ -185,21 +187,14 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 
 		memset(sound->buffer, 0, sizeof(sound->buffer));
 
-		read = stb_vorbis_get_samples_float_interleaved(sound->ogg, channels, sound->buffer, sample_size * channels);
+		read = stb_vorbis_get_samples_float_interleaved(sound->ogg, AUDIO_PLAYBACK_CHANNELS, (float*) sound->buffer, sample_size * AUDIO_PLAYBACK_CHANNELS);
 
-		// Downmix all PCM data into a single channel
-		for (int i=0, j=0; i < sample_size * channels; i+=channels) {
-			float total = 0;
-			for (int c=0; c < channels; c++) {
-				// Add all the channels together
-				total += sound->buffer[i + c];
+		if (channels == 1 && read > 0) {
+			//mix mono to stereo
+			for (int i = 0; i < read; i++) {
+				sound->buffer[i].r = sound->buffer[i].l;
 			}
-			// Average the channels out and apply volume
-			client->audio_rebuffer[j] = total * sound->volume * client->volume / channels;
-			j++;
 		}
-
-		memcpy(sound->buffer, client->audio_rebuffer, sizeof(client->audio_rebuffer));
 
 		// Very very awful resampling, but at least it's something..
 		if (source_rate != AUDIO_SAMPLE_RATE) {
@@ -215,7 +210,9 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 
 			for (int t=0; t < read; t++) {
 				// Resample the audio to fit within the requested sample_rate
-				client->audio_rebuffer[t*2] = sound->buffer[(int) floor((float) t / AUDIO_SAMPLE_RATE * source_rate) * 2] * 2;
+				int idx = (int) floor((float) t / AUDIO_SAMPLE_RATE * source_rate) * 2;
+				client->audio_rebuffer[t*2].l = sound->buffer[idx].l * 2;
+				client->audio_rebuffer[t*2].r = sound->buffer[idx].r * 2;
 			}
 
 			// Copy resampled audio back into the main buffer
@@ -223,8 +220,9 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 		}
 
 		for (int i = 0; i < read; i++) {
-			// Mix all channels together in the buffer
-			client->audio_buffer[i] = client->audio_buffer[i] + sound->buffer[i];
+			// Mix all streams together in the output buffer
+			client->audio_buffer[i].l += sound->buffer[i].l;
+			client->audio_buffer[i].r += sound->buffer[i].r;
 		}
 
 		// If the number of samples we read from the OGG file are less than the request sample size, it must be the last bit of audio
@@ -244,7 +242,7 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 	if (biggest_read <= 0) return;
 
 	uint8_t encoded[0x1FFF];
-	opus_int32 encoded_len = opus_encode_float(client->encoder, client->audio_buffer, enc_frame_size, encoded, sizeof(encoded));
+	opus_int32 encoded_len = opus_encode_float(client->encoder, (float*) client->audio_buffer, frame_size, encoded, sizeof(encoded));
 
 	if (encoded_len <= 0) return;
 
@@ -256,7 +254,7 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 	uint32_t frame_header = encoded_len;
 
 	// If the largest PCM buffer is smaller than our frame size, it has to be the last frame available
-	if (biggest_read < enc_frame_size) {
+	if (biggest_read < frame_size) {
 		// Set 14th bit to 1 to signal end of stream.
 		frame_header = ((1 << 13) | frame_header);
 		mumble_hook_call(l, client, "OnAudioStreamEnd", 0);
