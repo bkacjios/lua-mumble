@@ -56,8 +56,9 @@
 #define AUDIO_DEFAULT_BITRATE 96000
 
 // Number of frames to send per packet
-// 1 = Lower latency, 4 = Better quality
-#define AUDIO_DEFAULT_FRAMES 2
+// Allowed values (10, 20 40, 60)
+// 10 = Lower latency, 40 = Better quality
+#define AUDIO_DEFAULT_FRAMES 40
 
 // How many channels the ogg file playback should handle
 #define AUDIO_PLAYBACK_CHANNELS 2

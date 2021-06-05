@@ -272,6 +272,35 @@ static int client_play(lua_State *l)
 	return 1;
 }
 
+static int client_setAudioFrameSize(lua_State *l) {
+	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
+
+	int frames = luaL_checkinteger(l, 2);
+
+	switch (frames) {
+		case 10:
+		break;
+		case 20:
+		break;
+		case 40:
+		break;
+		//case 60: // 60 causes opus_encode to crash, even though it says a frame size of 2880 @ 48khz is permitted
+		//break;
+		default:
+			luaL_error(l, "invalid frame size \"%d\" (must be one the following values: 10, 20, 40)", frames);
+			break;
+	}
+
+	client->audio_frames = frames;
+	return 0;
+}
+
+static int client_getAudioFrameSize(lua_State *l) {
+	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
+	lua_pushinteger(l, client->audio_frames);
+	return 1;
+}
+
 static int client_isPlaying(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
@@ -653,6 +682,8 @@ const luaL_Reg mumble_client[] = {
 	{"sendPluginData", client_sendPluginData},
 	{"transmit", client_transmit},
 	{"play", client_play},
+	{"setAudioFrameSize", client_setAudioFrameSize},
+	{"getAudioFrameSize", client_getAudioFrameSize},
 	{"isPlaying", client_isPlaying},
 	{"stopPlaying", client_stopPlaying},
 	{"setComment", client_setComment},

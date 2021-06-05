@@ -168,7 +168,7 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 	long biggest_read = 0;
 
 	// How big each frame of audio data should be
-	const uint32_t frame_size = client->audio_frames * AUDIO_SAMPLE_RATE / 100;
+	const uint32_t frame_size = client->audio_frames * AUDIO_SAMPLE_RATE / 1000;
 
 	memset(client->audio_buffer, 0, sizeof(client->audio_buffer));
 
@@ -183,7 +183,7 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 		const int channels = sound->info.channels;
 		const uint32_t source_rate = sound->info.sample_rate;
 
-		uint32_t sample_size = client->audio_frames * source_rate / 100;
+		uint32_t sample_size = client->audio_frames * source_rate / 1000;
 
 		memset(sound->buffer, 0, sizeof(sound->buffer));
 
@@ -221,8 +221,8 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 
 		for (int i = 0; i < read; i++) {
 			// Mix all streams together in the output buffer
-			client->audio_buffer[i].l += sound->buffer[i].l;
-			client->audio_buffer[i].r += sound->buffer[i].r;
+			client->audio_buffer[i].l += sound->buffer[i].l * sound->volume * client->volume;
+			client->audio_buffer[i].r += sound->buffer[i].r * sound->volume * client->volume;
 		}
 
 		// If the number of samples we read from the OGG file are less than the request sample size, it must be the last bit of audio

@@ -422,7 +422,7 @@ static int getNetworkBandwidth(int bitrate, int frames)
 
 void mumble_create_audio_timer(MumbleClient *client, int bitspersec)
 {
-	int frames = client->audio_frames;
+	int frames = client->audio_frames / 10;
 	int bitrate;
 
 	opus_encoder_ctl(client->encoder, OPUS_GET_BITRATE(&bitrate));
@@ -449,7 +449,7 @@ void mumble_create_audio_timer(MumbleClient *client, int bitspersec)
 
 	if (bitrate != AUDIO_DEFAULT_BITRATE) {
 		printf("Server maximum network bandwidth is only %d kbit/s. Audio quality auto-adjusted to %d kbit/s (%d ms)\n", bitspersec / 1000, bitrate / 1000, frames * 10);
-		client->audio_frames = frames;
+		client->audio_frames = frames * 10;
 		opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(bitrate));
 	}
 
