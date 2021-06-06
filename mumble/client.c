@@ -272,32 +272,60 @@ static int client_play(lua_State *l)
 	return 1;
 }
 
-static int client_setAudioFrameSize(lua_State *l) {
+static int client_setAudioQuality(lua_State *l) {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
 
-	int frames = luaL_checkinteger(l, 2);
+	int quality = luaL_checkinteger(l, 2);
 
-	switch (frames) {
-		case 10:
-		break;
-		case 20:
-		break;
-		case 40:
-		break;
-		//case 60: // 60 causes opus_encode to crash, even though it says a frame size of 2880 @ 48khz is permitted
-		//break;
+	int frames;
+
+	switch (quality) {
+		case 1:
+			frames = 10;
+			break;
+		case 2:
+			frames = 20;
+			break;
+		case 3:
+			frames = 40;
+			break;
+		//case 4: // 60 causes opus_encode to crash, even though it says a frame size of 2880 @ 48khz is permitted
+			//frames = 60;
+			//break;
 		default:
-			luaL_error(l, "invalid frame size \"%d\" (must be one the following values: 10, 20, 40)", frames);
+			frames = 20;
+			luaL_error(l, "invalid quality value \"%d\" (must be one the following values: 1, 2, 3)", quality);
 			break;
 	}
 
 	client->audio_frames = frames;
+
+	float time = (float) client->audio_frames / 1000;
+	ev_timer_set(&client->audio_timer.timer, 0, time);
 	return 0;
 }
 
-static int client_getAudioFrameSize(lua_State *l) {
+static int client_getAudioQuality(lua_State *l) {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_pushinteger(l, client->audio_frames);
+
+	int quality;
+
+	switch (client->audio_frames) {
+		case 10:
+			quality = 1;
+			break;
+		case 20:
+			quality = 2;
+			break;
+		case 40:
+			quality = 3;
+			break;
+		case 60:
+			quality = 4;
+			break;
+	}
+
+	lua_pushinteger(l, quality);
 	return 1;
 }
 
@@ -682,8 +710,8 @@ const luaL_Reg mumble_client[] = {
 	{"sendPluginData", client_sendPluginData},
 	{"transmit", client_transmit},
 	{"play", client_play},
-	{"setAudioFrameSize", client_setAudioFrameSize},
-	{"getAudioFrameSize", client_getAudioFrameSize},
+	{"setAudioQuality", client_setAudioQuality},
+	{"getAudioQuality", client_getAudioQuality},
 	{"isPlaying", client_isPlaying},
 	{"stopPlaying", client_stopPlaying},
 	{"setComment", client_setComment},

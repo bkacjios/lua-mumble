@@ -122,6 +122,22 @@ mumble.client:transmit(Number codec, String encoded_audio_packet, Boolean speaki
 -- If success = false, it will pass along an error string as to why it couldn't play the file
 Boolean success, [ String error ] = mumble.client:play(String ogg file path, Number stream = 1, Number volume = 1.0)
 
+-- Sets the duration of each audio packet played.
+-- Higher quality = higher audio latency
+-- Lower quality  = lower audio latency
+
+Table mumble.quality = {
+	["LOW"]		= 1,
+	["MEDIUM"]	= 2,
+	["HIGH"]	= 3,
+}
+
+mumble.client:setAudioQuality(Number quality = [LOW = 1, MEDIUM = 2, HIGH = 3])
+
+-- Returns the current duration of each audio packet
+-- Default: mumble.quality.HIGH = 3
+Number size = mumble.client:getAudioQuality()
+
 -- Checks if the client is currently playing an audio file on the specified audio stream
 Boolean playing = mumble.client:isPlaying(Number stream = 1)
 

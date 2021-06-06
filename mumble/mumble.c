@@ -889,6 +889,17 @@ int luaopen_mumble(lua_State *l)
 		}
 		lua_setfield(l, -2, "acl");
 
+		lua_newtable(l);
+		{
+			lua_pushinteger(l, 1);
+			lua_setfield(l, -2, "LOW");
+			lua_pushinteger(l, 2);
+			lua_setfield(l, -2, "MEDIUM");
+			lua_pushinteger(l, 3);
+			lua_setfield(l, -2, "HIGH");
+		}
+		lua_setfield(l, -2, "quality");
+
 		// Register client metatable
 		luaL_newmetatable(l, METATABLE_CLIENT);
 		{
