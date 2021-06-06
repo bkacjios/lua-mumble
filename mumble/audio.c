@@ -146,20 +146,21 @@ int voicepacket_getlength(const VoicePacket *packet)
 	return packet->length;
 }
 
-void audio_transmission_stop(lua_State*l, MumbleClient *client, int channel)
+void audio_transmission_stop(lua_State*l, MumbleClient *client, int stream)
 {
-	int index = channel - 1;
+	int index = stream - 1;
 	AudioStream* sound = client->audio_jobs[index];
 
 	if (sound == NULL) return;
 
-	lua_pushinteger(l, channel); // Push the channel number
-	mumble_hook_call(l, client, "OnAudioFinished", 1);
-	
-	// Remove ourself from the table of streams
 	lua_rawgeti(l, LUA_REGISTRYINDEX, client->audio_streams);
+		lua_pushinteger(l, sound->stream); // index streams table by stream id
+		lua_gettable(l, -2); // push the audio stream object
+
+		mumble_hook_call(l, client, "OnAudioFinished", 1);
+	
 		lua_pushinteger(l, sound->stream);
-		lua_pushnil(l);
+		lua_pushnil(l); // Set the stream index to nil
 		lua_settable(l, -3);
 	lua_pop(l, 1);
 

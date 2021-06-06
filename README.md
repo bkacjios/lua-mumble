@@ -1137,7 +1137,7 @@ Table event = {
 ```
 ___
 
-### `OnAudioFinished (mumble.client client, Number stream)`
+### `OnAudioFinished (mumble.client client, mumble.audiostream stream)`
 
 Called when a sound file has finished playing.
 Passes the number of the audio stream that finished.
