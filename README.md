@@ -119,8 +119,21 @@ mumble.client:transmit(Number codec, String encoded_audio_packet, Boolean speaki
 
 -- Play an ogg audio file
 -- Changing the stream value will allow you to play multiple audio files at once
--- If success = false, it will pass along an error string as to why it couldn't play the file
-Boolean success, [ String error ] = mumble.client:play(String ogg file path, Number stream = 1, Number volume = 1.0)
+-- If audiostream = nil, it will pass along an error string as to why it couldn't play the file
+mumble.audiostream audiostream, [ String error ] = mumble.client:play(String ogg file path, Number stream = 1, Number volume = 1.0)
+
+-- Gets the audio stream object given the stream ID
+mumble.audiostream audiostream = mumble.client:getAudioStream(Number stream = 1)
+
+-- Gets a table of all currently active audio streams
+Table audiostreams = mumble.client:getAudioStreams()
+
+-- Structure
+Table audiostreams = {
+	[1]	= mumble.audiostream,
+	[2]	= mumble.audiostream,
+	...
+}
 
 -- Sets the duration of each audio packet played.
 -- Higher quality = higher audio latency
@@ -550,6 +563,47 @@ String decoded = mumble.decoder:decode(String encoded)
 
 -- Decode an opus audio packet into raw PCM float data
 String decoded = mumble.decoder:decode_float(String encoded)
+```
+
+### mumble.audiostream
+
+``` lua
+-- Returns if this audio stream is currently playing or not
+Boolean isplaying = mumble.audiostream:isPlaying()
+
+-- Sets the volume of the audio stream
+mumble.audiostream:setVolume(Number volume)
+
+-- Gets the volume of the audio stream
+Number volume = mumble.audiostream:getVolume()
+
+-- Gets the stream number of this audio stream
+Number stream = mumble.audiostream:getVolume()
+
+-- Pause the audio
+mumble.audiostream:pause()
+
+-- Resume playing the audio
+mumble.audiostream:play()
+
+-- Pauses the audio AND resets playback from the beginning
+mumble.audiostream:play()
+
+-- Will attempt to seek to a given position via sample numbers
+-- Returns the offset that it has seeked to
+Number samples = mumble.audiostream:seek(String whence ["start", "cur", "end"], Number offset = 0)
+
+-- Returns the duration of the stream given the unit type
+Number samples/seconds = mumble.audiostream:getLength(String units ["seconds", "samples"])
+
+Table info = mumble.audiostream:getInfo()
+
+Table comments = mumble.audiostream:getComment()
+
+-- Stops the audio stream from playing.
+-- Calls "OnAudioFinished" hook
+-- Is lastly removed from the mumble.client:getAudioStreams() table
+mumble.audiostream:close()
 ```
 
 ### mumble.acl

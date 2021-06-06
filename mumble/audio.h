@@ -3,6 +3,10 @@
 #define VOICEPACKET_NORMAL 0
 #define VOICEPACKET_OPUS 4
 
+#define METATABLE_AUDIOSTREAM	"mumble.audiostream"
+
+extern const luaL_Reg mumble_audiostream[];
+
 extern void audio_transmission_event(lua_State* l, MumbleClient *client);
 extern void audio_transmission_stop(lua_State*l, MumbleClient *client, int channel);
 

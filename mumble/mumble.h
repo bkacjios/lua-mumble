@@ -93,7 +93,7 @@
  */
 
 typedef struct MumbleClient MumbleClient;
-typedef struct AudioTransmission AudioTransmission;
+typedef struct AudioStream AudioStream;
 typedef struct AudioFrame AudioFrame;
 typedef struct MumbleChannel MumbleChannel;
 typedef struct MumbleUser MumbleUser;
@@ -134,7 +134,7 @@ struct AudioFrame {
 	float r;
 };
 
-struct AudioTransmission {
+struct AudioStream {
 	lua_State *lua;
 	stb_vorbis *ogg;
 	MumbleClient *client;
@@ -142,6 +142,7 @@ struct AudioTransmission {
 	float volume;
 	AudioFrame buffer[PCM_BUFFER];
 	stb_vorbis_info info;
+	int stream;
 };
 
 struct MumbleClient {
@@ -159,6 +160,7 @@ struct MumbleClient {
 	int					hooks;
 	int					users;
 	int					channels;
+	int					audio_streams;
 	double				time;
 	uint32_t			session;
 	float				volume;
@@ -170,7 +172,7 @@ struct MumbleClient {
 	AudioFrame			audio_buffer[PCM_BUFFER];
 	AudioFrame			audio_rebuffer[PCM_BUFFER];
 	uint32_t			audio_sequence;
-	AudioTransmission*	audio_jobs[AUDIO_MAX_STREAMS];
+	AudioStream*	audio_jobs[AUDIO_MAX_STREAMS];
 	int					audio_frames;
 	OpusEncoder*		encoder;
 	uint8_t				audio_target;

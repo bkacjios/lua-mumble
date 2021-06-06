@@ -236,27 +236,30 @@ static int client_play(lua_State *l)
 
 	audio_transmission_stop(l, client, stream);
 
-	//AudioTransmission *sound = lua_newuserdata(l, sizeof(AudioTransmission));
-	//luaL_getmetatable(l, METATABLE_AUDIO);
-	//lua_setmetatable(l, -2);
-
-	AudioTransmission *sound = malloc(sizeof(AudioTransmission));
-	
-	if (sound == NULL)
-		return luaL_error(l, "failed to malloc: %s", strerror(errno));
-
-	sound->playing = true;
-	sound->client = client;
-	sound->volume = volume;
+	AudioStream *sound = lua_newuserdata(l, sizeof(AudioStream));
 
 	int error = VORBIS__no_error;
 	sound->ogg = stb_vorbis_open_filename(filepath, &error, NULL);
+	sound->stream = stream;
 
 	if (error != VORBIS__no_error) {
 		lua_pushnil(l);
 		lua_pushfstring(l, "error opening file %s (%d)", filepath, error);
 		return 2;
 	}
+
+	luaL_getmetatable(l, METATABLE_AUDIOSTREAM);
+	lua_setmetatable(l, -2);
+
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->audio_streams);
+			lua_pushinteger(l, stream);
+			lua_pushvalue(l, -3);
+		lua_settable(l, -3);
+	lua_pop(l, 1);
+
+	sound->playing = true;
+	sound->client = client;
+	sound->volume = volume;
 
 	sound->info = stb_vorbis_get_info(sound->ogg);
 
@@ -267,8 +270,22 @@ static int client_play(lua_State *l)
 	}*/
 
 	client->audio_jobs[stream - 1] = sound;
+	return 1;
+}
 
-	lua_pushboolean(l, true);
+static int client_getAudioStream(lua_State *l)
+{
+	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->audio_streams);
+	lua_pushinteger(l, luaL_optinteger(l, 2, 1));
+	lua_gettable(l, -2);
+	return 1;
+}
+
+static int client_getAudioStreams(lua_State *l)
+{
+	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->audio_streams);
 	return 1;
 }
 
@@ -666,6 +683,7 @@ static int client_gc(lua_State *l)
 	luaL_unref(l, LUA_REGISTRYINDEX, client->hooks);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->users);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->channels);
+	luaL_unref(l, LUA_REGISTRYINDEX, client->audio_streams);
 
 	opus_encoder_destroy(client->encoder);
 	return 0;
@@ -710,6 +728,8 @@ const luaL_Reg mumble_client[] = {
 	{"sendPluginData", client_sendPluginData},
 	{"transmit", client_transmit},
 	{"play", client_play},
+	{"getAudioStream", client_getAudioStream},
+	{"getAudioStreams", client_getAudioStreams},
 	{"setAudioQuality", client_setAudioQuality},
 	{"getAudioQuality", client_getAudioQuality},
 	{"isPlaying", client_isPlaying},

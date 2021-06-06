@@ -149,14 +149,20 @@ int voicepacket_getlength(const VoicePacket *packet)
 void audio_transmission_stop(lua_State*l, MumbleClient *client, int channel)
 {
 	int index = channel - 1;
-	AudioTransmission* sound = client->audio_jobs[index];
+	AudioStream* sound = client->audio_jobs[index];
+
 	if (sound == NULL) return;
-	if (sound->ogg != NULL) {
-		lua_pushinteger(l, channel); // Push the channel number
-		mumble_hook_call(l, client, "OnAudioFinished", 1);
-		stb_vorbis_close(sound->ogg);
-	}
-	free(sound);
+
+	lua_pushinteger(l, channel); // Push the channel number
+	mumble_hook_call(l, client, "OnAudioFinished", 1);
+	
+	// Remove ourself from the table of streams
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->audio_streams);
+		lua_pushinteger(l, sound->stream);
+		lua_pushnil(l);
+		lua_settable(l, -3);
+	lua_pop(l, 1);
+
 	client->audio_jobs[index] = NULL;
 }
 
@@ -174,10 +180,10 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 
 	// Loop through all available audio channels
 	for (int i = 0; i < AUDIO_MAX_STREAMS; i++) {
-		AudioTransmission *sound = client->audio_jobs[i];
+		AudioStream *sound = client->audio_jobs[i];
 
 		// No sound playing = skip
-		if (sound == NULL) continue;
+		if (sound == NULL || !sound->playing) continue;
 
 		// How many channels the audio file has
 		const int channels = sound->info.channels;
@@ -269,3 +275,173 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 	// Safety stack clear
 	lua_settop(l, 0);
 }
+
+static int audiostream_isPlaying(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	lua_pushboolean(l, sound->playing);
+	return 1;
+}
+
+static int audiostream_setVolume(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	sound->volume = luaL_checknumber(l, 2);
+	return 0;
+}
+
+static int audiostream_getVolume(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	lua_pushnumber(l, sound->volume);
+	return 1;
+}
+
+static int audiostream_getStream(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	lua_pushnumber(l, sound->stream);
+	return 1;
+}
+
+static int audiostream_pause(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	sound->playing = false;
+	return 0;
+}
+
+static int audiostream_play(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	sound->playing = true;
+	return 0;
+}
+
+static int audiostream_stop(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	sound->playing = false;
+	stb_vorbis_seek_start(sound->ogg);
+	return 0;
+}
+
+static int audiostream_seek(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+
+	const char* whence = lua_tostring(l, 2);
+	unsigned int offset = luaL_optinteger(l, 3, 0);
+
+	if (strcmp(whence, "start") == 0) {
+		//stb_vorbis_seek_start(sound->ogg);
+		stb_vorbis_seek(sound->ogg, offset);
+	} else if (strcmp(whence, "cur") == 0) {
+		unsigned int samples = stb_vorbis_get_sample_offset(sound->ogg);
+		stb_vorbis_seek(sound->ogg, samples + offset);
+	} else if (strcmp(whence, "end") == 0) {
+		unsigned int samples = stb_vorbis_stream_length_in_samples(sound->ogg);
+		stb_vorbis_seek(sound->ogg, samples + offset);
+	} else if (lua_type(l, 2) == LUA_TNUMBER) {
+		stb_vorbis_seek(sound->ogg, lua_tointeger(l, 2));
+	}
+
+	lua_pushinteger(l, stb_vorbis_get_sample_offset(sound->ogg));
+	return 1;
+}
+
+static int audiostream_getLength(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+
+	const char* units = luaL_checkstring(l, 2);
+
+	if (strcmp(units, "samples") == 0) {
+		unsigned int samples = stb_vorbis_stream_length_in_samples(sound->ogg);
+		lua_pushinteger(l, samples);
+	} else if (strcmp(units, "seconds") == 0) {
+		float seconds = stb_vorbis_stream_length_in_seconds(sound->ogg);
+		lua_pushnumber(l, seconds);
+		return 1;
+	}
+
+	return 0;
+}
+
+static int audiostream_getInfo(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+
+	stb_vorbis_info info = stb_vorbis_get_info(sound->ogg);
+
+	lua_newtable(l);
+	{
+		lua_pushinteger(l, info.channels);
+		lua_setfield(l, -2, "channels");
+		lua_pushinteger(l, info.sample_rate);
+		lua_setfield(l, -2, "sample_rate");
+		lua_pushinteger(l, info.setup_memory_required);
+		lua_setfield(l, -2, "setup_memory_required");
+		lua_pushinteger(l, info.setup_temp_memory_required);
+		lua_setfield(l, -2, "setup_temp_memory_required");
+		lua_pushinteger(l, info.temp_memory_required);
+		lua_setfield(l, -2, "temp_memory_required");
+		lua_pushinteger(l, info.max_frame_size);
+		lua_setfield(l, -2, "max_frame_size");
+	}
+	return 1;
+}
+
+static int audiostream_getComment(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+
+	stb_vorbis_comment cmnt = stb_vorbis_get_comment(sound->ogg);
+
+	lua_newtable(l);
+	{
+		lua_pushstring(l, cmnt.vendor);
+		lua_setfield(l, -2, "vendor");
+		lua_newtable(l);
+		{
+			for (int i=0; i < cmnt.comment_list_length; i++) {
+				lua_pushinteger(l, i+1);
+				lua_pushstring(l, cmnt.comment_list[i]);
+				lua_settable(l, -3);
+			}
+		}
+		lua_setfield(l, -2, "comment_list");
+	}
+	return 1;
+}
+
+static int audiostream_close(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	audio_transmission_stop(l, sound->client, sound->stream);
+	return 0;
+}
+
+static int audiostream_gc(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	stb_vorbis_close(sound->ogg);
+	return 0;
+}
+
+const luaL_Reg mumble_audiostream[] = {
+	{"isPlaying", audiostream_isPlaying},
+	{"setVolume", audiostream_setVolume},
+	{"getVolume", audiostream_getVolume},
+	{"getStream", audiostream_getStream},
+	{"pause", audiostream_pause},
+	{"play", audiostream_play},
+	{"stop", audiostream_stop},
+	{"seek", audiostream_seek},
+	{"getLength", audiostream_getLength},
+	{"getDuration", audiostream_getLength},
+	{"getInfo", audiostream_getInfo},
+	{"close", audiostream_close},
+	{"__gc", audiostream_gc},
+	{NULL, NULL}
+};

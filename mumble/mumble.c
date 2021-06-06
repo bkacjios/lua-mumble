@@ -228,6 +228,9 @@ static int mumble_connect(lua_State *l)
 	lua_newtable(l);
 	client->channels = luaL_ref(l, LUA_REGISTRYINDEX);
 
+	lua_newtable(l);
+	client->audio_streams = luaL_ref(l, LUA_REGISTRYINDEX);
+
 	client->host = server_host_str;
 	client->port = port;
 	client->time = gettime();
@@ -1011,6 +1014,14 @@ int luaopen_mumble(lua_State *l)
 		}
 		lua_setmetatable(l, -2);
 		lua_setfield(l, -2, "timer");
+
+		// Register encoder metatable
+		luaL_newmetatable(l, METATABLE_AUDIOSTREAM);
+		{
+			lua_pushvalue(l, -1);
+			lua_setfield(l, -2, "__index");
+		}
+		luaL_register(l, NULL, mumble_audiostream);
 	}
 
 	lua_newtable(l);
