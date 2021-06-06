@@ -251,7 +251,7 @@ void packet_server_ping(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
-	double ms = 0;
+	uint64_t ms = 0;
 
 	lua_newtable(l);
 		if (ping->has_timestamp) {

@@ -42,7 +42,7 @@
 #include "proto/Mumble.pb-c.h"
 
 // Incomplete feature (used for development)
-#define ENABLE_UDP 0
+//#define ENABLE_UDP
 
 #define STB_VORBIS_HEADER_ONLY
 #include "stb_vorbis.c"
@@ -168,11 +168,11 @@ struct MumbleClient {
 	my_io				socket_udp_io;
 	my_timer			audio_timer;
 	my_timer			ping_timer;
-	my_signal           signal;
+	my_signal			signal;
 	AudioFrame			audio_buffer[PCM_BUFFER];
 	AudioFrame			audio_rebuffer[PCM_BUFFER];
 	uint32_t			audio_sequence;
-	AudioStream*	audio_jobs[AUDIO_MAX_STREAMS];
+	AudioStream*		audio_jobs[AUDIO_MAX_STREAMS];
 	int					audio_frames;
 	OpusEncoder*		encoder;
 	uint8_t				audio_target;
@@ -212,7 +212,7 @@ struct MumbleChannel {
 	LinkNode*		links;
 	bool			is_enter_restricted;
 	bool			can_enter;
-	uint32_t        permissions;
+	uint32_t		permissions;
 };
 
 void list_add(LinkNode** head_ref, uint32_t value);

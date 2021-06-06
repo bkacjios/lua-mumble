@@ -41,7 +41,7 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 
 	MumbleProto__Ping ping = MUMBLE_PROTO__PING__INIT;
 
-	double ts = gettime() * 1000;
+	uint64_t ts = gettime() * 1000;
 
 	ping.has_timestamp = true;
 	ping.timestamp = ts;
@@ -104,9 +104,6 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 		lua_setfield(l, -2, "udp_ping_var");
 	mumble_hook_call(l, client, "OnClientPing", 1);
 
-	// Safety clear stack
-	lua_settop(l, 0);
-
 	packet_send(client, PACKET_PING, &ping);
 
 	lua_stackguard_exit(l);
@@ -128,7 +125,9 @@ static void socket_read_event_tcp(struct ev_loop *loop, ev_io *w_, int revents)
 	if (ret <= 0) {
 		int err = SSL_get_error(client->ssl, ret);
 		if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL) {
+			lua_stackguard_entry(l);
 			mumble_disconnect(l, client);
+			lua_stackguard_exit(l);
 		}
 		ev_break(loop, EVBREAK_ALL);
 		return;
@@ -170,7 +169,6 @@ static void socket_read_event_tcp(struct ev_loop *loop, ev_io *w_, int revents)
 		// Call our packet handler functions
 		lua_stackguard_entry(l);
 		handler(l, client, &packet_read);
-		lua_settop(l, 0); // Incase anything gets left on the stack, remove it
 		lua_stackguard_exit(l);
 	}
 
@@ -189,11 +187,27 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 
 	int caddrlen;
 	struct sockaddr_in cliaddr;
-	char readbuf[UDP_BUFFER_MAX];
+	char encrypted[UDP_BUFFER_MAX];
 
-	if (recvfrom(client->socket_udp, readbuf, UDP_BUFFER_MAX, 0, (struct sockaddr*) &cliaddr, &caddrlen) > 0)
+	int size;
+	if (size = recvfrom(client->socket_udp, encrypted, UDP_BUFFER_MAX, 0, (struct sockaddr*) &cliaddr, &caddrlen) > 0)
 	{
-		
+		unsigned char plaintext[size - 4];
+		if (crypt_isValid(client->crypt) && crypt_decrypt(client->crypt, encrypted, plaintext, size))
+		{
+			unsigned char header = plaintext[0];
+			unsigned char id = header >> 5;
+
+			switch (id) {
+				case UDP_PING:
+					break;
+				case UDP_OPUS:
+				case UDP_SPEEX:
+				case UDP_CELT_ALPHA:
+				case UDP_CELT_BETA:
+					break;
+			}
+		}
 	}
 }
 
@@ -514,7 +528,7 @@ void mumble_disconnect(lua_State *l, MumbleClient *client)
 	}
 
 	// Clear the stack
-	lua_settop(l, 0);
+	lua_pop(l, 1);
 }
 
 static int mumble_gettime(lua_State *l)

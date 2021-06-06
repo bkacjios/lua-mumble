@@ -272,9 +272,6 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 	packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
 
 	client->audio_sequence = (client->audio_sequence + 1) % 100000;
-
-	// Safety stack clear
-	lua_settop(l, 0);
 }
 
 static int audiostream_isPlaying(lua_State *l)
@@ -430,6 +427,13 @@ static int audiostream_gc(lua_State *l)
 	return 0;
 }
 
+static int audiostream_tostring(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	lua_pushfstring(l, "%s: %p", METATABLE_AUDIOSTREAM, sound);
+	return 1;
+}
+
 const luaL_Reg mumble_audiostream[] = {
 	{"isPlaying", audiostream_isPlaying},
 	{"setVolume", audiostream_setVolume},
@@ -444,5 +448,6 @@ const luaL_Reg mumble_audiostream[] = {
 	{"getInfo", audiostream_getInfo},
 	{"close", audiostream_close},
 	{"__gc", audiostream_gc},
+	{"__tostring", audiostream_tostring},
 	{NULL, NULL}
 };
