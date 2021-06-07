@@ -6,7 +6,7 @@ int mumble_encoder_new(lua_State *l)
 {
 	// Argument 1 = mumble.encoder table
 	opus_int32 samplerate = luaL_optinteger(l, 2, AUDIO_SAMPLE_RATE);
-	int channels = luaL_optinteger(l, 3, 1);
+	int channels = luaL_checkinteger(l, 3);
 
 	OpusEncoder *encoder = lua_newuserdata(l, opus_encoder_get_size(channels));
 	luaL_getmetatable(l, METATABLE_ENCODER);
@@ -16,7 +16,7 @@ int mumble_encoder_new(lua_State *l)
 
 	if (error != OPUS_OK) {
 		lua_pushnil(l);
-		lua_pushfstring(l, "could not initialize the Opus encoder: %s", opus_strerror(error));
+		lua_pushfstring(l, "could not initialize opus encoder: %s", opus_strerror(error));
 		return 2;
 	}
 
@@ -24,6 +24,44 @@ int mumble_encoder_new(lua_State *l)
 	opus_encoder_ctl(encoder, OPUS_SET_BITRATE(AUDIO_DEFAULT_BITRATE));
 	return 1;
 }
+
+/* GENERIC CTLS */
+
+static int encoder_reset(lua_State *l)
+{
+	OpusEncoder *encoder = luaL_checkudata(l, 1, METATABLE_ENCODER);
+	opus_encoder_ctl(encoder, OPUS_RESET_STATE);
+	return 0;
+}
+
+static int encoder_getFinalRange(lua_State *l)
+{
+	OpusEncoder *encoder = luaL_checkudata(l, 1, METATABLE_ENCODER);
+	opus_uint32 range;
+	opus_encoder_ctl(encoder, OPUS_GET_FINAL_RANGE(&range));
+	lua_pushboolean(l, !range);
+	return 1;
+}
+
+static int encoder_getBandwidth(lua_State *l)
+{
+	OpusEncoder *encoder = luaL_checkudata(l, 1, METATABLE_ENCODER);
+	opus_int32 width;
+	opus_encoder_ctl(encoder, OPUS_GET_BANDWIDTH(&width));
+	lua_pushinteger(l, width);
+	return 1;
+}
+
+static int encoder_getSampleRate(lua_State *l)
+{
+	OpusEncoder *encoder = luaL_checkudata(l, 1, METATABLE_ENCODER);
+	opus_int32 rate;
+	opus_encoder_ctl(encoder, OPUS_GET_SAMPLE_RATE(&rate));
+	lua_pushinteger(l, rate);
+	return 1;
+}
+
+/* ENCODER CTLS */
 
 static int encoder_setBitRate(lua_State *l)
 {
@@ -85,13 +123,20 @@ static int encoder_tostring(lua_State *l)
 static int encoder_gc(lua_State *l)
 {
 	OpusEncoder *encoder = luaL_checkudata(l, 1, METATABLE_ENCODER);
-	//opus_encoder_destroy(encoder); // This calls 'free' which Lua is already doing after a __gc call
+	// no need to destroy since we allocated ourselves via lua_newuserdata and used opus_encoder_init
 	return 0;
 }
 
 const luaL_Reg mumble_encoder[] = {
+	{"reset", encoder_reset},
+	{"getFinalRange", encoder_getFinalRange},
+	{"getBandwidth", encoder_getBandwidth},
+	{"getSampleRate", encoder_getSampleRate},
+	{"getSamplerate", encoder_getSampleRate},
+
 	{"setBitRate", encoder_setBitRate},
 	{"getBitRate", encoder_getBitRate},
+
 	{"encode", encoder_encode},
 	{"encode_float", encoder_encode_float},
 	{"__tostring", encoder_tostring},

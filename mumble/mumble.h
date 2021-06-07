@@ -175,6 +175,7 @@ struct MumbleClient {
 	AudioStream*		audio_jobs[AUDIO_MAX_STREAMS];
 	int					audio_frames;
 	OpusEncoder*		encoder;
+	int					encoder_ref;
 	uint8_t				audio_target;
 
 	uint32_t			tcp_packets;

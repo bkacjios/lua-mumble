@@ -513,19 +513,10 @@ static int client_getVoiceTarget(lua_State *l)
 	return 1;
 }
 
-static int client_setBitrate(lua_State *l)
+static int client_getEncoder(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(luaL_checkinteger(l, 2)));
-	return 1;
-}
-
-static int client_getBitrate(lua_State *l)
-{
-	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	int bitrate;
-	opus_encoder_ctl(client->encoder, OPUS_GET_BITRATE(&bitrate));
-	lua_pushinteger(l, bitrate);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->encoder_ref);
 	return 1;
 }
 
@@ -685,7 +676,7 @@ static int client_gc(lua_State *l)
 	luaL_unref(l, LUA_REGISTRYINDEX, client->channels);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->audio_streams);
 
-	opus_encoder_destroy(client->encoder);
+	luaL_unref(l, LUA_REGISTRYINDEX, client->encoder_ref);
 	return 0;
 }
 
@@ -746,8 +737,7 @@ const luaL_Reg mumble_client[] = {
 	{"registerVoiceTarget", client_registerVoiceTarget},
 	{"setVoiceTarget", client_setVoiceTarget},
 	{"getVoiceTarget", client_getVoiceTarget},
-	{"setBitrate", client_setBitrate},
-	{"getBitrate", client_getBitrate},
+	{"getEncoder", client_getEncoder},
 	{"getPing", client_getPing},
 	{"getUpTime", client_getUpTime},
 	{"requestTextureBlob", client_requestTextureBlob},

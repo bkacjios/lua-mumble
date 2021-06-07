@@ -198,11 +198,8 @@ mumble.client:setVoiceTarget(Number id)
 -- Get the current voice target
 Number id = mumble.client:getVoiceTarget()
 
--- Set the bitrate of the encoder that `mumble.client:play(...)` uses
-mumble.client:setBitrate(Number bitrate)
-
--- Get the bitrate of the encoder that `mumble.client:play(...)` uses
-Number bitrate = mumble.client:getBitrate()
+-- Get the encoder object that the internal audio system uses to play .ogg files
+mumble.encoder encoder = mumble.client:getEncoder()
 
 -- Get the average ping of the client
 Number ping = mumble.client:getPing()
@@ -536,6 +533,18 @@ Boolean children = mumble.voicetarget:getChildren()
 ### mumble.encoder
 
 ``` lua
+-- Equivalent to OPUS_RESET_STATE
+mumble.encoder:reset()
+
+-- Equivalent to OPUS_GET_FINAL_RANGE
+Number range = mumble.encoder:getFinalRange()
+
+-- Equivalent to OPUS_GET_BANDWIDTH
+Number bandwidth = mumble.encoder:getBandwidth()
+
+-- Equivalent to OPUS_GET_SAMPLE_RATE
+Number samplerate = mumble.encoder:getSamplerate()
+
 -- Set the bitrate that the encoder will use
 mumble.encoder:setBitRate(Number bitrate)
 
@@ -552,6 +561,18 @@ String encoded = mumble.encoder:encode_float(Number frames, String pcm)
 ### mumble.decoder
 
 ``` lua
+-- Equivalent to OPUS_RESET_STATE
+mumble.decoder:reset()
+
+-- Equivalent to OPUS_GET_FINAL_RANGE
+Number range = mumble.decoder:getFinalRange()
+
+-- Equivalent to OPUS_GET_BANDWIDTH
+Number bandwidth = mumble.decoder:getBandwidth()
+
+-- Equivalent to OPUS_GET_SAMPLE_RATE
+Number samplerate = mumble.decoder:getSamplerate()
+
 -- Set the bitrate that the decoder will use
 mumble.decoder:setBitRate(Number bitrate)
 

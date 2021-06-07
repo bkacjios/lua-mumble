@@ -275,14 +275,25 @@ static int mumble_connect(lua_State *l)
 		return 2;
 	}
 
+	/*
 	int err;
 	client->encoder = opus_encoder_create(AUDIO_SAMPLE_RATE, AUDIO_PLAYBACK_CHANNELS, OPUS_APPLICATION_AUDIO, &err);
-
 	if (err != OPUS_OK) {
 		lua_pushnil(l);
-		lua_pushfstring(l, "could not initialize encoder: %s", opus_strerror(err));
+		lua_pushfstring(l, "could not initialize opus encoder: %s", opus_strerror(err));
+		return 2;
+	}*/
+
+	client->encoder = lua_newuserdata(l, opus_encoder_get_size(AUDIO_PLAYBACK_CHANNELS));
+
+	int err = opus_encoder_init(client->encoder, AUDIO_SAMPLE_RATE, AUDIO_PLAYBACK_CHANNELS, OPUS_APPLICATION_AUDIO);
+	if (err != OPUS_OK) {
+		lua_pushnil(l);
+		lua_pushfstring(l, "could not initialize opus encoder: %s", opus_strerror(err));
 		return 2;
 	}
+
+	client->encoder_ref = luaL_ref(l, LUA_REGISTRYINDEX);
 
 	opus_encoder_ctl(client->encoder, OPUS_SET_VBR(0));
 	opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(AUDIO_DEFAULT_BITRATE));

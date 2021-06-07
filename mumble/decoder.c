@@ -6,7 +6,7 @@ int mumble_decoder_new(lua_State *l)
 {
 	// Argument 1 = mumble.decoder table
 	opus_int32 samplerate = luaL_optinteger(l, 2, AUDIO_SAMPLE_RATE);
-	int channels = luaL_optinteger(l, 3, 1);
+	int channels = luaL_checkinteger(l, 3);
 
 	OpusDecoder *decoder = lua_newuserdata(l, opus_decoder_get_size(channels));
 	luaL_getmetatable(l, METATABLE_DECODER);
@@ -16,30 +16,52 @@ int mumble_decoder_new(lua_State *l)
 
 	if (error != OPUS_OK) {
 		lua_pushnil(l);
-		lua_pushfstring(l, "could not initialize the Opus decoder: %s", opus_strerror(error));
+		lua_pushfstring(l, "could not initialize opus decoder: %s", opus_strerror(error));
 		return 2;
 	}
 
-	opus_decoder_ctl(decoder, OPUS_SET_VBR(0));
-	opus_decoder_ctl(decoder, OPUS_SET_BITRATE(AUDIO_DEFAULT_BITRATE));
 	return 1;
 }
 
-static int decoder_setBitRate(lua_State *l)
+/* GENERIC CTLS */
+
+static int decoder_reset(lua_State *l)
 {
 	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);
-	opus_decoder_ctl(decoder, OPUS_SET_BITRATE(luaL_checkinteger(l, 2)));
+	opus_decoder_ctl(decoder, OPUS_RESET_STATE);
 	return 0;
 }
 
-static int decoder_getBitRate(lua_State *l)
+static int decoder_getFinalRange(lua_State *l)
+{
+	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);
+	opus_uint32 range;
+	opus_decoder_ctl(decoder, OPUS_GET_FINAL_RANGE(&range));
+	lua_pushboolean(l, !range);
+	return 1;
+}
+
+static int decoder_getBandwidth(lua_State *l)
+{
+	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);
+	opus_int32 width;
+	opus_decoder_ctl(decoder, OPUS_GET_BANDWIDTH(&width));
+	lua_pushinteger(l, width);
+	return 1;
+}
+
+static int decoder_getSampleRate(lua_State *l)
 {
 	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);
 	opus_int32 rate;
-	opus_decoder_ctl(decoder, OPUS_GET_BITRATE(&rate));
+	opus_decoder_ctl(decoder, OPUS_GET_SAMPLE_RATE(&rate));
 	lua_pushinteger(l, rate);
 	return 1;
 }
+
+/* DECODER CTLS */
+
+
 
 static int decoder_decode(lua_State *l)
 {
@@ -83,15 +105,20 @@ static int decoder_tostring(lua_State *l)
 static int decoder_gc(lua_State *l)
 {
 	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);
-	//opus_decoder_destroy(decoder); // This calls 'free' which Lua is already doing after a __gc call
+	// no need to destroy since we allocated ourselves via lua_newuserdata and used opus_decoder_init
 	return 0;
 }
 
 const luaL_Reg mumble_decoder[] = {
-	{"setBitRate", decoder_setBitRate},
-	{"getBitRate", decoder_getBitRate},
+	{"reset", decoder_reset},
+	{"getFinalRange", decoder_getFinalRange},
+	{"getBandwidth", decoder_getBandwidth},
+	{"getSampleRate", decoder_getSampleRate},
+	{"getSamplerate", decoder_getSampleRate},
+
 	{"decode", decoder_decode},
 	{"decode_float", decoder_decode_float},
+
 	{"__tostring", decoder_tostring},
 	{"__gc", decoder_gc},
 	{NULL, NULL}
