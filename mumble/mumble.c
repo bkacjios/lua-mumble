@@ -26,9 +26,7 @@ static void mumble_audio_timer(EV_P_ ev_timer *w_, int revents)
 	MumbleClient *client = w->client;
 
 	if (client->connected) {
-		lua_stackguard_entry(w->l);
 		audio_transmission_event(w->l, client);
-		lua_stackguard_exit(w->l);
 	}
 }
 
@@ -80,7 +78,7 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 
 	lua_newtable(l);
 		// Push the timestamp we are sending to the server
-		lua_pushinteger(l, ping.timestamp);
+		lua_pushnumber(l, (double) ping.timestamp / 1000);
 		lua_setfield(l, -2, "timestamp");
 		lua_pushinteger(l, ping.tcp_packets);
 		lua_setfield(l, -2, "tcp_packets");
@@ -125,9 +123,7 @@ static void socket_read_event_tcp(struct ev_loop *loop, ev_io *w_, int revents)
 	if (ret <= 0) {
 		int err = SSL_get_error(client->ssl, ret);
 		if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL) {
-			lua_stackguard_entry(l);
-			mumble_disconnect(l, client);
-			lua_stackguard_exit(l);
+			mumble_disconnect(l, client, "connection closed by server");
 		}
 		ev_break(loop, EVBREAK_ALL);
 		return;
@@ -285,6 +281,8 @@ static int mumble_connect(lua_State *l)
 	}*/
 
 	client->encoder = lua_newuserdata(l, opus_encoder_get_size(AUDIO_PLAYBACK_CHANNELS));
+	luaL_getmetatable(l, METATABLE_ENCODER);
+	lua_setmetatable(l, -2);
 
 	int err = opus_encoder_init(client->encoder, AUDIO_SAMPLE_RATE, AUDIO_PLAYBACK_CHANNELS, OPUS_APPLICATION_AUDIO);
 	if (err != OPUS_OK) {
@@ -495,8 +493,10 @@ static int mumble_loop(lua_State *l)
 	return 0;
 }
 
-void mumble_disconnect(lua_State *l, MumbleClient *client)
+void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason)
 {
+	lua_stackguard_entry(l);
+
 	if (client->audio_jobs) {
 		for(int i = 1; i <= AUDIO_MAX_STREAMS; ++i) {
 			audio_transmission_stop(l, client, i);
@@ -509,12 +509,14 @@ void mumble_disconnect(lua_State *l, MumbleClient *client)
 	}
 
 	if (client->connected) {
-		mumble_hook_call(l, client, "OnDisconnect", 0);
+		lua_pushstring(l, reason);
+		mumble_hook_call(l, client, "OnDisconnect", 1);
 		client->connected = false;
 
 		// Remove ourself from the list of connections
 		lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
 		luaL_unref(l, -1, client->self);
+		lua_pop(l, 1);
 	}
 
 	if (client->ssl) {
@@ -531,15 +533,14 @@ void mumble_disconnect(lua_State *l, MumbleClient *client)
 
 	// Get table of connections
 	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
-
 	// If we have no more connections...
 	if (lua_objlen(l, -1) <= 0) {
 		// Break out of the mumble.loop() call to end the script
 		ev_break(EV_DEFAULT, EVBREAK_ALL);
 	}
-
-	// Clear the stack
 	lua_pop(l, 1);
+
+	lua_stackguard_exit(l);
 }
 
 static int mumble_gettime(lua_State *l)
@@ -701,6 +702,8 @@ MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session
 	}
 	
 	lua_remove(l, -2);
+	lua_pop(l, 1);
+
 	return user;
 }
 

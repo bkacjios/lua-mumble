@@ -189,7 +189,7 @@ void packet_udp_tunnel(lua_State *l, MumbleClient *client, Packet *packet)
 	int sequence = util_get_varint(packet->buffer + read, &read);
 	
 	bool speaking = false;
-	MumbleUser* user = mumble_user_get(l, client, session); lua_pop(l, 1);
+	MumbleUser* user = mumble_user_get(l, client, session);
 
 	int payload_len = 0;
 	uint16_t frame_header = 0;
@@ -265,7 +265,7 @@ void packet_server_ping(lua_State *l, MumbleClient *client, Packet *packet)
 			lua_pushnumber(l, ms);
 			lua_setfield(l, -2, "ping");
 
-			lua_pushinteger(l, ping->timestamp);
+			lua_pushnumber(l, (double) ping->timestamp / 1000);
 			lua_setfield(l, -2, "timestamp");
 		}
 		if (ping->has_good) {
@@ -532,7 +532,7 @@ void packet_user_state(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
-	MumbleUser* user = mumble_user_get(l, client, state->session); lua_pop(l, 1);
+	MumbleUser* user = mumble_user_get(l, client, state->session);
 
 	lua_newtable(l);
 		if (state->has_actor) {

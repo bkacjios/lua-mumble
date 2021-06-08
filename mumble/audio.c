@@ -157,7 +157,7 @@ void audio_transmission_stop(lua_State*l, MumbleClient *client, int stream)
 		lua_pushinteger(l, sound->stream); // index streams table by stream id
 		lua_gettable(l, -2); // push the audio stream object
 
-		mumble_hook_call(l, client, "OnAudioFinished", 1);
+		mumble_hook_call(l, client, "OnAudioStreamEnd", 1);
 	
 		lua_pushinteger(l, sound->stream);
 		lua_pushnil(l); // Set the stream index to nil
@@ -169,6 +169,8 @@ void audio_transmission_stop(lua_State*l, MumbleClient *client, int stream)
 
 void audio_transmission_event(lua_State* l, MumbleClient *client)
 {
+	lua_stackguard_entry(l);
+
 	VoicePacket packet;
 
 	long read;
@@ -234,7 +236,14 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 
 		// If the number of samples we read from the OGG file are less than the request sample size, it must be the last bit of audio
 		if (read < sample_size) {
-			audio_transmission_stop(l, client, i + 1);
+			if (sound->looping) {
+				stb_vorbis_seek_start(sound->ogg);
+			} else if (sound->loop_count > 0) {
+				sound->loop_count--;
+				stb_vorbis_seek_start(sound->ogg);
+			} else {
+				audio_transmission_stop(l, client, i + 1);
+			}
 		}
 
 		if (read > biggest_read) {
@@ -254,24 +263,66 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 	if (encoded_len <= 0) return;
 
 	uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
+	uint32_t frame_header = encoded_len;
 
 	voicepacket_init(&packet, packet_buffer);
 	voicepacket_setheader(&packet, UDP_OPUS, client->audio_target, client->audio_sequence);
-
-	uint32_t frame_header = encoded_len;
 
 	// If the largest PCM buffer is smaller than our frame size, it has to be the last frame available
 	if (biggest_read < frame_size) {
 		// Set 14th bit to 1 to signal end of stream.
 		frame_header = ((1 << 13) | frame_header);
-		mumble_hook_call(l, client, "OnAudioStreamEnd", 0);
 	}
 
 	voicepacket_setframe(&packet, UDP_OPUS, frame_header, encoded, encoded_len);
 
+	MumbleUser* user = mumble_user_get(l, client, client->session);
+
+	bool speaking = biggest_read >= frame_size;
+	bool state_change = false;
+	bool one_frame = (user->speaking == false && speaking == false); // This will only be true if the user only sent exactly one audio packet
+
+	if (user->speaking != speaking) {
+		user->speaking = speaking;
+		state_change = true;
+	}
+
+	if (one_frame || state_change && speaking) {
+		mumble_user_raw_get(l, client, client->session);
+		mumble_hook_call(l, client, "OnUserStartSpeaking", 1);
+	}
+
+	lua_newtable(l);
+		lua_pushnumber(l, UDP_OPUS);
+		lua_setfield(l, -2, "codec");
+		lua_pushnumber(l, client->audio_target);
+		lua_setfield(l, -2, "target");
+		lua_pushnumber(l, client->audio_sequence);
+		lua_setfield(l, -2, "sequence");
+		mumble_user_raw_get(l, client, client->session);
+		lua_setfield(l, -2, "user");
+		lua_pushboolean(l, speaking);
+		lua_setfield(l, -2, "speaking");
+		lua_pushlstring(l, encoded, encoded_len);
+		lua_setfield(l, -2, "data");
+		lua_pushinteger(l, packet_buffer[0]);
+		lua_setfield(l, -2, "header");
+		lua_pushinteger(l, AUDIO_SAMPLE_RATE);
+		lua_setfield(l, -2, "samplerate");
+		lua_pushinteger(l, frame_header);
+		lua_setfield(l, -2, "frame_header");
+	mumble_hook_call(l, client, "OnUserSpeak", 1);
+
+	if (one_frame || state_change && !speaking) {
+		mumble_user_raw_get(l, client, client->session);
+		mumble_hook_call(l, client, "OnUserStopSpeaking", 1);
+	}
+
 	packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
 
 	client->audio_sequence = (client->audio_sequence + 1) % 100000;
+
+	lua_stackguard_exit(l);
 }
 
 static int audiostream_isPlaying(lua_State *l)
@@ -331,17 +382,25 @@ static int audiostream_seek(lua_State *l)
 	const char* whence = lua_tostring(l, 2);
 	unsigned int offset = luaL_optinteger(l, 3, 0);
 
-	if (strcmp(whence, "start") == 0) {
-		//stb_vorbis_seek_start(sound->ogg);
-		stb_vorbis_seek(sound->ogg, offset);
-	} else if (strcmp(whence, "cur") == 0) {
-		unsigned int samples = stb_vorbis_get_sample_offset(sound->ogg);
-		stb_vorbis_seek(sound->ogg, samples + offset);
-	} else if (strcmp(whence, "end") == 0) {
-		unsigned int samples = stb_vorbis_stream_length_in_samples(sound->ogg);
-		stb_vorbis_seek(sound->ogg, samples + offset);
-	} else if (lua_type(l, 2) == LUA_TNUMBER) {
-		stb_vorbis_seek(sound->ogg, lua_tointeger(l, 2));
+	enum what {START, CUR, END};
+	static const char * op[] = {"start", "cur", "end", NULL};
+
+	switch (luaL_checkoption(l, 1, NULL, op)) {
+		case START:
+			stb_vorbis_seek(sound->ogg, offset);
+			break;
+		case CUR:
+		{
+			unsigned int samples = stb_vorbis_get_sample_offset(sound->ogg);
+			stb_vorbis_seek(sound->ogg, samples + offset);
+			break;
+		}
+		case END:
+		{
+			unsigned int samples = stb_vorbis_stream_length_in_samples(sound->ogg);
+			stb_vorbis_seek(sound->ogg, samples + offset);
+			break;
+		}
 	}
 
 	lua_pushinteger(l, stb_vorbis_get_sample_offset(sound->ogg));
@@ -352,15 +411,22 @@ static int audiostream_getLength(lua_State *l)
 {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 
-	const char* units = luaL_checkstring(l, 2);
+	enum what {SAMPLES, SECONDS};
+	static const char * op[] = {"samples", "seconds", NULL};
 
-	if (strcmp(units, "samples") == 0) {
-		unsigned int samples = stb_vorbis_stream_length_in_samples(sound->ogg);
-		lua_pushinteger(l, samples);
-	} else if (strcmp(units, "seconds") == 0) {
-		float seconds = stb_vorbis_stream_length_in_seconds(sound->ogg);
-		lua_pushnumber(l, seconds);
-		return 1;
+	switch (luaL_checkoption(l, 2, NULL, op)) {
+		case SAMPLES:
+		{
+			unsigned int samples = stb_vorbis_stream_length_in_samples(sound->ogg);
+			lua_pushinteger(l, samples);
+			return 1;
+		}
+		case SECONDS:
+		{
+			float seconds = stb_vorbis_stream_length_in_seconds(sound->ogg);
+			lua_pushnumber(l, seconds);
+			return 1;
+		}
 	}
 
 	return 0;
@@ -413,6 +479,38 @@ static int audiostream_getComment(lua_State *l)
 	return 1;
 }
 
+static int audiostream_setLooping(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	
+	switch (lua_type(l, 2)) {
+		case LUA_TNUMBER:
+			sound->looping = false;
+			sound->loop_count = luaL_checkinteger(l, 2);
+			break;
+		case LUA_TBOOLEAN:
+			sound->looping = luaL_checkboolean(l, 2);
+			sound->loop_count = 0;
+			break;
+	}
+
+	return 0;
+}
+
+static int audiostream_isLooping(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	lua_pushboolean(l, sound->looping || sound->loop_count > 0);
+	return 1;
+}
+
+static int audiostream_getLoopCount(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	lua_pushinteger(l, sound->loop_count);
+	return 1;
+}
+
 static int audiostream_close(lua_State *l)
 {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
@@ -446,6 +544,9 @@ const luaL_Reg mumble_audiostream[] = {
 	{"getLength", audiostream_getLength},
 	{"getDuration", audiostream_getLength},
 	{"getInfo", audiostream_getInfo},
+	{"setLooping", audiostream_setLooping},
+	{"isLooping", audiostream_isLooping},
+	{"getLoopCount", audiostream_getLoopCount},
 	{"close", audiostream_close},
 	{"__gc", audiostream_gc},
 	{"__tostring", audiostream_tostring},

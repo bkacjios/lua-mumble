@@ -135,7 +135,9 @@ const luaL_Reg mumble_encoder[] = {
 	{"getSamplerate", encoder_getSampleRate},
 
 	{"setBitRate", encoder_setBitRate},
+	{"setBitrate", encoder_setBitRate},
 	{"getBitRate", encoder_getBitRate},
+	{"getBitrate", encoder_getBitRate},
 
 	{"encode", encoder_encode},
 	{"encode_float", encoder_encode_float},

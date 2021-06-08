@@ -12,10 +12,9 @@ PROTO_C 		= $(PROTO_SOURCES:.proto=.pb-c.c)
 SOURCES			= $(wildcard mumble/*.c)
 OBJECTS			= $(PROTO_SOURCES:.proto=.o) $(SOURCES:.c=.o)
 
-
 # Add optimize flag for normal build
 all: CFLAGS += -O2
-all: proto $(OBJECTS) mumble.so
+all: clean proto $(OBJECTS) mumble.so
 
 # Add debug information for debug build
 debug: CFLAGS += -DDEBUG -g

@@ -104,7 +104,7 @@ static int client_setTokens(lua_State *l)
 static int client_disconnect(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	mumble_disconnect(l, client);
+	mumble_disconnect(l, client, "connection closed by client");
 	return 0;
 }
 
@@ -221,6 +221,47 @@ static int client_transmit(lua_State *l) {
 	return 0;
 }
 
+static const char *verrtbl[] = {
+	"no error",
+	"need more data",
+	"invalid api mixing",
+	"out of memory",
+	"feature not supported",
+	"too many channels",
+	"file open failure",
+	"seek without length",
+	NULL,
+	NULL,
+	"unpexpected EOF",
+	"seek invalid",
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	"vorbis: invalid setup",
+	"vorbis: invalid stream",
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	"ogg: missing capture pattern",
+	"ogg: invalid stream structure version",
+	"ogg: continued packet flag invalid",
+	"ogg: invalid first page",
+	"ogg: bad packet type",
+	"ogg: cant find last page",
+	"ogg: seek failed",
+	"ogg: skeleton not supported"
+};
+
 static int client_play(lua_State *l)
 {
 	MumbleClient *client 	= luaL_checkudata(l, 1, METATABLE_CLIENT);
@@ -241,12 +282,19 @@ static int client_play(lua_State *l)
 	int error = VORBIS__no_error;
 	sound->ogg = stb_vorbis_open_filename(filepath, &error, NULL);
 	sound->stream = stream;
+	sound->looping = false;
+	sound->loop_count = 0;
+	sound->playing = true;
+	sound->client = client;
+	sound->volume = volume;
 
 	if (error != VORBIS__no_error) {
 		lua_pushnil(l);
-		lua_pushfstring(l, "error opening file %s (%d)", filepath, error);
+		lua_pushfstring(l, "error opening file \"%s\" (%s)", filepath, verrtbl[error]);
 		return 2;
 	}
+
+	sound->info = stb_vorbis_get_info(sound->ogg);
 
 	luaL_getmetatable(l, METATABLE_AUDIOSTREAM);
 	lua_setmetatable(l, -2);
@@ -256,18 +304,6 @@ static int client_play(lua_State *l)
 			lua_pushvalue(l, -3);
 		lua_settable(l, -3);
 	lua_pop(l, 1);
-
-	sound->playing = true;
-	sound->client = client;
-	sound->volume = volume;
-
-	sound->info = stb_vorbis_get_info(sound->ogg);
-
-	/*if (sound->info.sample_rate != AUDIO_SAMPLE_RATE) {
-		lua_pushnil(l);
-		lua_pushfstring(l, "audio has invalid sample rate (%d expected, got %d)", AUDIO_SAMPLE_RATE, sound->info.sample_rate);
-		return 2;
-	}*/
 
 	client->audio_jobs[stream - 1] = sound;
 	return 1;
@@ -669,7 +705,7 @@ static int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
-	mumble_disconnect(l, client);
+	mumble_disconnect(l, client, "garbage collected");
 
 	luaL_unref(l, LUA_REGISTRYINDEX, client->hooks);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->users);

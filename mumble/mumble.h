@@ -143,6 +143,8 @@ struct AudioStream {
 	AudioFrame buffer[PCM_BUFFER];
 	stb_vorbis_info info;
 	int stream;
+	int loop_count;
+	bool looping;
 };
 
 struct MumbleClient {
@@ -278,7 +280,7 @@ extern const char* eztype(lua_State *L, int i);
 extern int64_t util_get_varint(uint8_t buffer[], int *len);
 
 extern void mumble_create_audio_timer(MumbleClient *client, int bitspersec);
-extern void mumble_disconnect(lua_State* l, MumbleClient *client);
+extern void mumble_disconnect(lua_State* l, MumbleClient *client, const char* reason);
 
 extern void mumble_client_raw_get(lua_State* l, MumbleClient* client);
 extern MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session);
