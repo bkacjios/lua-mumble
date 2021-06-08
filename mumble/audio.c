@@ -178,6 +178,8 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 
 	memset(client->audio_buffer, 0, sizeof(client->audio_buffer));
 
+	bool didLoop = false;
+
 	// Loop through all available audio channels
 	for (int i = 0; i < AUDIO_MAX_STREAMS; i++) {
 		AudioStream *sound = client->audio_jobs[i];
@@ -234,8 +236,10 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 		// If the number of samples we read from the OGG file are less than the request sample size, it must be the last bit of audio
 		if (read < sample_size) {
 			if (sound->looping) {
+				didLoop = true;
 				stb_vorbis_seek_start(sound->ogg);
 			} else if (sound->loop_count > 0) {
+				didLoop = true;
 				sound->loop_count--;
 				stb_vorbis_seek_start(sound->ogg);
 			} else {
@@ -261,7 +265,7 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 
 	uint32_t frame_header = encoded_len;
 	// If the largest PCM buffer is smaller than our frame size, it has to be the last frame available
-	if (biggest_read < frame_size) {
+	if (!didLoop && biggest_read < frame_size) {
 		// Set 14th bit to 1 to signal end of stream.
 		frame_header = ((1 << 13) | frame_header);
 	}
