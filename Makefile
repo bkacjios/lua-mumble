@@ -6,15 +6,22 @@ CFLAGS = -fPIC -I.
 
 default: all
 
+BUILD_DIR = ./build
+
 PROTO_SOURCES	= $(wildcard proto/*.proto)
 PROTO_C 		= $(PROTO_SOURCES:.proto=.pb-c.c)
+PROTO_BUILT		= $(wildcard proto/*.pb-c.*)
 
 SOURCES			= $(wildcard mumble/*.c)
-OBJECTS			= $(PROTO_SOURCES:.proto=.o) $(SOURCES:.c=.o)
+OBJECTS			= $(PROTO_SOURCES:%.proto=$(BUILD_DIR)/%.o) $(SOURCES:%.c=$(BUILD_DIR)/%.o)
+
+DEPS := $(OBJECTS:.o=.d)
+
+-include $(DEPS)
 
 # Add optimize flag for normal build
 all: CFLAGS += -O2
-all: clean proto $(OBJECTS) mumble.so
+all: proto $(OBJECTS) mumble.so
 
 # Add debug information for debug build
 debug: CFLAGS += -DDEBUG -g
@@ -29,16 +36,18 @@ uninstall:
 	rm /usr/local/lib/lua/5.1/mumble.so
 
 clean:
-	rm -f mumble/*.o *.so proto/*.o proto/*.c proto/*.h
+	rm -f $(OBJECTS) $(DEPS) $(PROTO_BUILT)
 
 proto/%.pb-c.c: proto/%.proto
 	protoc-c --c_out=. $<
 
-proto/%.o: proto/%.pb-c.c
-	$(CC) -c $(INCLUDES) $(CFLAGS) -o $@ $^
+$(BUILD_DIR)/proto/%.o: proto/%.pb-c.c
+	mkdir -p $(@D)
+	$(CC) -c $(INCLUDES) $(CFLAGS) -MD -o $@ $<
 
-mumble/%.o: mumble/%.c
-	$(CC) -c $(INCLUDES) $(CFLAGS) -o $@ $^
+$(BUILD_DIR)/mumble/%.o: mumble/%.c
+	mkdir -p $(@D)
+	$(CC) -c $(INCLUDES) $(CFLAGS) -MD -o $@ $<
 
 mumble.so: $(OBJECTS)
 	$(CC) -shared $(CFLAGS) -o $@ $^ $(LIBRARIES)
