@@ -91,16 +91,12 @@ client:hook("OnSuggestConfig", function(client, event)
 	print("OnSuggestConfig", event)
 end)
 
-client:hook("OnAudioFinished", function(client, channel)
-	print("OnAudioFinished", channel)
+client:hook("OnAudioStreamEnd", function(client, stream)
+	print("OnAudioStreamEnd", stream)
 end)
 
-client:hook("OnAudioStreamEnd", function(client)
-	print("OnAudioStreamEnd")
-end)
-
-client:hook("OnDisconnect", function(client)
-	print("OnDisconnect")
+client:hook("OnDisconnect", function(client, reason)
+	print("OnDisconnect", reason)
 end)
 
 mumble.loop()

@@ -2,9 +2,6 @@
 #include "packet.h"
 #include "audio.h"
 
-#define STB_VORBIS_HEADER_ONLY
-#include "stb_vorbis.c"
-
 int util_set_varint(uint8_t buffer[], const uint64_t value)
 {
 	if (value < 0x80) {
