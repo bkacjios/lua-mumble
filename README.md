@@ -45,12 +45,15 @@ local mumble = require("mumble")
 -- Can return nil and an error string if something went wrong
 mumble.client, [ String error ] = mumble.connect(String host, Number port, String certificate file path, String key file path)
 
--- Main loop that handles all events, ping, and audio processing
+-- Main event loop that handles all events, ping, and audio processing
 -- This will block the script until disconnect or SIGINT, so call this *after* you create your hooks
 mumble.loop()
 
 -- The client's user
+-- Is only available *after* "OnServerSync" is called
 mumble.user = mumble.client.me
+mumble.user = mumble.client:getMe()
+mumble.user = mumble.client:getSelf()
 
 -- A new timer object
 -- The timer itself will do a best-effort at avoiding drift, that is, if you configure a timer to trigger every 10 seconds, then it will normally trigger at exactly 10 second intervals. If, however, your program cannot keep up with the timer (because it takes longer than those 10 seconds to do stuff) the timer will not fire more than once per event loop iteration.
@@ -61,16 +64,14 @@ mumble.voicetarget = mumble.voicetarget()
 
 -- A new opus encoder object
 -- Sample rate defaults to 48000
--- Number of channels defaults to 1
-mumble.encoder = mumble.encoder(Number samplerate = 48000, Number channels = 1)
+mumble.encoder = mumble.encoder(Number samplerate = 48000, Number channels)
 
 -- A new opus decoder object
 -- Sample rate defaults to 48000
--- Number of channels defaults to 1
-mumble.decoder = mumble.decoder(Number samplerate = 48000, Number channels = 1)
+mumble.decoder = mumble.decoder(Number samplerate = 48000, Number channels)
 
 -- A timestamp in milliseconds
-Number time = mumble.gettime()
+Number time = mumble.getTime()
 
 -- A table of all currect clients
 Table clients = mumble.getClients()
@@ -204,7 +205,7 @@ mumble.encoder encoder = mumble.client:getEncoder()
 -- Get the average ping of the client
 Number ping = mumble.client:getPing()
 
--- Get the uptime of the current client
+-- Get the uptime of the current client in seconds
 Number time = mumble.client:getUpTime()
 
 -- Returns a table of all mumble.users

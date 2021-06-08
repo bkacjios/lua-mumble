@@ -32,6 +32,10 @@ static void mumble_lua_timer(EV_P_ ev_timer *w_, int revents)
 int mumble_timer_new(lua_State *l)
 {
 	lua_timer *ltimer = lua_newuserdata(l, sizeof(lua_timer));
+	ltimer->l = l;
+	ltimer->callback = 0;
+	ltimer->self = 0;
+
 	luaL_getmetatable(l, METATABLE_TIMER);
 	lua_setmetatable(l, -2);
 	// Return the timer userdata
@@ -45,8 +49,6 @@ static int timer_start(lua_State *l)
 	luaL_checktype(l, 2, LUA_TFUNCTION);
 	double after = luaL_checknumber(l, 3);
 	double repeat = luaL_optnumber(l, 4, 0);
-
-	ltimer->l = l;
 
 	lua_pushvalue(l, 1); // Push a copy of our self
 	ltimer->self = luaL_ref(l, LUA_REGISTRYINDEX); // Pop it off as a reference
@@ -96,8 +98,14 @@ static int timer_gc(lua_State *l)
 	ev_timer_stop(EV_DEFAULT, &ltimer->timer);
 
 	// Clear our references from the registry
-	luaL_unref(l, LUA_REGISTRYINDEX, ltimer->self);
-	luaL_unref(l, LUA_REGISTRYINDEX, ltimer->callback);
+
+	if (ltimer->self > 0) {
+		luaL_unref(l, LUA_REGISTRYINDEX, ltimer->self);
+	}
+
+	if (ltimer->callback > 0) {
+		luaL_unref(l, LUA_REGISTRYINDEX, ltimer->callback);
+	}
 	return 0;
 }
 

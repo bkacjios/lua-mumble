@@ -1,10 +1,13 @@
 #include "mumble.h"
 
-double gettime()
+double gettime(clockid_t mode)
 {
-	struct timeval time;
-	gettimeofday(&time, (struct timezone *) NULL);
-	return time.tv_sec + time.tv_usec/1.0e6;
+	double accum;
+	struct timespec time;
+
+	clock_gettime(mode, &time);
+
+	return time.tv_sec + time.tv_nsec / 1.0e9;
 }
 
 void bin_to_strhex(char *bin, size_t binsz, char **result)

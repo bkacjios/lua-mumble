@@ -200,8 +200,6 @@ static int client_transmit(lua_State *l) {
 
 	bool speaking = luaL_optboolean(l, 4, true);
 
-	uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
-
 	uint16_t frame_header = outputlen;
 	if (codec == UDP_OPUS && !speaking) {
 		// Set 14th bit to 1 to signal end of stream.
@@ -212,9 +210,13 @@ static int client_transmit(lua_State *l) {
 	}
 
 	VoicePacket packet;
+	uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
 	voicepacket_init(&packet, packet_buffer);
 	voicepacket_setheader(&packet, codec, client->audio_target, client->audio_sequence);
 	voicepacket_setframe(&packet, codec, frame_header, output, outputlen);
+
+	mumble_handle_speaking_hooks(l, client, packet.buffer + 1, codec, client->audio_target, client->session);
+
 	packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
 
 	client->audio_sequence = (client->audio_sequence + 1) % 100000;
@@ -495,15 +497,34 @@ static int client_getChannel(lua_State *l)
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	//char* path = (char*) luaL_checkstring(l, 2);
 
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
-	lua_pushinteger(l, 0);
-	lua_gettable(l, -2);
-	lua_remove(l, -2);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels); // push our table of channels
+	lua_pushinteger(l, 0);	// root channel id is always 0
+	lua_gettable(l, -2);	// index the channel table by the root channel id
+	lua_remove(l, -2);		// remove table of channels from the stack
 
 	if (lua_isnoneornil(l, -1) == 0) {
-		lua_replace(l, 1);
-		return channel_call(l);
+		// if we successfully indexed the root channel..
+		lua_replace(l, 1); // set the root channel in argument position 1
+		return channel_call(l); // call the channel_call function on root channel
 	}
+
+	/*
+	-- Pseudocode on how this works..
+
+	function mumble.client.getChannel(client, path)
+		local channels = client:getChannels()			-- lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
+
+														-- lua_pushinteger(l, 0);
+		local root = channels[0]						-- lua_gettable(l, -2);
+
+		channels = nil									-- lua_remove(l, -2)
+		
+		if root ~= nil then								-- if (lua_isnoneornil(l, -1) == 0) {
+			client = root								-- 	lua_replace(l, 1);
+			return channel_call(client, path)			-- 	return channel_call(l);
+		end												-- }
+	end
+	*/
 
 	return 0;
 }
@@ -566,7 +587,7 @@ static int client_getPing(lua_State *l)
 static int client_getUpTime(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_pushnumber(l, gettime() - client->time);
+	lua_pushnumber(l, gettime(CLOCK_MONOTONIC) - client->time);
 	return 1;
 }
 
@@ -701,6 +722,13 @@ static int client_createChannel(lua_State *l)
 	return 0;
 }
 
+static int client_getMe(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	mumble_user_raw_get(l, client, client->session);
+	return 1;
+}
+
 static int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
@@ -711,8 +739,12 @@ static int client_gc(lua_State *l)
 	luaL_unref(l, LUA_REGISTRYINDEX, client->users);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->channels);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->audio_streams);
-
 	luaL_unref(l, LUA_REGISTRYINDEX, client->encoder_ref);
+
+	// Remove ourself from the list of connections
+	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
+	luaL_unref(l, -1, client->self);
+	lua_pop(l, 1);
 	return 0;
 }
 
@@ -750,6 +782,7 @@ const luaL_Reg mumble_client[] = {
 	{"disconnect", client_disconnect},
 	{"isConnected", client_isConnected},
 	{"isSynced", client_isSynced},
+	{"isSynched", client_isSynced},
 	{"requestBanList", client_requestBanList},
 	{"requestUserList", client_requestUserList},
 	{"sendPluginData", client_sendPluginData},
@@ -780,6 +813,8 @@ const luaL_Reg mumble_client[] = {
 	{"requestCommentBlob", client_requestCommentBlob},
 	{"requestDescriptionBlob", client_requestDescriptionBlob},
 	{"createChannel", client_createChannel},
+	{"getMe", client_getMe},
+	{"getSelf", client_getMe},
 	{"__gc", client_gc},
 	{"__tostring", client_tostring},
 	{"__index", client_index},

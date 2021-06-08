@@ -29,7 +29,7 @@ uninstall:
 	rm /usr/local/lib/lua/5.1/mumble.so
 
 clean:
-	rm mumble/*.o *.so proto/*.o proto/*.c proto/*.h
+	rm -f mumble/*.o *.so proto/*.o proto/*.c proto/*.h
 
 proto/%.pb-c.c: proto/%.proto
 	protoc-c --c_out=. $<

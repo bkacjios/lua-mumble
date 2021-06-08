@@ -180,68 +180,13 @@ void packet_server_version(lua_State *l, MumbleClient *client, Packet *packet)
 
 void packet_udp_tunnel(lua_State *l, MumbleClient *client, Packet *packet)
 {
-	unsigned char header	= packet->buffer[0];
-	unsigned char codec		= header >> 5;
-	unsigned char target	= header >> 31;
+	unsigned char codec		= packet->buffer[0] >> 5;
+	unsigned char target	= packet->buffer[0] >> 0x1F;
 
 	int read = 1;
 	int session = util_get_varint(packet->buffer + read, &read);
-	int sequence = util_get_varint(packet->buffer + read, &read);
-	
-	bool speaking = false;
-	MumbleUser* user = mumble_user_get(l, client, session);
 
-	int payload_len = 0;
-	uint16_t frame_header = 0;
-
-	if (codec == UDP_SPEEX || codec == UDP_CELT_ALPHA || codec == UDP_CELT_BETA) {
-		frame_header = packet->buffer[read++];
-		payload_len = frame_header & 0x7F;
-		speaking = ((frame_header & 0x80) == 0);
-	} else if (codec == UDP_OPUS) {
-		frame_header = util_get_varint(packet->buffer + read, &read);
-		payload_len = frame_header & 0x1FFF;
-		speaking = ((frame_header & 0x2000) == 0);
-	}
-
-	bool state_change = false;
-	bool one_frame = (user->speaking == false && speaking == false); // This will only be true if the user only sent exactly one audio packet
-
-	if (user->speaking != speaking) {
-		user->speaking = speaking;
-		state_change = true;
-	}
-
-	if (one_frame || state_change && speaking) {
-		mumble_user_raw_get(l, client, session);
-		mumble_hook_call(l, client, "OnUserStartSpeaking", 1);
-	}
-
-	lua_newtable(l);
-		lua_pushnumber(l, codec);
-		lua_setfield(l, -2, "codec");
-		lua_pushnumber(l, target);
-		lua_setfield(l, -2, "target");
-		lua_pushnumber(l, sequence);
-		lua_setfield(l, -2, "sequence");
-		mumble_user_raw_get(l, client, session);
-		lua_setfield(l, -2, "user");
-		lua_pushboolean(l, speaking);
-		lua_setfield(l, -2, "speaking");
-		lua_pushlstring(l, packet->buffer + read, payload_len);
-		lua_setfield(l, -2, "data");
-		lua_pushinteger(l, header);
-		lua_setfield(l, -2, "header");
-		lua_pushinteger(l, AUDIO_SAMPLE_RATE);
-		lua_setfield(l, -2, "samplerate");
-		lua_pushinteger(l, frame_header);
-		lua_setfield(l, -2, "frame_header");
-	mumble_hook_call(l, client, "OnUserSpeak", 1);
-
-	if (one_frame || state_change && !speaking) {
-		mumble_user_raw_get(l, client, session);
-		mumble_hook_call(l, client, "OnUserStopSpeaking", 1);
-	}
+	mumble_handle_speaking_hooks(l, client, packet->buffer + read, codec, target, session);
 }
 
 void packet_server_ping(lua_State *l, MumbleClient *client, Packet *packet)
@@ -255,7 +200,7 @@ void packet_server_ping(lua_State *l, MumbleClient *client, Packet *packet)
 
 	lua_newtable(l);
 		if (ping->has_timestamp) {
-			ms = (gettime() * 1000) - ping->timestamp;
+			ms = (gettime(CLOCK_MONOTONIC) * 1000) - ping->timestamp;
 
 			uint32_t n = client->tcp_packets + 1;
 			client->tcp_packets = n;

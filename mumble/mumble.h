@@ -157,8 +157,6 @@ struct MumbleClient {
 	bool				synced;
 	const char*			host;
 	uint16_t			port;
-	const char*			username;
-	const char*			password;
 	int					hooks;
 	int					users;
 	int					channels;
@@ -265,9 +263,9 @@ typedef struct {
 	UTIL FUNCTIONS
 --------------------------------*/
 
-extern int MUMBLE_CONNECTIONS;
+extern int MUMBLE_CLIENTS;
 
-extern double gettime();
+extern double gettime(clockid_t mode);
 
 extern void bin_to_strhex(char *bin, size_t binsz, char **result);
 
@@ -292,6 +290,7 @@ extern MumbleChannel* mumble_channel_raw_get(lua_State* l, MumbleClient* client,
 extern void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_id);
 
 extern int mumble_push_address(lua_State* l, ProtobufCBinaryData address);
+extern int mumble_handle_speaking_hooks(lua_State* l, MumbleClient* client, uint8_t buffer[], uint8_t codec, uint8_t target, uint32_t session);
 
 extern int mumble_traceback(lua_State *l);
 extern void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs);

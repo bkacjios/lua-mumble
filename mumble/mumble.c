@@ -13,6 +13,8 @@
 #include "packet.h"
 #include "ocb.h"
 
+int MUMBLE_CLIENTS;
+
 static void signal_event(struct ev_loop *loop, ev_signal *w_, int revents)
 {
 	my_signal *w = (my_signal *) w_;
@@ -39,7 +41,7 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 
 	MumbleProto__Ping ping = MUMBLE_PROTO__PING__INIT;
 
-	uint64_t ts = gettime() * 1000;
+	uint64_t ts = gettime(CLOCK_MONOTONIC) * 1000;
 
 	ping.has_timestamp = true;
 	ping.timestamp = ts;
@@ -207,8 +209,6 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 	}
 }
 
-int MUMBLE_CLIENTS;
-
 static int mumble_connect(lua_State *l)
 {
 	const char* server_host_str = luaL_checkstring(l, 1);
@@ -243,7 +243,8 @@ static int mumble_connect(lua_State *l)
 
 	client->host = server_host_str;
 	client->port = port;
-	client->time = gettime();
+	client->session = 0;
+	client->time = gettime(CLOCK_MONOTONIC);
 	client->volume = 0.5;
 	client->connected = true;
 	client->synced = false;
@@ -512,11 +513,6 @@ void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason)
 		lua_pushstring(l, reason);
 		mumble_hook_call(l, client, "OnDisconnect", 1);
 		client->connected = false;
-
-		// Remove ourself from the list of connections
-		lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
-		luaL_unref(l, -1, client->self);
-		lua_pop(l, 1);
 	}
 
 	if (client->ssl) {
@@ -543,9 +539,9 @@ void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason)
 	lua_stackguard_exit(l);
 }
 
-static int mumble_gettime(lua_State *l)
+static int mumble_getTime(lua_State *l)
 {
-	lua_pushnumber(l, gettime());
+	lua_pushnumber(l, gettime(CLOCK_REALTIME));
 	return 1;
 }
 
@@ -835,10 +831,72 @@ int mumble_push_address(lua_State* l, ProtobufCBinaryData address)
 	return 1;
 }
 
+int mumble_handle_speaking_hooks(lua_State* l, MumbleClient* client, uint8_t buffer[], uint8_t codec, uint8_t target, uint32_t session)
+{
+	lua_stackguard_entry(l);
+
+	int read = 0;
+	int sequence = util_get_varint(buffer, &read);
+	
+	bool speaking = false;
+	MumbleUser* user = mumble_user_get(l, client, session);
+
+	int payload_len = 0;
+	uint16_t frame_header = 0;
+
+	if (codec == UDP_SPEEX || codec == UDP_CELT_ALPHA || codec == UDP_CELT_BETA) {
+		frame_header = buffer[read++];
+		payload_len = frame_header & 0x7F;
+		speaking = ((frame_header & 0x80) == 0);
+	} else if (codec == UDP_OPUS) {
+		frame_header = util_get_varint(buffer + read, &read);
+		payload_len = frame_header & 0x1FFF;
+		speaking = ((frame_header & 0x2000) == 0);
+	}
+
+	bool state_change = false;
+	bool one_frame = (user->speaking == false && speaking == false); // This will only be true if the user only sent exactly one audio packet
+
+	if (user->speaking != speaking) {
+		user->speaking = speaking;
+		state_change = true;
+	}
+
+	if (one_frame || state_change && speaking) {
+		mumble_user_raw_get(l, client, session);
+		mumble_hook_call(l, client, "OnUserStartSpeaking", 1);
+	}
+
+	lua_newtable(l);
+		lua_pushnumber(l, codec);
+		lua_setfield(l, -2, "codec");
+		lua_pushnumber(l, target);
+		lua_setfield(l, -2, "target");
+		lua_pushnumber(l, sequence);
+		lua_setfield(l, -2, "sequence");
+		mumble_user_raw_get(l, client, session);
+		lua_setfield(l, -2, "user");
+		lua_pushboolean(l, speaking);
+		lua_setfield(l, -2, "speaking");
+		lua_pushlstring(l, buffer + read, payload_len);
+		lua_setfield(l, -2, "data");
+		lua_pushinteger(l, frame_header);
+		lua_setfield(l, -2, "frame_header");
+	mumble_hook_call(l, client, "OnUserSpeak", 1);
+
+	if (one_frame || state_change && !speaking) {
+		mumble_user_raw_get(l, client, session);
+		mumble_hook_call(l, client, "OnUserStopSpeaking", 1);
+	}
+	
+	lua_stackguard_exit(l);
+}
+
 const luaL_Reg mumble[] = {
 	{"connect", mumble_connect},
 	{"loop", mumble_loop},
-	{"gettime", mumble_gettime},
+	{"gettime", mumble_getTime},
+	{"getTime", mumble_getTime},
 	{"getConnections", mumble_getConnections},
 	{"getClients", mumble_getConnections},
 	{NULL, NULL}

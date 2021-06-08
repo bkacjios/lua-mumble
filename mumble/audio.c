@@ -259,61 +259,19 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 
 	if (encoded_len <= 0) return;
 
-	uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
 	uint32_t frame_header = encoded_len;
-
-	voicepacket_init(&packet, packet_buffer);
-	voicepacket_setheader(&packet, UDP_OPUS, client->audio_target, client->audio_sequence);
-
 	// If the largest PCM buffer is smaller than our frame size, it has to be the last frame available
 	if (biggest_read < frame_size) {
 		// Set 14th bit to 1 to signal end of stream.
 		frame_header = ((1 << 13) | frame_header);
 	}
 
+	uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
+	voicepacket_init(&packet, packet_buffer);
+	voicepacket_setheader(&packet, UDP_OPUS, client->audio_target, client->audio_sequence);
 	voicepacket_setframe(&packet, UDP_OPUS, frame_header, encoded, encoded_len);
 
-	MumbleUser* user = mumble_user_get(l, client, client->session);
-
-	bool speaking = biggest_read >= frame_size;
-	bool state_change = false;
-	bool one_frame = (user->speaking == false && speaking == false); // This will only be true if the user only sent exactly one audio packet
-
-	if (user->speaking != speaking) {
-		user->speaking = speaking;
-		state_change = true;
-	}
-
-	if (one_frame || state_change && speaking) {
-		mumble_user_raw_get(l, client, client->session);
-		mumble_hook_call(l, client, "OnUserStartSpeaking", 1);
-	}
-
-	lua_newtable(l);
-		lua_pushnumber(l, UDP_OPUS);
-		lua_setfield(l, -2, "codec");
-		lua_pushnumber(l, client->audio_target);
-		lua_setfield(l, -2, "target");
-		lua_pushnumber(l, client->audio_sequence);
-		lua_setfield(l, -2, "sequence");
-		mumble_user_raw_get(l, client, client->session);
-		lua_setfield(l, -2, "user");
-		lua_pushboolean(l, speaking);
-		lua_setfield(l, -2, "speaking");
-		lua_pushlstring(l, encoded, encoded_len);
-		lua_setfield(l, -2, "data");
-		lua_pushinteger(l, packet_buffer[0]);
-		lua_setfield(l, -2, "header");
-		lua_pushinteger(l, AUDIO_SAMPLE_RATE);
-		lua_setfield(l, -2, "samplerate");
-		lua_pushinteger(l, frame_header);
-		lua_setfield(l, -2, "frame_header");
-	mumble_hook_call(l, client, "OnUserSpeak", 1);
-
-	if (one_frame || state_change && !speaking) {
-		mumble_user_raw_get(l, client, client->session);
-		mumble_hook_call(l, client, "OnUserStopSpeaking", 1);
-	}
+	mumble_handle_speaking_hooks(l, client, packet.buffer + 1, UDP_OPUS, client->audio_target, client->session);
 
 	packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
 
