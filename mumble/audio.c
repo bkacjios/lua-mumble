@@ -24,19 +24,30 @@ int util_set_varint(uint8_t buffer[], const uint64_t value)
 		return 4;
 	} else if (value < 0x100000000) {
 		buffer[0] = 0xF0;
-		buffer[1] = (value >> 24) | 0xFF;
+		buffer[1] = (value >> 24) & 0xFF;
 		buffer[2] = (value >> 16) & 0xFF;
 		buffer[3] = (value >> 8) & 0xFF;
 		buffer[4] = value & 0xFF;
 		return 5;
+	} else {
+		buffer[0] = 0xF4;
+		buffer[1] = (value >> 56) & 0xFF;
+		buffer[2] = (value >> 48) & 0xFF;
+		buffer[3] = (value >> 40) & 0xFF;
+		buffer[4] = (value >> 32) & 0xFF;
+		buffer[5] = (value >> 24) & 0xFF;
+		buffer[6] = (value >> 16) & 0xFF;
+		buffer[7] = (value >> 8) & 0xFF;
+		buffer[8] = value & 0xFF;
+		return 9;
 	}
 	return -1;
 }
 
-int64_t util_get_varint(uint8_t buffer[], int *len)
+uint64_t util_get_varint(uint8_t buffer[], int *len)
 {
 	uint8_t v = buffer[0];
-	int64_t i = 0;
+	uint64_t i = 0;
 
 	if ((v & 0x80) == 0x00) {
 		i = (v & 0x7F);
@@ -74,8 +85,6 @@ int64_t util_get_varint(uint8_t buffer[], int *len)
 	} else if ((v & 0xE0) == 0xC0) {
 		i=(v & 0x1F) << 16 | buffer[1] << 8 | buffer[2];
 		*len += 3;
-	} else {
-		*len += 1;
 	}
 
 	return i;
@@ -277,7 +286,11 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 
 	mumble_handle_speaking_hooks(l, client, packet.buffer + 1, UDP_OPUS, client->audio_target, client->session);
 
-	packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
+	if (client->udp_tunnel) {
+		packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
+	} else {
+		packet_sendudp(client, packet_buffer, voicepacket_getlength(&packet));
+	}
 
 	client->audio_sequence = (client->audio_sequence + 1) % 100000;
 

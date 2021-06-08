@@ -34,6 +34,7 @@ enum {
 
 #define packet_send(client, type, message) packet_sendex(client, type, message, 0)
 extern int packet_sendex(MumbleClient* client, const int type, const void *message, const int length);
+extern int packet_sendudp(MumbleClient* client, const void *message, const int length);
 
 typedef void (*Packet_Handler_Func)(lua_State *lua, MumbleClient *client, Packet *packet);
 

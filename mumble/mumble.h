@@ -41,8 +41,8 @@
 
 #include "proto/Mumble.pb-c.h"
 
-// Incomplete feature (used for development)
-//#define ENABLE_UDP
+// Enables UDP packets
+#define ENABLE_UDP
 
 #define STB_VORBIS_HEADER_ONLY
 #include "stb_vorbis.c"
@@ -78,7 +78,7 @@
 
 #define PAYLOAD_SIZE_MAX (1024 * 8 - 1)
 
-#define PING_TIMEOUT 30
+#define PING_TIMEOUT 5
 
 #define UDP_BUFFER_MAX 1024
 
@@ -151,6 +151,7 @@ struct MumbleClient {
 	int					self;
 	int					socket_tcp;
 	int					socket_udp;
+	struct addrinfo*	server_host_udp;
 	SSL_CTX				*ssl_context;
 	SSL					*ssl;
 	bool				connected;
@@ -184,6 +185,7 @@ struct MumbleClient {
 
 	bool				udp_tunnel;
 
+	uint8_t			udp_ping_acc;
 	uint32_t			udp_packets;
 	float				udp_ping_avg;
 	float				udp_ping_var;
@@ -275,7 +277,9 @@ extern int luaL_checkboolean(lua_State *L, int i);
 extern int luaL_optboolean(lua_State *L, int i, int d);
 extern const char* eztype(lua_State *L, int i);
 
-extern int64_t util_get_varint(uint8_t buffer[], int *len);
+extern uint64_t util_get_varint(uint8_t buffer[], int *len);
+
+extern void mumble_ping_udp(lua_State* l, MumbleClient* client);
 
 extern void mumble_create_audio_timer(MumbleClient *client, int bitspersec);
 extern void mumble_disconnect(lua_State* l, MumbleClient *client, const char* reason);

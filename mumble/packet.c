@@ -3,9 +3,13 @@
 #include "packet.h"
 #include "ocb.h"
 
-int packet_sendudp(MumbleClient* client, const int type, const void *message, const int length)
+int packet_sendudp(MumbleClient* client, const void *message, const int length)
 {
-
+	unsigned char encrypted[length + 4];
+	if (crypt_isValid(client->crypt) && crypt_encrypt(client->crypt, message, encrypted, length))
+	{
+		sendto(client->socket_udp, encrypted, sizeof(encrypted), 0, client->server_host_udp->ai_addr, client->server_host_udp->ai_addrlen);
+	}
 }
 
 int packet_sendex(MumbleClient* client, const int type, const void *message, const int length)
@@ -253,7 +257,7 @@ void packet_server_ping(lua_State *l, MumbleClient *client, Packet *packet)
 			lua_pushnumber(l, ping->tcp_ping_var);
 			lua_setfield(l, -2, "tcp_ping_var");
 		}
-	mumble_hook_call(l, client, "OnServerPing", 1);
+	mumble_hook_call(l, client, "OnServerPingTCP", 1);
 
 	mumble_proto__ping__free_unpacked(ping, NULL);
 }
@@ -908,6 +912,7 @@ void packet_crypt_setup(lua_State *l, MumbleClient *client, Packet *packet)
 
 	if (crypt_isValid(client->crypt)) {
 		printf("CryptState: VALID\n");
+		mumble_ping_udp(l, client);
 	} else {
 		printf("CryptState: INVALID\n");
 	}

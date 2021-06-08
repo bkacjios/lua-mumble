@@ -181,7 +181,7 @@ Table hooks = {
 		["hook"] = function: 0xffffffff,
 		["do stuff on connection"] = function: 0xffffffff,
 	},
-	["OnServerPing"] = {
+	["OnServerPingTCP"] = {
 		["hook"] = function: 0xffffffff,
 		["do stuff on ping"] = function: 0xffffffff,
 	},
@@ -711,9 +711,9 @@ Table event = {
 ```
 ___
 
-### `OnServerPing (mumble.client client, Table event)`
+### `OnServerPingTCP (mumble.client client, Table event)`
 
-Called when the server sends a responce to a ping request.
+Called when the server sends a responce to a TCP ping request.
 The mumble.client will automatically ping the server every 30 seconds within mumble.loop()
 
 ``` lua
@@ -730,6 +730,19 @@ Table event = {
 	["udp_ping_var"]	= Number udp_ping_var,
 	["tcp_ping_avg"]	= Number tcp_ping_avg,
 	["tcp_ping_var"]	= Number tcp_ping_var,
+}
+```
+___
+
+### `OnServerPingUDP (mumble.client client, Table event)`
+
+Called when the server sends a responce to a UDP ping request.
+The mumble.client will automatically ping the server every 30 seconds within mumble.loop()
+
+``` lua
+Table event = {
+	["ping"]			= Number ping,
+	["timestamp"]		= Number timestamp,
 }
 ```
 ___
@@ -1138,9 +1151,10 @@ Called when an error occurs inside a hook.
 WARNING: Erroring within this hook will cause an error on the line where mumble.loop() is called, causing the script to exit
 ___
 
-### `OnClientPing (mumble.client client, Table event)`
+### `OnClientPingTCP (mumble.client client, Table event)`
 
-Called just before a ping is sent to the server.
+Called just before a TCP ping is sent to the server.
+This updates the users statistics found on their information panel.
 
 ``` lua
 Table event = {
@@ -1155,6 +1169,17 @@ Table event = {
 	["udp_ping_var"]	= Number udp_ping_var,
 	["tcp_ping_avg"]	= Number tcp_ping_avg,
 	["tcp_ping_var"]	= Number tcp_ping_var,
+}
+```
+___
+
+### `OnClientPingUDP (mumble.client client, Table event)`
+
+Called just before a UDP ping is sent to the server.
+
+``` lua
+Table event = {
+	["timestamp"]		= Number timestamp,
 }
 ```
 ___
