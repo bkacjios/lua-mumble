@@ -53,4 +53,4 @@ $(BUILD_DIR)/mumble/%.o: mumble/%.c
 	$(CC) -c $(INCLUDES) $(CFLAGS) -MD -o $@ $<
 
 mumble.so: $(OBJECTS)
-	$(CC) -shared $(CFLAGS) -o $@ $^ $(LIBRARIES)
+	$(CC) -shared -o $@ $^ $(LIBRARIES)
