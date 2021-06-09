@@ -78,7 +78,7 @@
 
 #define PAYLOAD_SIZE_MAX (1024 * 8 - 1)
 
-#define PING_TIMEOUT 5
+#define PING_TIMEOUT 30
 
 #define UDP_BUFFER_MAX 1024
 
@@ -185,7 +185,7 @@ struct MumbleClient {
 
 	bool				udp_tunnel;
 
-	uint8_t			udp_ping_acc;
+	uint8_t				udp_ping_acc;
 	uint32_t			udp_packets;
 	float				udp_ping_avg;
 	float				udp_ping_var;

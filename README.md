@@ -13,7 +13,7 @@ Note: `libluajit-5.1-dev` can be substituted with `liblua5.1-0-dev`, `liblua5.2-
 ## Make usage
 
 ```bash
-# Removes all object files, generated protobuf c/h files, and mumble.so
+# Removes all object files, generated protobuf c/h files, dependency files, and mumble.so
 make clean
 
 # Makes everything
