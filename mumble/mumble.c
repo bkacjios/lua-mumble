@@ -237,8 +237,12 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 					client->udp_ping_avg = client->udp_ping_avg * (n-1)/n + ms/n;
 					client->udp_ping_var = powf(fabs(ms - client->udp_ping_avg), 2);
 
-					client->udp_tunnel = false;
+					if (client->udp_tunnel && client->udp_ping_acc > 1) {
+						printf("Server is responding to UDP packets again, switching back to UDP..\n");
+					}
+
 					client->udp_ping_acc = 0;
+					client->udp_tunnel = false;
 
 					lua_newtable(l);
 						lua_pushinteger(l, timestamp);
@@ -354,15 +358,13 @@ static int mumble_connect(lua_State *l)
 		return 2;
 	}
 
-	if (certificate_file != NULL) {
-		if (!SSL_CTX_use_certificate_chain_file(client->ssl_context, certificate_file) ||
-			!SSL_CTX_use_PrivateKey_file(client->ssl_context, key_file, SSL_FILETYPE_PEM) ||
-			!SSL_CTX_check_private_key(client->ssl_context)) {
+	if (!SSL_CTX_use_certificate_chain_file(client->ssl_context, certificate_file) ||
+		!SSL_CTX_use_PrivateKey_file(client->ssl_context, key_file, SSL_FILETYPE_PEM) ||
+		!SSL_CTX_check_private_key(client->ssl_context)) {
 
-			lua_pushnil(l);
-			lua_pushstring(l, "could not load certificate and/or key file");
-			return 2;
-		}
+		lua_pushnil(l);
+		lua_pushstring(l, "could not load certificate and/or key file");
+		return 2;
 	}
 
 	struct addrinfo hint_tcp;
@@ -551,47 +553,22 @@ void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason)
 {
 	lua_stackguard_entry(l);
 
-	if (client->audio_jobs) {
-		for(int i = 1; i <= AUDIO_MAX_STREAMS; ++i) {
-			audio_transmission_stop(l, client, i);
-		}
-	}
-
-	if (client->crypt) {
-		free(client->crypt);
-		client->crypt = NULL;
-	}
-
 	if (client->connected) {
 		lua_pushstring(l, reason);
 		mumble_hook_call(l, client, "OnDisconnect", 1);
 		client->connected = false;
 	}
 
-	if (client->ssl) {
-		SSL_shutdown(client->ssl);
-	}
-
-	if (client->socket_tcp) {
-		close(client->socket_tcp);
-	}
-
-	if (client->socket_udp) {
-		close(client->socket_udp);
-	}
-
-	if (client->server_host_udp) {
-		freeaddrinfo(client->server_host_udp);
-	}
-
-	// Get table of connections
+	// Remove ourself from the table of connections
 	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
+	luaL_unref(l, -1, client->self);
+
 	// If we have no more connections...
 	if (lua_objlen(l, -1) <= 0) {
 		// Break out of the mumble.loop() call to end the script
 		ev_break(EV_DEFAULT, EVBREAK_ALL);
 	}
-	lua_pop(l, 1);
+	lua_pop(l, 1); // Pop table of connections
 
 	lua_stackguard_exit(l);
 }

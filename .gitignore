@@ -6,3 +6,4 @@ config/
 *.lua
 *.pem
 *.d
+gitversion.h

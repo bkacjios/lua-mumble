@@ -48,7 +48,10 @@
 #include "stb_vorbis.c"
 
 #define MODULE_NAME "lua-mumble"
-#define MODULE_VERSION "0.0.1"
+
+#define MUMBLE_VER_MAJOR	1
+#define MUMBLE_VER_MINOR	4
+#define MUMBLE_VER_REVISION	0
 
 // The default audio quality the encoder will try to use.
 // If the servers maximum bandwidth doesn't allow for such

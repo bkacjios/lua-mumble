@@ -165,6 +165,10 @@ mumble.client:setVolume(Number volume)
 -- Gets the global volume level
 Number volume = mumble.client:getVolume()
 
+-- Returns if the client is tunneling UDP voice data through the TCP connection
+-- This will be true until "OnServerPingUDP" is called
+Boolean tunneludp = mumble.client:isTunnelingUDP()
+
 -- Attempts to change the bots comment
 mumble.client:setComment(String comment)
 
@@ -714,7 +718,6 @@ ___
 ### `OnServerPingTCP (mumble.client client, Table event)`
 
 Called when the server sends a responce to a TCP ping request.
-The mumble.client will automatically ping the server every 30 seconds within mumble.loop()
 
 ``` lua
 Table event = {
@@ -737,7 +740,6 @@ ___
 ### `OnServerPingUDP (mumble.client client, Table event)`
 
 Called when the server sends a responce to a UDP ping request.
-The mumble.client will automatically ping the server every 30 seconds within mumble.loop()
 
 ``` lua
 Table event = {
@@ -1169,6 +1171,7 @@ ___
 
 Called just before a TCP ping is sent to the server.
 This updates the users statistics found on their information panel.
+The mumble.client will automatically ping the server every 30 seconds within mumble.loop()
 
 ``` lua
 Table event = {
@@ -1190,6 +1193,7 @@ ___
 ### `OnClientPingUDP (mumble.client client, Table event)`
 
 Called just before a UDP ping is sent to the server.
+The mumble.client will automatically ping the server every 30 seconds within mumble.loop()
 
 ``` lua
 Table event = {

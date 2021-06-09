@@ -7,6 +7,8 @@
 #include "target.h"
 #include "user.h"
 
+#include "gitversion.h"
+
 /*--------------------------------
 	MUMBLE CLIENT META METHODS
 --------------------------------*/
@@ -55,8 +57,8 @@ static int client_auth(lua_State *l)
 	uname(&unameData);
 
 	version.has_version = true;
-	version.version = 1 << 16 | 2 << 8 | 8;
-	version.release = MODULE_NAME " " MODULE_VERSION;
+	version.version = MUMBLE_VER_MAJOR << 16 | MUMBLE_VER_MINOR << 8 | MUMBLE_VER_REVISION;
+	version.release = MODULE_NAME " " GIT_VERSION;
 	version.os = unameData.sysname;
 	version.os_version = unameData.release;
 
@@ -729,22 +731,60 @@ static int client_getMe(lua_State *l)
 	return 1;
 }
 
+static int client_isTunnelingUDP(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	lua_pushboolean(l, client->udp_tunnel);
+	return 1;
+}
+
 static int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
 	mumble_disconnect(l, client, "garbage collected");
 
+	if (client->audio_jobs) {
+		for(int i = 1; i <= AUDIO_MAX_STREAMS; ++i) {
+			audio_transmission_stop(l, client, i);
+		}
+	}
+
+	if (client->crypt) {
+		free(client->crypt);
+		client->crypt = NULL;
+	}
+
+	if (client->ssl) {
+		SSL_shutdown(client->ssl);
+		client->ssl = NULL;
+	}
+
+	if (client->ssl_context) {
+		SSL_CTX_free(client->ssl_context);
+		client->ssl_context = NULL;
+	}
+
+	if (client->socket_tcp) {
+		close(client->socket_tcp);
+		client->socket_tcp = 0;
+	}
+
+	if (client->socket_udp) {
+		close(client->socket_udp);
+		client->socket_udp = 0;
+	}
+
+	if (client->server_host_udp) {
+		freeaddrinfo(client->server_host_udp);
+		client->server_host_udp = NULL;
+	}
+
 	luaL_unref(l, LUA_REGISTRYINDEX, client->hooks);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->users);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->channels);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->audio_streams);
 	luaL_unref(l, LUA_REGISTRYINDEX, client->encoder_ref);
-
-	// Remove ourself from the list of connections
-	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
-	luaL_unref(l, -1, client->self);
-	lua_pop(l, 1);
 	return 0;
 }
 
@@ -815,6 +855,7 @@ const luaL_Reg mumble_client[] = {
 	{"createChannel", client_createChannel},
 	{"getMe", client_getMe},
 	{"getSelf", client_getMe},
+	{"isTunnelingUDP", client_isTunnelingUDP},
 	{"__gc", client_gc},
 	{"__tostring", client_tostring},
 	{"__index", client_index},

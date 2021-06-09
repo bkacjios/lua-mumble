@@ -21,11 +21,14 @@ DEPS := $(OBJECTS:.o=.d)
 
 # Add optimize flag for normal build
 all: CFLAGS += -O2
-all: proto $(OBJECTS) mumble.so
+all: gitversion.h proto $(OBJECTS) mumble.so
 
 # Add debug information for debug build
 debug: CFLAGS += -DDEBUG -g
 debug: proto $(OBJECTS) mumble.so
+
+gitversion.h: .git/HEAD .git/index
+	echo "#define GIT_VERSION \"$(shell git rev-parse --short HEAD)\"" > $@
 
 proto: $(PROTO_C)
 
@@ -36,7 +39,7 @@ uninstall:
 	rm /usr/local/lib/lua/5.1/mumble.so
 
 clean:
-	rm -f $(OBJECTS) $(DEPS) $(PROTO_BUILT)
+	rm -f $(OBJECTS) $(DEPS) $(PROTO_BUILT) gitversion.h
 
 proto/%.pb-c.c: proto/%.proto
 	protoc-c --c_out=. $<
