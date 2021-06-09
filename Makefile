@@ -28,7 +28,7 @@ debug: CFLAGS += -DDEBUG -g
 debug: proto $(OBJECTS) mumble.so
 
 gitversion.h: .git/HEAD .git/index
-	echo "#define GIT_VERSION \"$(shell git rev-parse --short HEAD)\"" > $@
+	@echo "#define GIT_VERSION \"$(shell git rev-parse --short HEAD)\"" > $@
 
 proto: $(PROTO_C)
 
@@ -45,11 +45,11 @@ proto/%.pb-c.c: proto/%.proto
 	protoc-c --c_out=. $<
 
 $(BUILD_DIR)/proto/%.o: proto/%.pb-c.c
-	mkdir -p $(@D)
+	@mkdir -p $(@D)
 	$(CC) -c $(INCLUDES) $(CFLAGS) -MD -o $@ $<
 
 $(BUILD_DIR)/mumble/%.o: mumble/%.c
-	mkdir -p $(@D)
+	@mkdir -p $(@D)
 	$(CC) -c $(INCLUDES) $(CFLAGS) -MD -o $@ $<
 
 mumble.so: $(OBJECTS)
