@@ -310,7 +310,7 @@ void packet_server_sync(lua_State *l, MumbleClient *client, Packet *packet)
 			lua_pushinteger(l, sync->permissions);
 			lua_setfield(l, -2, "permissions");
 
-			MumbleChannel* root = mumble_channel_get(l, client, 0); lua_pop(l, 1);
+			MumbleChannel* root = mumble_channel_get(l, client, 0);
 			root->permissions = sync->permissions;
 		}
 	mumble_hook_call(l, client, "OnServerSync", 1);
@@ -343,7 +343,7 @@ void packet_channel_state(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
-	MumbleChannel* channel = mumble_channel_get(l, client, state->channel_id); lua_pop(l, 1);
+	MumbleChannel* channel = mumble_channel_get(l, client, state->channel_id);
 
 	lua_newtable(l);
 	mumble_channel_raw_get(l, client, channel->channel_id);
@@ -991,7 +991,7 @@ void packet_permission_query(lua_State *l, MumbleClient *client, Packet *packet)
 	}
 
 	if (query->has_channel_id && query->has_permissions) {
-		MumbleChannel* chan = mumble_channel_get(l, client, query->channel_id); lua_pop(l, 1);
+		MumbleChannel* chan = mumble_channel_get(l, client, query->channel_id);
 		chan->permissions = query->permissions;
 	} else if (query->has_flush && query->flush) {
 		// Loop through all channels and set permissions to 0

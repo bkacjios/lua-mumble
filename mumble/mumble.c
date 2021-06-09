@@ -754,8 +754,8 @@ MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session
 		lua_settable(l, -4); // Set the user metatable to where we store the table of users, using session as its index
 	}
 	
-	lua_remove(l, -2);
-	lua_pop(l, 1);
+	lua_remove(l, -2); // Remove the clients users table from the stack
+	lua_pop(l, 1); // Remove the user lua object from the stack, since all we wanted was the pointer
 
 	return user;
 }
@@ -830,7 +830,9 @@ MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t c
 		lua_settable(l, -4); // Set the channel metatable to where we store the table of cahnnels, using channel_id as its index
 	}
 	
-	lua_remove(l, -2);
+	lua_remove(l, -2); // Remove the clients channels table from the stack
+	lua_pop(l, 1); // Remove the channel lua object from the stack, since all we wanted was the pointer
+
 	return channel;
 }
 
