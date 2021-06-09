@@ -1006,6 +1006,20 @@ Table acl = {
 ```
 ___
 
+### `OnCryptSetup (mumble.client client, Table event)`
+
+Called when the server sends UDP encryption keys to the client.
+
+``` lua
+Table event = {
+	["valid"]			= Boolean valid,
+	["key"]				= String key,
+	["client_nonce"]	= String client_nonce,
+	["server_nonce"]	= String server_nonce,
+}
+```
+___
+
 ### `OnUserList (mumble.client client, Table userlist)`
 
 Called on response to a `mumble.client:requestUsers()` call

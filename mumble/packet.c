@@ -892,6 +892,7 @@ void packet_crypt_setup(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
+	lua_newtable(l);
 #ifdef ENABLE_UDP
 	if (crypt->has_key && crypt->has_client_nonce && crypt->has_server_nonce) {
 		if (!crypt_setKey(client->crypt, crypt->key, crypt->client_nonce, crypt->server_nonce)) {
@@ -910,15 +911,17 @@ void packet_crypt_setup(lua_State *l, MumbleClient *client, Packet *packet)
 		packet_send(client, PACKET_CRYPTSETUP, &msg);
 	}
 
-	if (crypt_isValid(client->crypt)) {
-		printf("CryptState: VALID\n");
+	bool validCrypt = crypt_isValid(client->crypt);
+
+	if (validCrypt) {
 		mumble_ping_udp(l, client);
-	} else {
-		printf("CryptState: INVALID\n");
 	}
+
+	lua_pushboolean(l, validCrypt);
+	lua_setfield(l, -2, "valid");
+
 #endif
 
-	lua_newtable(l);
 	if(crypt->has_key) {
 		char* result;
 		bin_to_strhex(crypt->key.data, crypt->key.len, &result);
