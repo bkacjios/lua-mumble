@@ -71,7 +71,7 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 	ping.udp_packets = client->udp_packets;
 
 	ping.has_udp_ping_avg = true;
-	ping.tcp_ping_avg = client->udp_ping_avg;
+	ping.udp_ping_avg = client->udp_ping_avg;
 	
 	ping.has_udp_ping_var = true;
 	ping.udp_ping_var = client->udp_ping_var;
@@ -125,7 +125,7 @@ void mumble_ping_udp(lua_State* l, MumbleClient* client) {
 		}
 
 		lua_newtable(l);
-			lua_pushinteger(l, timestamp);
+			lua_pushnumber(l, (double) timestamp / 1000);
 			lua_setfield(l, -2, "timestamp");
 		mumble_hook_call(l, client, "OnClientPingUDP", 1);
 
@@ -245,7 +245,7 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 					client->udp_tunnel = false;
 
 					lua_newtable(l);
-						lua_pushinteger(l, timestamp);
+						lua_pushnumber(l, (double) timestamp / 1000);
 						lua_setfield(l, -2, "timestamp");
 						lua_pushinteger(l, ms);
 						lua_setfield(l, -2, "ping");
