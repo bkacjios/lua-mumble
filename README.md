@@ -882,7 +882,7 @@ Table event = {
 ```
 ___
 
-### `OnUserStartSpeaking (mumble.user)`
+### `OnUserStartSpeaking (mumble.client client, mumble.user)`
 
 Called when a user starts to transmit voice data.
 ___
