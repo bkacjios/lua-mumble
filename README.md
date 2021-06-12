@@ -613,7 +613,7 @@ mumble.audiostream:pause()
 mumble.audiostream:play()
 
 -- Pauses the audio AND resets playback from the beginning
-mumble.audiostream:play()
+mumble.audiostream:stop()
 
 -- Will attempt to seek to a given position via sample numbers
 -- Returns the offset that it has seeked to
