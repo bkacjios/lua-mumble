@@ -19,13 +19,15 @@ DEPS := $(OBJECTS:.o=.d)
 
 -include $(DEPS)
 
+objects: gitversion.h proto $(OBJECTS) mumble.so
+
 # Add optimize flag for normal build
 all: CFLAGS += -O2
-all: gitversion.h proto $(OBJECTS) mumble.so
+all: objects
 
 # Add debug information for debug build
 debug: CFLAGS += -DDEBUG -g
-debug: proto $(OBJECTS) mumble.so
+debug: objects
 
 gitversion.h: .git/HEAD .git/index
 	@echo "#define GIT_VERSION \"$(shell git rev-parse --short HEAD)\"" > $@

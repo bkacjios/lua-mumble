@@ -19,8 +19,12 @@ client:hook("OnClientPing", function(client, event)
 	print("OnClientPing", event)
 end)
 
-client:hook("OnServerPing", function(client, event)
-	print("OnServerPing", event)
+client:hook("OnServerPingTCP", function(client, event)
+	print("OnServerPingTCP", event)
+end)
+
+client:hook("OnServerPingUDP", function(client, event)
+	print("OnServerPingUDP", event)
 end)
 
 client:hook("OnChannelRemove", function(client, channel)
@@ -67,8 +71,20 @@ client:hook("OnPermissionDenied", function(client, event)
 	print("OnPermissionDenied", event)
 end)
 
+client:hook("OnBanList", function(client, event)
+	print("OnBanList", event)
+end)
+
 client:hook("OnACL", function(client, event)
 	print("OnACL", event)
+end)
+
+client:hook("OnCryptSetup", function(client, event)
+	print("OnCryptSetup", event)
+end)
+
+client:hook("OnUserList", function(client, event)
+	print("OnUserList", event)
 end)
 
 client:hook("OnPermissionQuery", function(client, event)
