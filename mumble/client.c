@@ -636,29 +636,67 @@ static int client_requestTextureBlob(lua_State *l)
 
 	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
 
-	// Get the number of channels we want to unlink
-	msg.n_session_texture = lua_gettop(l) - 1;
-	msg.session_texture = malloc(sizeof(uint32_t) * msg.n_session_texture);
+	if (lua_istable(l, 2)) {
+		int i = 0;
 
-	if (msg.session_texture == NULL)
-		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+		msg.n_session_texture = lua_objlen(l, 2);
+		msg.session_texture = malloc(sizeof(uint32_t) * msg.n_session_texture);
 
-	for (int i = 0; i < msg.n_session_texture; i++) {
-		int sp = 2+i;
-		switch (lua_type(l, sp)) {
-			case LUA_TNUMBER:
-			{
-				// Use direct session number
-				uint32_t session = (uint32_t) luaL_checkinteger(l, sp);
-				msg.session_texture[i] = session;
-				break;
+		if (msg.session_texture == NULL)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
+		lua_pushvalue(l, 2);
+		lua_pushnil(l);
+
+		while (lua_next(l, -2)) {
+			lua_pushvalue(l, -2);
+			if (i < msg.n_session_texture) {
+				switch (lua_type(l, -2)) {
+					case LUA_TNUMBER:
+					{
+						// Use direct session number
+						uint32_t session = (uint32_t) luaL_checkinteger(l, -2);
+						msg.session_texture[i++] = session;
+						break;
+					}
+					case LUA_TUSERDATA:
+					{
+						// Make sure the userdata has a user metatable
+						MumbleUser *user = luaL_checkudata(l, -2, METATABLE_USER);
+						msg.session_texture[i++] = user->session;
+						break;
+					}
+				}
 			}
-			case LUA_TUSERDATA:
-			{
-				// Make sure the userdata has a user metatable
-				MumbleUser *user = luaL_checkudata(l, sp, METATABLE_USER);
-				msg.session_texture[i] = user->session;
-				break;
+			lua_pop(l, 2);
+		}
+
+		lua_pop(l, 1);
+	} else {
+		// Get the number of channels we want to unlink
+		msg.n_session_texture = lua_gettop(l) - 1;
+		msg.session_texture = malloc(sizeof(uint32_t) * msg.n_session_texture);
+
+		if (msg.session_texture == NULL)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
+		for (int i = 0; i < msg.n_session_texture; i++) {
+			int sp = 2+i;
+			switch (lua_type(l, sp)) {
+				case LUA_TNUMBER:
+				{
+					// Use direct session number
+					uint32_t session = (uint32_t) luaL_checkinteger(l, sp);
+					msg.session_texture[i] = session;
+					break;
+				}
+				case LUA_TUSERDATA:
+				{
+					// Make sure the userdata has a user metatable
+					MumbleUser *user = luaL_checkudata(l, sp, METATABLE_USER);
+					msg.session_texture[i] = user->session;
+					break;
+				}
 			}
 		}
 	}
@@ -674,29 +712,67 @@ static int client_requestCommentBlob(lua_State *l)
 
 	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
 
-	// Get the number of channels we want to unlink
-	msg.n_session_comment = lua_gettop(l) - 1;
-	msg.session_comment = malloc(sizeof(uint32_t) * msg.n_session_comment);
+	if (lua_istable(l, 2)) {
+		int i = 0;
 
-	if (msg.session_comment == NULL)
-		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+		msg.n_session_comment = lua_objlen(l, 2);
+		msg.session_comment = malloc(sizeof(uint32_t) * msg.n_session_texture);
 
-	for (int i = 0; i < msg.n_session_comment; i++) {
-		int sp = 2+i;
-		switch (lua_type(l, sp)) {
-			case LUA_TNUMBER:
-			{
-				// Use direct session number
-				uint32_t session = (uint32_t) luaL_checkinteger(l, sp);
-				msg.session_comment[i] = session;
-				break;
+		if (msg.session_texture == NULL)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
+		lua_pushvalue(l, 2);
+		lua_pushnil(l);
+
+		while (lua_next(l, -2)) {
+			lua_pushvalue(l, -2);
+			if (i < msg.n_session_comment) {
+				switch (lua_type(l, -2)) {
+					case LUA_TNUMBER:
+					{
+						// Use direct session number
+						uint32_t session = (uint32_t) luaL_checkinteger(l, -2);
+						msg.session_comment[i++] = session;
+						break;
+					}
+					case LUA_TUSERDATA:
+					{
+						// Make sure the userdata has a user metatable
+						MumbleUser *user = luaL_checkudata(l, -2, METATABLE_USER);
+						msg.session_comment[i++] = user->session;
+						break;
+					}
+				}
 			}
-			case LUA_TUSERDATA:
-			{
-				// Make sure the userdata has a user metatable
-				MumbleUser *user = luaL_checkudata(l, sp, METATABLE_USER);
-				msg.session_comment[i] = user->session;
-				break;
+			lua_pop(l, 2);
+		}
+
+		lua_pop(l, 1);
+	} else {
+		// Get the number of channels we want to unlink
+		msg.n_session_comment = lua_gettop(l) - 1;
+		msg.session_comment = malloc(sizeof(uint32_t) * msg.n_session_comment);
+
+		if (msg.session_comment == NULL)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
+		for (int i = 0; i < msg.n_session_comment; i++) {
+			int sp = 2+i;
+			switch (lua_type(l, sp)) {
+				case LUA_TNUMBER:
+				{
+					// Use direct session number
+					uint32_t session = (uint32_t) luaL_checkinteger(l, sp);
+					msg.session_comment[i] = session;
+					break;
+				}
+				case LUA_TUSERDATA:
+				{
+					// Make sure the userdata has a user metatable
+					MumbleUser *user = luaL_checkudata(l, sp, METATABLE_USER);
+					msg.session_comment[i] = user->session;
+					break;
+				}
 			}
 		}
 	}
@@ -712,29 +788,67 @@ static int client_requestDescriptionBlob(lua_State *l)
 
 	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
 
-	// Get the number of channels we want to unlink
-	msg.n_channel_description = lua_gettop(l) - 1;
-	msg.channel_description = malloc(sizeof(uint32_t) * msg.n_channel_description);
+	if (lua_istable(l, 2)) {
+		int i = 0;
 
-	if (msg.channel_description == NULL)
-		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+		msg.n_channel_description = lua_objlen(l, 2);
+		msg.channel_description = malloc(sizeof(uint32_t) * msg.n_session_texture);
 
-	for (int i = 0; i < msg.n_channel_description; i++) {
-		int sp = 2+i;
-		switch (lua_type(l, sp)) {
-			case LUA_TNUMBER:
-			{
-				// Use direct channel_id number
-				uint32_t channel_id = (uint32_t) luaL_checkinteger(l, sp);
-				msg.channel_description[i] = channel_id;
-				break;
+		if (msg.session_texture == NULL)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
+		lua_pushvalue(l, 2);
+		lua_pushnil(l);
+
+		while (lua_next(l, -2)) {
+			lua_pushvalue(l, -2);
+			if (i < msg.n_channel_description) {
+				switch (lua_type(l, -2)) {
+					case LUA_TNUMBER:
+					{
+						// Use direct session number
+						uint32_t channel_id = (uint32_t) luaL_checkinteger(l, -2);
+						msg.channel_description[i++] = channel_id;
+						break;
+					}
+					case LUA_TUSERDATA:
+					{
+						// Make sure the userdata has a user metatable
+						MumbleUser *channel = luaL_checkudata(l, -2, METATABLE_CHAN);
+						msg.channel_description[i++] = channel->channel_id;
+						break;
+					}
+				}
 			}
-			case LUA_TUSERDATA:
-			{
-				// Make sure the userdata has a channel metatable
-				MumbleUser *channel = luaL_checkudata(l, sp, METATABLE_CHAN);
-				msg.channel_description[i] = channel->channel_id;
-				break;
+			lua_pop(l, 2);
+		}
+
+		lua_pop(l, 1);
+	} else {
+		// Get the number of channels we want to unlink
+		msg.n_channel_description = lua_gettop(l) - 1;
+		msg.channel_description = malloc(sizeof(uint32_t) * msg.n_channel_description);
+
+		if (msg.channel_description == NULL)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
+		for (int i = 0; i < msg.n_channel_description; i++) {
+			int sp = 2+i;
+			switch (lua_type(l, sp)) {
+				case LUA_TNUMBER:
+				{
+					// Use direct channel_id number
+					uint32_t channel_id = (uint32_t) luaL_checkinteger(l, sp);
+					msg.channel_description[i] = channel_id;
+					break;
+				}
+				case LUA_TUSERDATA:
+				{
+					// Make sure the userdata has a channel metatable
+					MumbleUser *channel = luaL_checkudata(l, sp, METATABLE_CHAN);
+					msg.channel_description[i] = channel->channel_id;
+					break;
+				}
 			}
 		}
 	}
