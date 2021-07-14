@@ -695,8 +695,8 @@ static int client_requestDescriptionBlob(lua_State *l)
 			}
 			case LUA_TUSERDATA:
 			{
-				// Make sure the userdata has a user metatable
-				MumbleUser *channel = luaL_checkudata(l, sp, METATABLE_USER);
+				// Make sure the userdata has a channel metatable
+				MumbleUser *channel = luaL_checkudata(l, sp, METATABLE_CHAN);
 				msg.channel_description[i] = channel->channel_id;
 				break;
 			}
