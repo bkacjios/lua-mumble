@@ -163,12 +163,13 @@ static int client_sendPluginData(lua_State *l)
 
 	data.n_receiversessions = lua_gettop(l) - 3;
 	data.receiversessions = malloc(sizeof(uint32_t) * data.n_receiversessions);
-	
+
 	if (data.receiversessions == NULL)
 		return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
 	for (int i = 0; i < data.n_receiversessions; i++) {
 		int sp = 4+i;
+
 		switch (lua_type(l, sp)) {
 			case LUA_TNUMBER:
 			{
@@ -177,9 +178,9 @@ static int client_sendPluginData(lua_State *l)
 				data.receiversessions[i] = session;
 				break;
 			}
-			case LUA_TTABLE:
+			case LUA_TUSERDATA:
 			{
-				// Make sure the "table" is a user metatable
+				// Make sure the userdata has a user metatable
 				MumbleUser *user = luaL_checkudata(l, sp, METATABLE_USER);
 				data.receiversessions[i] = user->session;
 				break;
@@ -616,9 +617,9 @@ static int client_requestTextureBlob(lua_State *l)
 				msg.session_texture[i] = session;
 				break;
 			}
-			case LUA_TTABLE:
+			case LUA_TUSERDATA:
 			{
-				// Make sure the "table" is a user metatable
+				// Make sure the userdata has a user metatable
 				MumbleUser *user = luaL_checkudata(l, sp, METATABLE_USER);
 				msg.session_texture[i] = user->session;
 				break;
@@ -654,9 +655,9 @@ static int client_requestCommentBlob(lua_State *l)
 				msg.session_comment[i] = session;
 				break;
 			}
-			case LUA_TTABLE:
+			case LUA_TUSERDATA:
 			{
-				// Make sure the "table" is a user metatable
+				// Make sure the userdata has a user metatable
 				MumbleUser *user = luaL_checkudata(l, sp, METATABLE_USER);
 				msg.session_comment[i] = user->session;
 				break;
@@ -692,9 +693,9 @@ static int client_requestDescriptionBlob(lua_State *l)
 				msg.channel_description[i] = channel_id;
 				break;
 			}
-			case LUA_TTABLE:
+			case LUA_TUSERDATA:
 			{
-				// Make sure the "table" is a user metatable
+				// Make sure the userdata has a user metatable
 				MumbleUser *channel = luaL_checkudata(l, sp, METATABLE_USER);
 				msg.channel_description[i] = channel->channel_id;
 				break;
