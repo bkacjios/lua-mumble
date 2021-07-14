@@ -111,8 +111,13 @@ mumble.client:requestUserList()
 mumble.client:disconnect()
 
 -- Transmit a plugin data packet
--- Users table can be a table of mumble.user's OR session numbers
+-- Accepts varargs of mumble.user and Numbers starting at argument number 4
+-- The 4th argument can also be a table of users or session numbers. (This disables the vararg functionality)
 mumble.client:sendPluginData(String dataID, String plugindata, [mumble.user, Number session] ...)
+
+-- ALTERNATIVELY
+
+mumble.client:sendPluginData(String dataID, String plugindata, Table {mumble.user, Number session, ...})
 
 -- Transmit a raw, encoded, opus packet
 -- Set speaking to false at the end of a stream
@@ -240,18 +245,35 @@ Table channels = {
 
 -- Request a users full texture data blob
 -- Server will respond with a "OnUserState" with the requested data filled out
--- After the hook is called, mumble.user:getTexture() will also return the full data
+-- Accepts varargs of mumble.user and user session numbers
+-- The 1st argument can also be a table of mumble.user's or session numbers. (This disables the vararg functionality)
 mumble.client:requestTextureBlob([mumble.user, Number session] ...)
+
+-- ALTERNATIVELY
+
+mumble.client:requestTextureBlob(Table {mumble.user, Number session, ...})
 
 -- Request a users full comment data blob
 -- Server will respond with a "OnUserState" with the requested data filled out
 -- After the hook is called, mumble.user:getComment() will also return the full data
+-- Accepts varargs of mumble.user's and user session numbers
+-- The 1st argument can also be a table of mumble.user's or session numbers. (This disables the vararg functionality)
 mumble.client:requestCommentBlob([mumble.user, Number session] ...)
+
+-- ALTERNATIVELY
+
+mumble.client:requestCommentBlob(Table {mumble.user, Number session, ...})
 
 -- Request a channels full description data blob
 -- Server will respond with a "OnChannelState" with the requested data filled out
 -- After the hook is called, mumble.channel:getDescription() will also return the full data
+-- Accepts varargs of mumble.channel and Numbers of the channel_id
+-- The 1st argument can also be a table of mumble.channel's or channel_id numbers. (This disables the vararg functionality)
 mumble.client:requestDescriptionBlob([mumble.channel, Number channel_id] ...)
+
+-- ALTERNATIVELY
+
+mumble.client:requestDescriptionBlob(Table {mumble.channel, Number channel_id, ...})
 
 -- Creates a channel
 -- Will be parented to the root channel
