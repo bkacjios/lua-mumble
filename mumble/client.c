@@ -161,29 +161,67 @@ static int client_sendPluginData(lua_State *l)
 	data.has_data = true;
 	data.data = cbdata;
 
-	data.n_receiversessions = lua_gettop(l) - 3;
-	data.receiversessions = malloc(sizeof(uint32_t) * data.n_receiversessions);
+	if (lua_istable(l, 4)) {
+		int i = 0;
 
-	if (data.receiversessions == NULL)
-		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+		data.n_receiversessions = lua_objlen(l, 4);
+		data.receiversessions = malloc(sizeof(uint32_t) * data.n_receiversessions);
 
-	for (int i = 0; i < data.n_receiversessions; i++) {
-		int sp = 4+i;
+		if (data.receiversessions == NULL)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
-		switch (lua_type(l, sp)) {
-			case LUA_TNUMBER:
-			{
-				// Use direct session number
-				uint32_t session = (uint32_t) luaL_checkinteger(l, sp);
-				data.receiversessions[i] = session;
-				break;
+		lua_pushvalue(l, 4);
+		lua_pushnil(l);
+
+		while (lua_next(l, -2)) {
+			lua_pushvalue(l, -2);
+			if (i < data.n_receiversessions) {
+				switch (lua_type(l, -2)) {
+					case LUA_TNUMBER:
+					{
+						// Use direct session number
+						uint32_t session = (uint32_t) luaL_checkinteger(l, -2);
+						data.receiversessions[i++] = session;
+						break;
+					}
+					case LUA_TUSERDATA:
+					{
+						// Make sure the userdata has a user metatable
+						MumbleUser *user = luaL_checkudata(l, -2, METATABLE_USER);
+						data.receiversessions[i++] = user->session;
+						break;
+					}
+				}
 			}
-			case LUA_TUSERDATA:
-			{
-				// Make sure the userdata has a user metatable
-				MumbleUser *user = luaL_checkudata(l, sp, METATABLE_USER);
-				data.receiversessions[i] = user->session;
-				break;
+			lua_pop(l, 2);
+		}
+
+		lua_pop(l, 1);
+	} else {
+		data.n_receiversessions = lua_gettop(l) - 3;
+		data.receiversessions = malloc(sizeof(uint32_t) * data.n_receiversessions);
+
+		if (data.receiversessions == NULL)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
+		for (int i = 0; i < data.n_receiversessions; i++) {
+			int sp = 4+i;
+
+			switch (lua_type(l, sp)) {
+				case LUA_TNUMBER:
+				{
+					// Use direct session number
+					uint32_t session = (uint32_t) luaL_checkinteger(l, sp);
+					data.receiversessions[i] = session;
+					break;
+				}
+				case LUA_TUSERDATA:
+				{
+					// Make sure the userdata has a user metatable
+					MumbleUser *user = luaL_checkudata(l, sp, METATABLE_USER);
+					data.receiversessions[i] = user->session;
+					break;
+				}
 			}
 		}
 	}
@@ -541,15 +579,13 @@ static int client_registerVoiceTarget(lua_State *l)
 	msg.has_id = true;
 	msg.id = luaL_optinteger(l, 2, 0);
 
-	int n_targets = lua_gettop(l) - 2;
-
-	msg.n_targets = n_targets;
-	msg.targets = malloc(sizeof(MumbleProto__VoiceTarget__Target) * n_targets);
+	msg.n_targets = lua_gettop(l) - 2;
+	msg.targets = malloc(sizeof(MumbleProto__VoiceTarget__Target) * msg.n_targets);
 
 	if (msg.targets == NULL)
 		return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
-	for (int i=0; i < n_targets; i++) {
+	for (int i=0; i < msg.n_targets; i++) {
 		msg.targets[i] = luaL_checkudata(l, i + 3, METATABLE_VOICETARGET);
 	}
 
