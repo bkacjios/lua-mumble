@@ -511,6 +511,7 @@ const luaL_Reg mumble_user[] = {
 	{"listen", user_listen},
 	{"unlisten", user_unlisten},
 	{"getListens", user_getListens},
+	{"sendPluginData", user_sendPluginData},
 	{"requestTextureBlob", user_requestTextureBlob},
 	{"requestCommentBlob", user_requestCommentBlob},
 
