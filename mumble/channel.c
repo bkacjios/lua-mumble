@@ -117,24 +117,21 @@ static int channel_getUsers(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
+	LinkNode* current = channel->client->session_list;
+
 	lua_newtable(l);
+	int i = 1;
 
-	lua_rawgeti(l, LUA_REGISTRYINDEX, channel->client->users);
-	lua_pushnil(l);
-
-	while (lua_next(l, -2)) {
-		if (lua_isuserdata(l, -1)) {
-			MumbleUser *user = lua_touserdata(l, -1);
-			if (user->channel_id == channel->channel_id) {
-				lua_pushinteger(l, user->session);
-				lua_pushvalue(l, -2);
-				lua_settable(l, -6);
-			}
+	while (current != NULL)
+	{
+		MumbleUser* user = mumble_user_get(l, channel->client, current->data);
+		if (user->channel_id == channel->channel_id) {
+			lua_pushnumber(l, i++);
+			mumble_user_raw_get(l, channel->client, current->data);
+			lua_settable(l, -3);
 		}
-		lua_pop(l, 1);
+		current = current->next;
 	}
-
-	lua_pop(l, 1);
 	return 1;
 }
 

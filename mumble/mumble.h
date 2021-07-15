@@ -199,6 +199,8 @@ struct MumbleClient {
 
 	uint32_t			resync;
 	mumble_crypt*		crypt;
+
+	LinkNode*			session_list;
 };
 
 struct LinkNode
@@ -228,6 +230,7 @@ struct MumbleChannel {
 void list_add(LinkNode** head_ref, uint32_t value);
 void list_remove(LinkNode **head_ref, uint32_t value);
 void list_clear(LinkNode** head_ref);
+size_t list_count(LinkNode** head_ref);
 
 struct MumbleUser
 {
@@ -268,6 +271,13 @@ typedef struct {
 	int header_length;
 } VoicePacket;
 
+typedef struct {
+	const char*	data_id;
+	size_t	data_id_len;
+	ProtobufCBinaryData cbdata;
+	LinkNode* session_list;
+} PluginData;
+
 /*--------------------------------
 	UTIL FUNCTIONS
 --------------------------------*/
@@ -282,6 +292,7 @@ extern void debugstack(lua_State *l, const char* text);
 extern int luaL_typerror(lua_State *L, int narg, const char *tname);
 extern int luaL_checkboolean(lua_State *L, int i);
 extern int luaL_optboolean(lua_State *L, int i, int d);
+extern int luaL_isudata(lua_State *L, int ud, const char *tname);
 extern const char* eztype(lua_State *L, int i);
 
 extern uint64_t util_get_varint(uint8_t buffer[], int *len);

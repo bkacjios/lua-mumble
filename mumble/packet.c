@@ -467,6 +467,8 @@ void packet_user_remove(lua_State *l, MumbleClient *client, Packet *packet)
 	mumble_hook_call(l, client, "OnUserRemove", 1);
 	mumble_user_remove(l, client, user->session);
 
+	list_remove(&client->session_list, user->session);
+
 	mumble_proto__user_remove__free_unpacked(user, NULL);
 }
 
@@ -617,10 +619,15 @@ void packet_user_state(lua_State *l, MumbleClient *client, Packet *packet)
 		mumble_user_raw_get(l, client, state->session);
 		lua_setfield(l, -2, "user");
 
-		if (user->connected == false && client->synced == true) {
+		if (user->connected == false) {
 			user->connected = true;
-			lua_pushvalue(l, -1); // Push a copy of the event table we will send to the 'OnUserState' hook
-			mumble_hook_call(l, client, "OnUserConnected", 1);
+
+			list_add(&client->session_list, state->session);
+
+			if (client->synced == true) {
+				lua_pushvalue(l, -1); // Push a copy of the event table we will send to the 'OnUserState' hook
+				mumble_hook_call(l, client, "OnUserConnected", 1);
+			}
 		}
 	mumble_hook_call(l, client, "OnUserState", 1);
 

@@ -12,6 +12,7 @@
 #include "timer.h"
 #include "packet.h"
 #include "ocb.h"
+//#include "plugindata.h"
 
 int MUMBLE_CLIENTS;
 
@@ -327,6 +328,8 @@ static int mumble_connect(lua_State *l)
 	client->udp_tunnel = true;
 
 	client->crypt = crypt_new();
+
+	client->session_list = NULL;
 
 	if (client->crypt == NULL) {
 		lua_pushnil(l);
@@ -703,7 +706,7 @@ MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session
 			user->client = client;
 			lua_newtable(l);
 			user->data = luaL_ref(l, LUA_REGISTRYINDEX);
-			user->connected = client->synced ? false : true;
+			user->connected = false;
 			user->session = session;
 			user->user_id = 0;
 			user->channel_id = 0;
@@ -744,6 +747,19 @@ void mumble_client_raw_get(lua_State* l, MumbleClient* client) {
 	lua_pushinteger(l, client->self);
 	lua_gettable(l, -2);
 	lua_remove(l, -2);
+}
+
+bool mumble_user_isnil(lua_State* l, MumbleClient* client, uint32_t session) {
+
+	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
+	lua_pushinteger(l, session);
+	lua_gettable(l, -2);
+
+	bool isNil = lua_isnil(l, -1);
+
+	lua_pop(l, 2);
+
+	return isNil;
 }
 
 void mumble_user_raw_get(lua_State* l, MumbleClient* client, uint32_t session) {
@@ -1146,6 +1162,25 @@ int luaopen_mumble(lua_State *l)
 			lua_setfield(l, -2, "__index");
 		}
 		luaL_register(l, NULL, mumble_audiostream);
+
+		/*
+		// Register plugin data metatable
+		luaL_newmetatable(l, METATABLE_PLUGINDATA);
+		{
+			lua_pushvalue(l, -1);
+			lua_setfield(l, -2, "__index");
+		}
+		luaL_register(l, NULL, mumble_plugindata);
+
+		// If you call the plugin data metatable as a function it will return a new voice target object
+		lua_newtable(l);
+		{
+			lua_pushcfunction(l, mumble_plugindata_new);
+			lua_setfield(l, -2, "__call");
+		}
+		lua_setmetatable(l, -2);
+		lua_setfield(l, -2, "plugindata");
+		*/
 	}
 
 	lua_newtable(l);

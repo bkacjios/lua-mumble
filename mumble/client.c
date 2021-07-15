@@ -6,6 +6,7 @@
 #include "packet.h"
 #include "target.h"
 #include "user.h"
+//#include "plugindata.h"
 
 #include "gitversion.h"
 
@@ -43,12 +44,11 @@ static int client_auth(lua_State *l)
 			return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
 		while (lua_next(l, -2)) {
-			lua_pushvalue(l, -2);
 			if (i < auth.n_tokens) {
-				char *value = (char*) lua_tostring(l, -2);
+				char *value = (char*) lua_tostring(l, -1);
 				auth.tokens[i++] = value;
 			}
-			lua_pop(l, 2);
+			lua_pop(l, 1);
 		}
 		lua_pop(l, 1);
 	}
@@ -90,12 +90,11 @@ static int client_setTokens(lua_State *l)
 		return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
 	while (lua_next(l, -2)) {
-		lua_pushvalue(l, -2);
 		if (i < auth.n_tokens) {
-			char *value = (char*) lua_tostring(l, -2);
+			char *value = (char*) lua_tostring(l, -1);
 			auth.tokens[i++] = value;
 		}
-		lua_pop(l, 2);
+		lua_pop(l, 1);
 	}
 	lua_pop(l, 1);
 
@@ -161,70 +160,27 @@ static int client_sendPluginData(lua_State *l)
 	data.has_data = true;
 	data.data = cbdata;
 
-	if (lua_istable(l, 4)) {
-		int i = 0;
+	luaL_checktype(l, 4, LUA_TTABLE);
 
-		data.n_receiversessions = lua_objlen(l, 4);
-		data.receiversessions = malloc(sizeof(uint32_t) * data.n_receiversessions);
+	data.n_receiversessions = lua_objlen(l, 4);
+	data.receiversessions = malloc(sizeof(uint32_t) * data.n_receiversessions);
 
-		if (data.receiversessions == NULL)
-			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+	if (data.receiversessions == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
-		lua_pushvalue(l, 4);
-		lua_pushnil(l);
+	lua_pushvalue(l, 4);
+	lua_pushnil(l);
 
-		while (lua_next(l, -2)) {
-			lua_pushvalue(l, -2);
-			if (i < data.n_receiversessions) {
-				switch (lua_type(l, -2)) {
-					case LUA_TNUMBER:
-					{
-						// Use direct session number
-						uint32_t session = (uint32_t) luaL_checkinteger(l, -2);
-						data.receiversessions[i++] = session;
-						break;
-					}
-					case LUA_TUSERDATA:
-					{
-						// Make sure the userdata has a user metatable
-						MumbleUser *user = luaL_checkudata(l, -2, METATABLE_USER);
-						data.receiversessions[i++] = user->session;
-						break;
-					}
-				}
-			}
-			lua_pop(l, 2);
+	int i = 0;
+	while (lua_next(l, -2)) {
+		if (i < data.n_receiversessions && luaL_isudata(l, -1, METATABLE_USER)) {
+			// Make sure the userdata has a user metatable
+			MumbleUser *user = lua_touserdata(l, -1);
+			data.receiversessions[i++] = user->session;
 		}
-
 		lua_pop(l, 1);
-	} else {
-		data.n_receiversessions = lua_gettop(l) - 3;
-		data.receiversessions = malloc(sizeof(uint32_t) * data.n_receiversessions);
-
-		if (data.receiversessions == NULL)
-			return luaL_error(l, "failed to malloc: %s", strerror(errno));
-
-		for (int i = 0; i < data.n_receiversessions; i++) {
-			int sp = 4+i;
-
-			switch (lua_type(l, sp)) {
-				case LUA_TNUMBER:
-				{
-					// Use direct session number
-					uint32_t session = (uint32_t) luaL_checkinteger(l, sp);
-					data.receiversessions[i] = session;
-					break;
-				}
-				case LUA_TUSERDATA:
-				{
-					// Make sure the userdata has a user metatable
-					MumbleUser *user = luaL_checkudata(l, sp, METATABLE_USER);
-					data.receiversessions[i] = user->session;
-					break;
-				}
-			}
-		}
 	}
+	lua_pop(l, 1);
 
 	packet_send(client, PACKET_PLUGINDATA, &data);
 	free(data.receiversessions);
@@ -522,7 +478,20 @@ static int client_getHooks(lua_State *l)
 static int client_getUsers(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
+	lua_newtable(l);
+
+	LinkNode* current = client->session_list;
+
+	lua_newtable(l);
+	int i = 1;
+
+	while (current != NULL)
+	{
+		lua_pushnumber(l, i++);
+		mumble_user_raw_get(l, client, current->data);
+		lua_settable(l, -3);
+		current = current->next;
+	}
 	return 1;
 }
 
@@ -633,73 +602,30 @@ static int client_getUpTime(lua_State *l)
 static int client_requestTextureBlob(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	luaL_checktype(l, 2, LUA_TTABLE);
 
 	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
 
-	if (lua_istable(l, 2)) {
-		int i = 0;
+	msg.n_session_texture = lua_objlen(l, 2);
+	msg.session_texture = malloc(sizeof(uint32_t) * msg.n_session_texture);
 
-		msg.n_session_texture = lua_objlen(l, 2);
-		msg.session_texture = malloc(sizeof(uint32_t) * msg.n_session_texture);
+	if (msg.session_texture == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
-		if (msg.session_texture == NULL)
-			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+	lua_pushvalue(l, 2);
+	lua_pushnil(l);
 
-		lua_pushvalue(l, 2);
-		lua_pushnil(l);
-
-		while (lua_next(l, -2)) {
-			lua_pushvalue(l, -2);
-			if (i < msg.n_session_texture) {
-				switch (lua_type(l, -2)) {
-					case LUA_TNUMBER:
-					{
-						// Use direct session number
-						uint32_t session = (uint32_t) luaL_checkinteger(l, -2);
-						msg.session_texture[i++] = session;
-						break;
-					}
-					case LUA_TUSERDATA:
-					{
-						// Make sure the userdata has a user metatable
-						MumbleUser *user = luaL_checkudata(l, -2, METATABLE_USER);
-						msg.session_texture[i++] = user->session;
-						break;
-					}
-				}
-			}
-			lua_pop(l, 2);
+	int i = 0;
+	while (lua_next(l, -2)) {
+		if (i < msg.n_session_texture && luaL_isudata(l, -1, METATABLE_USER)) {
+			// Make sure the userdata has a user metatable
+			MumbleUser *user = lua_touserdata(l, -1);
+			msg.session_texture[i++] = user->session;
 		}
-
 		lua_pop(l, 1);
-	} else {
-		// Get the number of channels we want to unlink
-		msg.n_session_texture = lua_gettop(l) - 1;
-		msg.session_texture = malloc(sizeof(uint32_t) * msg.n_session_texture);
-
-		if (msg.session_texture == NULL)
-			return luaL_error(l, "failed to malloc: %s", strerror(errno));
-
-		for (int i = 0; i < msg.n_session_texture; i++) {
-			int sp = 2+i;
-			switch (lua_type(l, sp)) {
-				case LUA_TNUMBER:
-				{
-					// Use direct session number
-					uint32_t session = (uint32_t) luaL_checkinteger(l, sp);
-					msg.session_texture[i] = session;
-					break;
-				}
-				case LUA_TUSERDATA:
-				{
-					// Make sure the userdata has a user metatable
-					MumbleUser *user = luaL_checkudata(l, sp, METATABLE_USER);
-					msg.session_texture[i] = user->session;
-					break;
-				}
-			}
-		}
 	}
+
+	lua_pop(l, 1);
 
 	packet_send(client, PACKET_USERSTATE, &msg);
 	free(msg.session_texture);
@@ -709,73 +635,30 @@ static int client_requestTextureBlob(lua_State *l)
 static int client_requestCommentBlob(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	luaL_checktype(l, 2, LUA_TTABLE);
 
 	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
 
-	if (lua_istable(l, 2)) {
-		int i = 0;
+	msg.n_session_comment = lua_objlen(l, 2);
+	msg.session_comment = malloc(sizeof(uint32_t) * msg.n_session_texture);
 
-		msg.n_session_comment = lua_objlen(l, 2);
-		msg.session_comment = malloc(sizeof(uint32_t) * msg.n_session_texture);
+	if (msg.session_texture == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
-		if (msg.session_texture == NULL)
-			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+	lua_pushvalue(l, 2);
+	lua_pushnil(l);
 
-		lua_pushvalue(l, 2);
-		lua_pushnil(l);
-
-		while (lua_next(l, -2)) {
-			lua_pushvalue(l, -2);
-			if (i < msg.n_session_comment) {
-				switch (lua_type(l, -2)) {
-					case LUA_TNUMBER:
-					{
-						// Use direct session number
-						uint32_t session = (uint32_t) luaL_checkinteger(l, -2);
-						msg.session_comment[i++] = session;
-						break;
-					}
-					case LUA_TUSERDATA:
-					{
-						// Make sure the userdata has a user metatable
-						MumbleUser *user = luaL_checkudata(l, -2, METATABLE_USER);
-						msg.session_comment[i++] = user->session;
-						break;
-					}
-				}
-			}
-			lua_pop(l, 2);
+	int i = 0;
+	while (lua_next(l, -2)) {
+		if (i < msg.n_session_comment && luaL_isudata(l, -1, METATABLE_USER)) {
+			// Make sure the userdata has a user metatable
+			MumbleUser *user = lua_touserdata(l, -1);
+			msg.session_comment[i++] = user->session;
 		}
-
 		lua_pop(l, 1);
-	} else {
-		// Get the number of channels we want to unlink
-		msg.n_session_comment = lua_gettop(l) - 1;
-		msg.session_comment = malloc(sizeof(uint32_t) * msg.n_session_comment);
-
-		if (msg.session_comment == NULL)
-			return luaL_error(l, "failed to malloc: %s", strerror(errno));
-
-		for (int i = 0; i < msg.n_session_comment; i++) {
-			int sp = 2+i;
-			switch (lua_type(l, sp)) {
-				case LUA_TNUMBER:
-				{
-					// Use direct session number
-					uint32_t session = (uint32_t) luaL_checkinteger(l, sp);
-					msg.session_comment[i] = session;
-					break;
-				}
-				case LUA_TUSERDATA:
-				{
-					// Make sure the userdata has a user metatable
-					MumbleUser *user = luaL_checkudata(l, sp, METATABLE_USER);
-					msg.session_comment[i] = user->session;
-					break;
-				}
-			}
-		}
 	}
+
+	lua_pop(l, 1);
 
 	packet_send(client, PACKET_USERSTATE, &msg);
 	free(msg.session_comment);
@@ -785,73 +668,30 @@ static int client_requestCommentBlob(lua_State *l)
 static int client_requestDescriptionBlob(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	luaL_checktype(l, 2, LUA_TTABLE);
 
 	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
 
-	if (lua_istable(l, 2)) {
-		int i = 0;
+	msg.n_channel_description = lua_objlen(l, 2);
+	msg.channel_description = malloc(sizeof(uint32_t) * msg.n_session_texture);
 
-		msg.n_channel_description = lua_objlen(l, 2);
-		msg.channel_description = malloc(sizeof(uint32_t) * msg.n_session_texture);
+	if (msg.session_texture == NULL)
+		return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
-		if (msg.session_texture == NULL)
-			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+	lua_pushvalue(l, 2);
+	lua_pushnil(l);
 
-		lua_pushvalue(l, 2);
-		lua_pushnil(l);
-
-		while (lua_next(l, -2)) {
-			lua_pushvalue(l, -2);
-			if (i < msg.n_channel_description) {
-				switch (lua_type(l, -2)) {
-					case LUA_TNUMBER:
-					{
-						// Use direct session number
-						uint32_t channel_id = (uint32_t) luaL_checkinteger(l, -2);
-						msg.channel_description[i++] = channel_id;
-						break;
-					}
-					case LUA_TUSERDATA:
-					{
-						// Make sure the userdata has a user metatable
-						MumbleUser *channel = luaL_checkudata(l, -2, METATABLE_CHAN);
-						msg.channel_description[i++] = channel->channel_id;
-						break;
-					}
-				}
-			}
-			lua_pop(l, 2);
+	int i = 0;
+	while (lua_next(l, -2)) {
+		if (i < msg.n_channel_description && luaL_isudata(l, -1, METATABLE_CHAN)) {
+			// Make sure the userdata has a user metatable
+			MumbleUser *channel = lua_touserdata(l, -1);
+			msg.channel_description[i++] = channel->channel_id;
 		}
-
 		lua_pop(l, 1);
-	} else {
-		// Get the number of channels we want to unlink
-		msg.n_channel_description = lua_gettop(l) - 1;
-		msg.channel_description = malloc(sizeof(uint32_t) * msg.n_channel_description);
-
-		if (msg.channel_description == NULL)
-			return luaL_error(l, "failed to malloc: %s", strerror(errno));
-
-		for (int i = 0; i < msg.n_channel_description; i++) {
-			int sp = 2+i;
-			switch (lua_type(l, sp)) {
-				case LUA_TNUMBER:
-				{
-					// Use direct channel_id number
-					uint32_t channel_id = (uint32_t) luaL_checkinteger(l, sp);
-					msg.channel_description[i] = channel_id;
-					break;
-				}
-				case LUA_TUSERDATA:
-				{
-					// Make sure the userdata has a channel metatable
-					MumbleUser *channel = luaL_checkudata(l, sp, METATABLE_CHAN);
-					msg.channel_description[i] = channel->channel_id;
-					break;
-				}
-			}
-		}
 	}
+
+	lua_pop(l, 1);
 
 	packet_send(client, PACKET_USERSTATE, &msg);
 	free(msg.channel_description);

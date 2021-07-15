@@ -86,6 +86,19 @@ int luaL_optboolean(lua_State *L, int i, int d){
 		return luaL_checkboolean(L, i);
 }
 
+int luaL_isudata(lua_State *L, int ud, const char *tname) {
+	if (lua_isuserdata(L, ud)) { // value is a userdata?
+		if (lua_getmetatable(L, ud)) { // does it have a metatable?
+			int equal;
+			lua_getfield(L, LUA_REGISTRYINDEX, tname); // get correct metatable
+			equal = lua_rawequal(L, -1, -2); // does it have the correct mt?
+			lua_pop(L, 2); // remove both metatables
+			return equal;
+		}
+	}
+	return 0; // else false
+}
+
 const char* eztype(lua_State *L, int i)
 {
 	return lua_typename(L, lua_type(L, i));
@@ -148,4 +161,19 @@ void list_clear(LinkNode** head_ref)
 	/* deref head_ref to affect the real head back
 	in the caller. */
 	*head_ref = NULL;
+}
+
+size_t list_count(LinkNode** head_ref)
+{
+	size_t count = 0;
+
+	LinkNode* current = *head_ref;
+
+	while (current != NULL)
+	{
+		count++;
+		current = current->next;
+	}
+
+	return count;
 }
