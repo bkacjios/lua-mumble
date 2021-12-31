@@ -351,13 +351,12 @@ static int audiostream_seek(lua_State *l)
 {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 
-	const char* whence = lua_tostring(l, 2);
 	unsigned int offset = luaL_optinteger(l, 3, 0);
 
 	enum what {START, CUR, END};
 	static const char * op[] = {"start", "cur", "end", NULL};
 
-	switch (luaL_checkoption(l, 1, NULL, op)) {
+	switch (luaL_checkoption(l, 2, NULL, op)) {
 		case START:
 			stb_vorbis_seek(sound->ogg, offset);
 			break;
