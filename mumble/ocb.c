@@ -14,6 +14,7 @@
 
 #include "ocb.h"
 
+#include <arpa/inet.h>
 #include <openssl/rand.h>
 #include <stdint.h>
 #include <string.h>
