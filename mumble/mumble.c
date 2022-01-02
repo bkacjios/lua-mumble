@@ -15,11 +15,12 @@
 //#include "plugindata.h"
 
 int MUMBLE_CLIENTS;
+int MUMBLE_REGISTRY;
 
-static void signal_event(struct ev_loop *loop, ev_signal *w_, int revents)
+static ev_signal mumble_signal;
+
+static void mumble_signal_event(struct ev_loop *loop, ev_signal *w, int revents)
 {
-	my_signal *w = (my_signal *) w_;
-	MumbleClient *client = w->client;
 	ev_break(EV_DEFAULT, EVBREAK_ALL);
 }
 
@@ -136,6 +137,37 @@ void mumble_ping_udp(lua_State* l, MumbleClient* client) {
 	}
 }
 
+static void socket_connect_event_tcp(struct ev_loop *loop, ev_io *w_, int revents)
+{
+	my_io *w = (my_io *) w_;
+
+	MumbleClient *client = w->client;
+	lua_State *l = w->l;
+
+	int ret;
+	if ((ret = connect(client->socket_tcp, client->server_host_tcp->ai_addr, client->server_host_tcp->ai_addrlen)) < 0) {
+		if (errno != EINPROGRESS && errno != EISCONN) {
+			mumble_disconnect(l, client, strerror(errno));
+			ev_io_stop(loop, w_);
+			return;
+		}
+	}
+
+	ret = SSL_connect(client->ssl);
+	if (ret <= 0) {
+		int err = SSL_get_error(client->ssl, ret);
+		if (err != SSL_ERROR_WANT_READ) {
+			mumble_disconnect(l, client, "could not create secure connection");
+			ev_io_stop(loop, w_);
+		}
+		return;
+	}
+
+	client->connected = true;
+	mumble_hook_call(l, client, "OnConnect", 0);
+	ev_io_stop(loop, w_);
+}
+
 static void socket_read_event_tcp(struct ev_loop *loop, ev_io *w_, int revents)
 {
 	my_io *w = (my_io *) w_;
@@ -154,37 +186,31 @@ static void socket_read_event_tcp(struct ev_loop *loop, ev_io *w_, int revents)
 		if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL) {
 			mumble_disconnect(l, client, "connection closed by server");
 		}
-		ev_break(loop, EVBREAK_ALL);
 		return;
 	}
 
 	if (ret != 6) {
-		ev_break(loop, EVBREAK_ALL);
 		return;
 	}
 
 	packet_read.type = ntohs(*(uint16_t *)packet_read.buffer);
 	if (packet_read.type >= sizeof(packet_handler) / sizeof(Packet_Handler_Func)) {
-		ev_break(loop, EVBREAK_ALL);
 		return;
 	}
 	packet_read.length = ntohl(*(uint32_t *)(packet_read.buffer + 2));
 	if (packet_read.length > PAYLOAD_SIZE_MAX) {
-		ev_break(loop, EVBREAK_ALL);
 		return;
 	}
 
 	while (total_read < packet_read.length) {
 		ret = SSL_read(client->ssl, packet_read.buffer + total_read, packet_read.length - total_read);
 		if (ret <= 0) {
-			ev_break(loop, EVBREAK_ALL);
 			return;
 		}
 		total_read += ret;
 	}
 
 	if (total_read != packet_read.length) {
-		ev_break(loop, EVBREAK_ALL);
 		return;
 	}
 
@@ -285,30 +311,24 @@ static int mumble_connect(lua_State *l)
 	luaL_getmetatable(l, METATABLE_CLIENT);
 	lua_setmetatable(l, -2);
 
-	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
-	lua_pushvalue(l, -2);
-
-	client->self = luaL_ref(l, -2);
-	lua_pop(l, 1);
+	lua_newtable(l);
+	client->hooks = mumble_ref(l, MUMBLE_REGISTRY);
 
 	lua_newtable(l);
-	client->hooks = luaL_ref(l, LUA_REGISTRYINDEX);
+	client->users = mumble_ref(l, MUMBLE_REGISTRY);
 
 	lua_newtable(l);
-	client->users = luaL_ref(l, LUA_REGISTRYINDEX);
+	client->channels = mumble_ref(l, MUMBLE_REGISTRY);
 
 	lua_newtable(l);
-	client->channels = luaL_ref(l, LUA_REGISTRYINDEX);
-
-	lua_newtable(l);
-	client->audio_streams = luaL_ref(l, LUA_REGISTRYINDEX);
+	client->audio_streams = mumble_ref(l, MUMBLE_REGISTRY);
 
 	client->host = server_host_str;
 	client->port = port;
 	client->session = 0;
 	client->time = gettime(CLOCK_MONOTONIC);
 	client->volume = 0.5;
-	client->connected = true;
+	client->connected = false;
 	client->synced = false;
 	client->audio_target = 0;
 	client->audio_frames = AUDIO_DEFAULT_FRAMES;
@@ -348,7 +368,7 @@ static int mumble_connect(lua_State *l)
 		return 2;
 	}
 
-	client->encoder_ref = luaL_ref(l, LUA_REGISTRYINDEX);
+	client->encoder_ref = mumble_ref(l, MUMBLE_REGISTRY);
 
 	opus_encoder_ctl(client->encoder, OPUS_SET_VBR(0));
 	opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(AUDIO_DEFAULT_BITRATE));
@@ -375,60 +395,11 @@ static int mumble_connect(lua_State *l)
 	hint_tcp.ai_family = AF_UNSPEC;
 	hint_tcp.ai_socktype = SOCK_STREAM;
 
-	struct addrinfo* server_host_tcp;
-	err = getaddrinfo(server_host_str, port_str, &hint_tcp, &server_host_tcp);
+	err = getaddrinfo(server_host_str, port_str, &hint_tcp, &client->server_host_tcp);
 	
 	if(err != 0) {
 		lua_pushnil(l);
 		lua_pushfstring(l, "could not parse server address: %s", gai_strerror(err));
-		return 2;
-	}
-
-	client->socket_tcp = socket(server_host_tcp->ai_family, server_host_tcp->ai_socktype, 0);
-	if (client->socket_tcp < 0) {
-		freeaddrinfo(server_host_tcp);
-		lua_pushnil(l);
-		lua_pushfstring(l, "could not create tcp socket: %s", strerror(errno));
-		return 2;
-	}
-
-	struct timeval timeout;
-	timeout.tv_sec = 5;
-	timeout.tv_usec = 0;
-
-	if (setsockopt(client->socket_tcp, SOL_SOCKET, (SO_RCVTIMEO | SO_SNDTIMEO), (char *)&timeout, sizeof(timeout)) < 0) {
-		freeaddrinfo(server_host_tcp);
-		lua_pushnil(l);
-		lua_pushfstring(l, "setsockopt failed: %s", strerror(errno));
-		return 2;
-	}
-
-	if (connect(client->socket_tcp, server_host_tcp->ai_addr, server_host_tcp->ai_addrlen) != 0) {
-		freeaddrinfo(server_host_tcp);
-		lua_pushnil(l);
-		lua_pushfstring(l, "could not connect to tcp server: %s", strerror(errno));
-		return 2;
-	}
-
-	freeaddrinfo(server_host_tcp);
-	
-	client->ssl = SSL_new(client->ssl_context);
-
-	if (client->ssl == NULL) {
-		lua_pushnil(l);
-		lua_pushstring(l, "could not create SSL object");
-		return 2;
-	}
-
-	if (SSL_set_fd(client->ssl, client->socket_tcp) == 0) {
-		lua_pushnil(l);
-		lua_pushstring(l, "could not set SSL file descriptor");
-		return 2;
-	}
-
-	if ((err = SSL_connect(client->ssl)) != 1) {
-		lua_pushnil(l);
-		lua_pushfstring(l, "could not create secure connection: %s", SSL_get_error(client->ssl, err));
 		return 2;
 	}
 
@@ -462,7 +433,61 @@ static int mumble_connect(lua_State *l)
 		lua_pushfstring(l, "could not set udp socket buffer size: %s", strerror(errno));
 		return 2;
 	}
+#endif
 
+	client->socket_tcp = socket(client->server_host_tcp->ai_family, client->server_host_tcp->ai_socktype, 0);
+	if (client->socket_tcp < 0) {
+		lua_pushnil(l);
+		lua_pushfstring(l, "could not create tcp socket: %s", strerror(errno));
+		return 2;
+	}
+
+	struct timeval timeout;
+	timeout.tv_sec = 5;
+	timeout.tv_usec = 0;
+
+	if (setsockopt(client->socket_tcp, SOL_SOCKET, (SO_RCVTIMEO | SO_SNDTIMEO), (char *)&timeout, sizeof(timeout)) < 0) {
+		lua_pushnil(l);
+		lua_pushfstring(l, "setsockopt failed: %s", strerror(errno));
+		return 2;
+	}
+
+	if (fcntl(client->socket_tcp, F_SETFL, SOCK_NONBLOCK) < 0) {
+		lua_pushnil(l);
+		lua_pushfstring(l, "could not switch to non-blocking tcp socket: %s", strerror(errno));
+		return 2;
+	}
+	
+	client->ssl = SSL_new(client->ssl_context);
+
+	if (client->ssl == NULL) {
+		lua_pushnil(l);
+		lua_pushstring(l, "could not create SSL object");
+		return 2;
+	}
+
+	if (SSL_set_fd(client->ssl, client->socket_tcp) == 0) {
+		lua_pushnil(l);
+		lua_pushstring(l, "could not set SSL file descriptor");
+		return 2;
+	}
+
+	client->signal.l = l;
+	client->signal.client = client;
+
+	client->socket_tcp_io.l = l;
+	client->socket_tcp_io.client = client;
+
+	client->socket_tcp_connect.l = l;
+	client->socket_tcp_connect.client = client;
+
+	client->audio_timer.l = l;
+	client->audio_timer.client = client;
+	
+	client->ping_timer.l = l;
+	client->ping_timer.client = client;
+
+#ifdef ENABLE_UDP
 	client->socket_udp_io.l = l;
 	client->socket_udp_io.client = client;
 
@@ -471,30 +496,21 @@ static int mumble_connect(lua_State *l)
 	ev_io_start(EV_DEFAULT, &client->socket_udp_io.io);
 #endif
 
-	client->signal.l = l;
-	client->signal.client = client;
-
-	client->socket_tcp_io.l = l;
-	client->socket_tcp_io.client = client;
-
-	client->audio_timer.l = l;
-	client->audio_timer.client = client;
-	
-	client->ping_timer.l = l;
-	client->ping_timer.client = client;
-
-	// Create a signal event.
-	// Disconnects the client on exit request and ends the main loop
-	ev_signal_init(&client->signal.signal, signal_event, SIGINT);
-	ev_signal_start(EV_DEFAULT, &client->signal.signal);
-
 	// Create a callback for when the tcp socket is ready to be read from
 	ev_io_init(&client->socket_tcp_io.io, socket_read_event_tcp, client->socket_tcp, EV_READ);
 	ev_io_start(EV_DEFAULT, &client->socket_tcp_io.io);
 
+	ev_io_init(&client->socket_tcp_connect.io, socket_connect_event_tcp, client->socket_tcp, EV_WRITE);
+	ev_io_start(EV_DEFAULT, &client->socket_tcp_connect.io);
+
 	// Create a timer to ping the server every X seconds
 	ev_timer_init(&client->ping_timer.timer, mumble_ping_timer, PING_TIMEOUT, PING_TIMEOUT);
 	ev_timer_start(EV_DEFAULT, &client->ping_timer.timer);
+
+	// Register ourself in the list of active clients
+	lua_pushvalue(l, -1);
+	client->self = mumble_ref(l, MUMBLE_CLIENTS);
+
 	return 1;
 }
 
@@ -552,26 +568,70 @@ static int mumble_loop(lua_State *l)
 	return 0;
 }
 
+static int mumble_stop(lua_State *l)
+{
+	ev_break(EV_DEFAULT, EVBREAK_ALL);
+	return 0;
+}
+
 void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason)
 {
+#ifdef ENABLE_UDP
+	ev_io_stop(EV_DEFAULT, &client->socket_udp_io.io);
+#endif
+	ev_io_stop(EV_DEFAULT, &client->socket_tcp_io.io);
+	ev_io_stop(EV_DEFAULT, &client->socket_tcp_connect.io);
+	ev_timer_stop(EV_DEFAULT, &client->ping_timer.timer);
+
+	if (client->crypt) {
+		free(client->crypt);
+		client->crypt = NULL;
+	}
+
+	if (client->ssl) {
+		SSL_shutdown(client->ssl);
+		client->ssl = NULL;
+	}
+
+	if (client->ssl_context) {
+		SSL_CTX_free(client->ssl_context);
+		client->ssl_context = NULL;
+	}
+
+	if (client->socket_tcp) {
+		close(client->socket_tcp);
+		client->socket_tcp = 0;
+	}
+
+	if (client->socket_udp) {
+		close(client->socket_udp);
+		client->socket_udp = 0;
+	}
+
+	if (client->server_host_udp) {
+		freeaddrinfo(client->server_host_udp);
+		client->server_host_udp = NULL;
+	}
+
+	if (client->server_host_tcp) {
+		freeaddrinfo(client->server_host_tcp);
+		client->server_host_tcp = NULL;
+	}
+
 	lua_stackguard_entry(l);
 
-	if (client->connected) {
-		lua_pushstring(l, reason);
-		mumble_hook_call(l, client, "OnDisconnect", 1);
-		client->connected = false;
+	if (client->audio_jobs) {
+		for(int i = 1; i <= AUDIO_MAX_STREAMS; ++i) {
+			audio_transmission_stop(l, client, i);
+		}
 	}
+
+	lua_pushstring(l, reason);
+	mumble_hook_call(l, client, "OnDisconnect", 1);
+	client->connected = false;
 
 	// Remove ourself from the table of connections
-	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
-	luaL_unref(l, -1, client->self);
-
-	// If we have no more connections...
-	if (lua_objlen(l, -1) <= 0) {
-		// Break out of the mumble.loop() call to end the script
-		ev_break(EV_DEFAULT, EVBREAK_ALL);
-	}
-	lua_pop(l, 1); // Pop table of connections
+	mumble_unref(l, MUMBLE_CLIENTS, client->self);
 
 	lua_stackguard_exit(l);
 }
@@ -606,7 +666,7 @@ void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int 
 	const int top = lua_gettop(l);
 
 	// Get hook table
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->hooks);
+	mumble_pushref(l, MUMBLE_REGISTRY, client->hooks);
 
 	// Get the table of callbacks
 	lua_getfield(l, -1, hook);
@@ -686,12 +746,14 @@ void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int 
 	for (int i = top; i < top + nargs; i++) {
 		lua_remove(l, i);
 	}
+
+	//lua_gc(l, LUA_GCSTEP, 0);
 }
 
 MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session) {
 	MumbleUser* user = NULL;
 
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
+	mumble_pushref(l, MUMBLE_REGISTRY, client->users);
 
 	lua_pushinteger(l, session);
 	lua_gettable(l, -2);
@@ -705,7 +767,7 @@ MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session
 		{
 			user->client = client;
 			lua_newtable(l);
-			user->data = luaL_ref(l, LUA_REGISTRYINDEX);
+			user->data = mumble_ref(l, MUMBLE_REGISTRY);
 			user->connected = false;
 			user->session = session;
 			user->user_id = 0;
@@ -743,15 +805,12 @@ MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session
 }
 
 void mumble_client_raw_get(lua_State* l, MumbleClient* client) {
-	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
-	lua_pushinteger(l, client->self);
-	lua_gettable(l, -2);
-	lua_remove(l, -2);
+	mumble_pushref(l, MUMBLE_CLIENTS, client->self);
 }
 
 bool mumble_user_isnil(lua_State* l, MumbleClient* client, uint32_t session) {
 
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
+	mumble_pushref(l, MUMBLE_REGISTRY, client->users);
 	lua_pushinteger(l, session);
 	lua_gettable(l, -2);
 
@@ -762,35 +821,29 @@ bool mumble_user_isnil(lua_State* l, MumbleClient* client, uint32_t session) {
 	return isNil;
 }
 
-void mumble_user_raw_get(lua_State* l, MumbleClient* client, uint32_t session) {
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
+void mumble_user_raw_get(lua_State* l, MumbleClient* client, uint32_t session)
+{
+	mumble_pushref(l, MUMBLE_REGISTRY, client->users);
 	lua_pushinteger(l, session);
 	lua_gettable(l, -2);
 	lua_remove(l, -2);
 }
 
-void mumble_user_remove(lua_State* l, MumbleClient* client, uint32_t session) {
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->users);
-		lua_pushinteger(l, session);
-		lua_pushnil(l);
-		lua_settable(l, -3);
-	lua_pop(l, 1);
+void mumble_user_remove(lua_State* l, MumbleClient* client, uint32_t session)
+{
+	mumble_unref(l, MUMBLE_REGISTRY, client->users);
 }
 
-MumbleChannel* mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t channel_id)
+void mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t channel_id)
 {
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
-	lua_pushinteger(l, channel_id);
-	lua_gettable(l, -2);
-	lua_remove(l, -2);
-	return lua_touserdata(l, -1);
+	mumble_pushref(l, MUMBLE_CLIENTS, client->channels);
 }
 
 MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t channel_id)
 {
 	MumbleChannel* channel = NULL;
 
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
+	mumble_pushref(l, MUMBLE_REGISTRY, client->channels);
 
 	lua_pushinteger(l, channel_id);
 	lua_gettable(l, -2);
@@ -804,7 +857,7 @@ MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t c
 		{
 			channel->client = client;
 			lua_newtable(l);
-			channel->data = luaL_ref(l, LUA_REGISTRYINDEX);
+			channel->data = mumble_ref(l, MUMBLE_REGISTRY);
 			channel->name = "";
 			channel->channel_id = channel_id;
 			channel->parent = 0;
@@ -833,7 +886,7 @@ MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t c
 
 void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_id)
 {
-	lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
+	mumble_pushref(l, MUMBLE_REGISTRY, client->channels);
 		lua_pushinteger(l, channel_id);
 		lua_pushnil(l);
 		lua_settable(l, -3);
@@ -949,6 +1002,7 @@ int mumble_handle_speaking_hooks(lua_State* l, MumbleClient* client, uint8_t buf
 const luaL_Reg mumble[] = {
 	{"connect", mumble_connect},
 	{"loop", mumble_loop},
+	{"stop", mumble_stop},
 	{"gettime", mumble_getTime},
 	{"getTime", mumble_getTime},
 	{"getConnections", mumble_getConnections},
@@ -960,6 +1014,9 @@ int luaopen_mumble(lua_State *l)
 {
 	signal(SIGPIPE, SIG_IGN);
 	SSL_library_init();
+
+	MUMBLE_CLIENTS = mumble_create_reference_table(l);
+	MUMBLE_REGISTRY = mumble_create_reference_table(l);
 
 	luaL_register(l, "mumble", mumble);
 	{
@@ -1162,29 +1219,51 @@ int luaopen_mumble(lua_State *l)
 			lua_setfield(l, -2, "__index");
 		}
 		luaL_register(l, NULL, mumble_audiostream);
+		lua_setfield(l, -2, "audiostream");
 
-		/*
-		// Register plugin data metatable
-		luaL_newmetatable(l, METATABLE_PLUGINDATA);
-		{
-			lua_pushvalue(l, -1);
-			lua_setfield(l, -2, "__index");
-		}
-		luaL_register(l, NULL, mumble_plugindata);
-
-		// If you call the plugin data metatable as a function it will return a new voice target object
-		lua_newtable(l);
-		{
-			lua_pushcfunction(l, mumble_plugindata_new);
-			lua_setfield(l, -2, "__call");
-		}
-		lua_setmetatable(l, -2);
-		lua_setfield(l, -2, "plugindata");
-		*/
+		lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_REGISTRY);
+		lua_setfield(l, -2, "registry");
 	}
 
-	lua_newtable(l);
-	MUMBLE_CLIENTS = luaL_ref(l, LUA_REGISTRYINDEX);
+	// Break out of mumble.loop() when a SIGINT signal is received
+	ev_signal_init(&mumble_signal, mumble_signal_event, SIGINT);
+	ev_signal_start(EV_DEFAULT, &mumble_signal);
 
 	return 0;
+}
+
+int mumble_create_reference_table(lua_State *l)
+{
+	lua_newtable(l);
+	/*lua_newtable(l);
+	{
+		lua_pushliteral(l, "v");
+		lua_setfield(l, -2, "__mode");
+	}
+	lua_setmetatable(l, -2);*/
+	return luaL_ref(l, LUA_REGISTRYINDEX);
+}
+
+int mumble_ref(lua_State *l, int t)
+{
+	int ref;
+	lua_rawgeti(l, LUA_REGISTRYINDEX, t);
+	lua_pushvalue(l, -2);
+	ref = luaL_ref(l, -2);
+	lua_pop(l, 2);
+	return ref;
+}
+
+void mumble_pushref(lua_State *l, int t, int ref)
+{
+	lua_rawgeti(l, LUA_REGISTRYINDEX, t);
+	lua_rawgeti(l, -1, ref);
+	lua_remove(l, -2);
+}
+
+void mumble_unref(lua_State *l, int t, int ref)
+{
+	lua_rawgeti(l, LUA_REGISTRYINDEX, t);
+	luaL_unref(l, -1, ref);
+	lua_pop(l, 1);
 }

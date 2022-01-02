@@ -1002,7 +1002,7 @@ void packet_permission_query(lua_State *l, MumbleClient *client, Packet *packet)
 		chan->permissions = query->permissions;
 	} else if (query->has_flush && query->flush) {
 		// Loop through all channels and set permissions to 0
-		lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
+		mumble_pushref(l, MUMBLE_REGISTRY, client->channels);
 		lua_pushnil(l);
 		while (lua_next(l, -2)) {
 			if (lua_isuserdata(l, -1) == 1) {

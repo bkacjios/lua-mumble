@@ -46,8 +46,11 @@ local mumble = require("mumble")
 mumble.client, [ String error ] = mumble.connect(String host, Number port, String certificate file path, String key file path)
 
 -- Main event loop that handles all events, ping, and audio processing
--- This will block the script until disconnect or SIGINT, so call this *after* you create your hooks
+-- This will block the script until SIGINT or mumble.stop(), so call this *after* you create your hooks
 mumble.loop()
+
+-- Break out of the mumble.loop() call
+mumble.stop()
 
 -- The client's user
 -- Is only available *after* "OnServerSync" is called
@@ -57,7 +60,7 @@ mumble.user = mumble.client:getSelf()
 
 -- A new timer object
 -- The timer itself will do a best-effort at avoiding drift, that is, if you configure a timer to trigger every 10 seconds, then it will normally trigger at exactly 10 second intervals. If, however, your program cannot keep up with the timer (because it takes longer than those 10 seconds to do stuff) the timer will not fire more than once per event loop iteration.
-mumble.timer = mumble.timer()
+mumble.timer = mumble.timer(Function callback(mumble.timer))
 
 -- A new voicetarget object
 mumble.voicetarget = mumble.voicetarget()
@@ -87,8 +90,9 @@ Table clients = {
 ### mumble.client
 
 ``` lua
--- Authenticate as a user
-mumble.client:auth(String username, String password, Table tokens)
+-- Authenticate as a user.
+-- Should be called as soon as a connection to the server is established.
+mumble.client:auth(String username, [ String password, Table tokens ])
 
 -- Set the bots access tokens
 mumble.client:setTokens(Table tokens)
@@ -173,7 +177,7 @@ mumble.client:setComment(String comment)
 
 -- Adds a callback for a specific event
 -- If no unique name is passed, it will default to "hook"
-mumble.client:hook(String hook, [ String unique name = "hook"], Function callback)
+mumble.client:hook(String hook, [ String unique name = "hook" ], Function callback(mumble.client))
 
 -- Gets all registered callbacks
 Table hooks = mumble.client:getHooks()
@@ -483,7 +487,7 @@ mumble.channel:create(String name, String description = "", Number position = 0,
 -- Configure the timer to trigger after after seconds (fractional and negative values are supported).
 -- If repeat is 0, then it will automatically be stopped once the timeout is reached.
 -- If it is positive, then the timer will automatically be configured to trigger again repeat seconds later, again, and again, until stopped manually.
-mumble.timer:start(Function callback, Number after, Number repeat = 0)
+mumble.timer:start(Number after, Number repeat = 0)
 
 -- Configure the timer to trigger after after seconds (fractional and negative values are supported).
 -- If repeat is 0., then it will automatically be stopped once the timeout is reached.
@@ -709,6 +713,14 @@ Table mumble.deny = {
 ```
 
 ## hooks
+
+### `OnConnect (mumble.client client)`
+
+Called when the connection to the server is fully established.
+
+### `OnDisconnect (mumble.client client, String reason)`
+
+Called when the connection to the server is disconnected for any reason.
 
 ### `OnServerVersion (mumble.client client, Table event)`
 

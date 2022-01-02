@@ -1,7 +1,10 @@
 local mumble = require("mumble")
 
 local client = assert(mumble.connect("raspberrypi.lan", 64738, "bot.pem", "bot.key"))
-client:auth("Mumble-Bot")
+
+client:hook("OnConnect", function(client)
+	client:auth("Mumble-Bot")
+end)
 
 client:hook("OnServerSync", function(event)
 	local timer = mumble.timer()
@@ -18,8 +21,12 @@ client:hook("OnServerSync", function(event)
 		if i >= 3 then
 			print("Stopping timer..")
 			t:stop()
+			client:disconnect()
+			mumble.stop()
 		end
 	end, 1, 1)
 end)
 
 mumble.loop()
+
+print("Done!")

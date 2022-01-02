@@ -159,6 +159,7 @@ struct MumbleClient {
 	int					socket_tcp;
 	int					socket_udp;
 	struct addrinfo*	server_host_udp;
+	struct addrinfo*	server_host_tcp;
 	SSL_CTX				*ssl_context;
 	SSL					*ssl;
 	bool				connected;
@@ -174,6 +175,7 @@ struct MumbleClient {
 	float				volume;
 	my_io				socket_tcp_io;
 	my_io				socket_udp_io;
+	my_io				socket_tcp_connect;
 	my_timer			audio_timer;
 	my_timer			ping_timer;
 	my_signal			signal;
@@ -283,6 +285,7 @@ typedef struct {
 --------------------------------*/
 
 extern int MUMBLE_CLIENTS;
+extern int MUMBLE_REGISTRY;
 
 extern double gettime(clockid_t mode);
 
@@ -308,7 +311,7 @@ extern void mumble_user_raw_get(lua_State* l, MumbleClient* client, uint32_t ses
 extern void mumble_user_remove(lua_State* l, MumbleClient* client, uint32_t session);
 
 extern MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t channel_id);
-extern MumbleChannel* mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t channel_id);
+extern void mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t channel_id);
 extern void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_id);
 
 extern int mumble_push_address(lua_State* l, ProtobufCBinaryData address);
@@ -316,3 +319,8 @@ extern int mumble_handle_speaking_hooks(lua_State* l, MumbleClient* client, uint
 
 extern int mumble_traceback(lua_State *l);
 extern void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs);
+
+extern int mumble_create_reference_table(lua_State *l);
+extern int mumble_ref(lua_State *l, int t);
+extern void mumble_pushref(lua_State *l, int t, int ref);
+extern void mumble_unref(lua_State *l, int t, int ref);

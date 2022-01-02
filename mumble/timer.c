@@ -14,8 +14,8 @@ static void mumble_lua_timer(EV_P_ ev_timer *w_, int revents)
 	lua_pushcfunction(l, mumble_traceback);
 
 	// Push the callback function from the registry
-	lua_rawgeti(l, LUA_REGISTRYINDEX, w->callback);
-	lua_rawgeti(l, LUA_REGISTRYINDEX, w->self);
+	mumble_pushref(l, MUMBLE_REGISTRY, w->callback);
+	mumble_pushref(l, MUMBLE_REGISTRY, w->self);
 
 	// Call the callback with our custom error handler function
 	if (lua_pcall(l, 1, 0, -3) != 0) {
@@ -31,30 +31,29 @@ static void mumble_lua_timer(EV_P_ ev_timer *w_, int revents)
 
 int mumble_timer_new(lua_State *l)
 {
+	luaL_checktype(l, 2, LUA_TFUNCTION);
+
 	lua_timer *ltimer = lua_newuserdata(l, sizeof(lua_timer));
 	ltimer->l = l;
-	ltimer->callback = 0;
-	ltimer->self = 0;
+
+	lua_pushvalue(l, -1); // Push a copy of the timers userdata
+	ltimer->self = mumble_ref(l, MUMBLE_REGISTRY); // Pop it off as a reference
+
+	lua_pushvalue(l, 2); // Push a copy of our callback function
+	ltimer->callback = mumble_ref(l, MUMBLE_REGISTRY); // Pop it off as a reference
 
 	luaL_getmetatable(l, METATABLE_TIMER);
 	lua_setmetatable(l, -2);
-	// Return the timer userdata
+
+	// Return the timer metatable
 	return 1;
 }
 
 static int timer_start(lua_State *l)
 {
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
-
-	luaL_checktype(l, 2, LUA_TFUNCTION);
-	double after = luaL_checknumber(l, 3);
-	double repeat = luaL_optnumber(l, 4, 0);
-
-	lua_pushvalue(l, 1); // Push a copy of our self
-	ltimer->self = luaL_ref(l, LUA_REGISTRYINDEX); // Pop it off as a reference
-
-	lua_pushvalue(l, 2); // Push a copy of our callback function
-	ltimer->callback = luaL_ref(l, LUA_REGISTRYINDEX); // Pop it off as a reference
+	double after = luaL_checknumber(l, 2);
+	double repeat = luaL_optnumber(l, 3, 0);
 
 	// Initialize and start the timer
 	ev_timer_init(&ltimer->timer, mumble_lua_timer, after, repeat);
@@ -82,6 +81,8 @@ static int timer_stop(lua_State *l)
 {
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	ev_timer_stop(EV_DEFAULT, &ltimer->timer);
+	mumble_unref(l, MUMBLE_REGISTRY, ltimer->callback);
+	mumble_unref(l, MUMBLE_REGISTRY, ltimer->self);
 	return 0;
 }
 
@@ -96,16 +97,8 @@ static int timer_gc(lua_State *l)
 {
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	ev_timer_stop(EV_DEFAULT, &ltimer->timer);
-
-	// Clear our references from the registry
-
-	if (ltimer->self > 0) {
-		luaL_unref(l, LUA_REGISTRYINDEX, ltimer->self);
-	}
-
-	if (ltimer->callback > 0) {
-		luaL_unref(l, LUA_REGISTRYINDEX, ltimer->callback);
-	}
+	mumble_unref(l, MUMBLE_REGISTRY, ltimer->callback);
+	mumble_unref(l, MUMBLE_REGISTRY, ltimer->self);
 	return 0;
 }
 
