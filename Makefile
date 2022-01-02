@@ -1,8 +1,14 @@
 DEPENDENCIES = libssl luajit libprotobuf-c opus
 
+LUALIB = /usr/local/lib/lua/5.1
+
 LIBRARIES = $(shell pkg-config --libs $(DEPENDENCIES)) -lev # libev doesn't have a pkg-config file..
 INCLUDES = $(shell pkg-config --cflags $(DEPENDENCIES))
 CFLAGS = -fPIC -I.
+
+ifneq (,$(findstring luajit,$(DEPENDENCIES)))
+	CFLAGS += -DLUAJIT
+endif
 
 default: all
 
@@ -35,10 +41,11 @@ gitversion.h: .git/HEAD .git/index
 proto: $(PROTO_C)
 
 install: all
-	cp mumble.so /usr/local/lib/lua/5.1/mumble.so
+	mkdir -p $(LUALIB)
+	cp mumble.so $(LUALIB)/mumble.so
 
 uninstall:
-	rm /usr/local/lib/lua/5.1/mumble.so
+	rm $(LUALIB)/mumble.so
 
 clean:
 	rm -f $(OBJECTS) $(DEPS) $(PROTO_BUILT) gitversion.h

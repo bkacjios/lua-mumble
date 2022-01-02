@@ -592,7 +592,7 @@ static bool erroring = false;
 
 int mumble_traceback(lua_State *l)
 {
-#if defined(LUA_VERSION_NUM) && LUA_VERSION_NUM >= 502
+#if (defined(LUA_VERSION_NUM) && LUA_VERSION_NUM >= 502) || defined(LUAJIT)
 	luaL_traceback(l, l, lua_tostring(l, 1), 1);
 #endif
 	return 1;
