@@ -831,7 +831,11 @@ void mumble_user_raw_get(lua_State* l, MumbleClient* client, uint32_t session)
 
 void mumble_user_remove(lua_State* l, MumbleClient* client, uint32_t session)
 {
-	mumble_unref(l, MUMBLE_REGISTRY, client->users);
+	mumble_pushref(l, MUMBLE_REGISTRY, client->users);
+		lua_pushinteger(l, session);
+		lua_pushnil(l);
+		lua_settable(l, -3);
+	lua_pop(l, 1);
 }
 
 void mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t channel_id)
