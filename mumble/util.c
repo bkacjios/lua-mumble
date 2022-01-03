@@ -1,4 +1,5 @@
 #include "mumble.h"
+#include <ctype.h>
 
 double gettime(clockid_t mode)
 {
@@ -57,14 +58,57 @@ static void iterate_and_print(lua_State *L, int index)
 	// Stack is now the same as it was on entry to this function
 }
 
-void debugstack(lua_State *l, const char* text)
+void print_unescaped(const char* ptr, int len) {
+    if (!ptr) return;
+    for (int i = 0; i < len; i++, ptr++) {
+        switch (*ptr) {
+            case '\0': printf("\\0");  break;
+            case '\a': printf("\\a");  break;
+            case '\b': printf("\\b");  break;
+            case '\f': printf("\\f");  break;
+            case '\n': printf("\\n");  break;
+            case '\r': printf("\\r");  break;
+            case '\t': printf("\\t");  break;
+            case '\v': printf("\\v");  break;
+            case '\\': printf("\\\\"); break;
+            case '\?': printf("\\\?"); break;
+            case '\'': printf("\\\'"); break;
+            case '\"': printf("\\\""); break;
+            default:
+                if (isprint(*ptr)) printf("%c",     *ptr);
+                else               printf("\\%03o", *ptr);
+        }
+    }
+}
+
+void luaL_debugstack(lua_State *l, const char* text)
 {
+	printf("%s stack dump\n", text);
 	for (int i=1; i<=lua_gettop(l); i++)
 	{
-		if (lua_isstring(l, i))
-			printf("%s [%d] = %s (%s)\n", text, i, eztype(l, i), lua_tostring(l, i));
-		else
-			printf("%s [%d] = %s\n", text, i, eztype(l, i));
+		int t = lua_type(l, i);
+		size_t len;
+		const char* tname = lua_typename(l, t);
+		switch (t) {
+			case LUA_TSTRING:  /* strings */
+				const char* str = lua_tolstring(l, i, &len);
+				printf("\t%d - %s[\"", i, tname);
+				print_unescaped(str, len);
+				printf("\"]\n", i, tname, lua_tostring(l, i));
+				break;
+
+			case LUA_TBOOLEAN:  /* booleans */
+				printf("\t%d - %s[%s]\n", i, tname, lua_toboolean(l, i) ? "true" : "false");
+				break;
+
+			case LUA_TNUMBER:  /* numbers */
+				printf("\t%d - %s[%g]\n", i, tname, lua_tonumber(l, i));
+				break;
+
+			default:  /* other values */
+				printf("\t%d - %s[%p]\n", i, tname, lua_topointer(l, i));
+				break;
+		}
 	}
 }
 
@@ -97,11 +141,6 @@ int luaL_isudata(lua_State *L, int ud, const char *tname) {
 		}
 	}
 	return 0; // else false
-}
-
-const char* eztype(lua_State *L, int i)
-{
-	return lua_typename(L, lua_type(L, i));
 }
 
 /* Function to add a node at the beginning of Linked List. 

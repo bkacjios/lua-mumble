@@ -1,12 +1,17 @@
-DEPENDENCIES = libssl luajit libprotobuf-c opus
+# Change what version of Lua we want to compile for
+# lua5.1, lua5.2, lua5.3, luajit
+LUAVER = luajit
 
+# Directory to install our module
 LUALIB = /usr/local/lib/lua/5.1
+
+DEPENDENCIES = libssl $(LUAVER) libprotobuf-c opus
 
 LIBRARIES = $(shell pkg-config --libs $(DEPENDENCIES)) -lev # libev doesn't have a pkg-config file..
 INCLUDES = $(shell pkg-config --cflags $(DEPENDENCIES))
 CFLAGS = -fPIC -I.
 
-ifneq (,$(findstring luajit,$(DEPENDENCIES)))
+ifneq (,$(findstring luajit,$(LUAVER)))
 	CFLAGS += -DLUAJIT
 endif
 

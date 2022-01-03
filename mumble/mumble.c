@@ -592,8 +592,9 @@ static bool erroring = false;
 
 int mumble_traceback(lua_State *l)
 {
+	lua_pushfstring(l, "mumble: %s", lua_tostring(l, 1));
 #if (defined(LUA_VERSION_NUM) && LUA_VERSION_NUM >= 502) || defined(LUAJIT)
-	luaL_traceback(l, l, lua_tostring(l, 1), 1);
+	luaL_traceback(l, l, lua_tostring(l, -1), 1);
 #endif
 	return 1;
 }
@@ -619,14 +620,8 @@ void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int 
 		// Pop the nil or nontable value
 		lua_pop(l, 1);
 
-		// Call exit early, since mumble_hook_call removes the function called and its arguments from the stack
-		lua_stackguard_exit(l);
-
-		// Remove the arguments anyway despite no hook call
-		for (int i = top; i < top + nargs; i++) {
-			lua_remove(l, i);
-		}
-		return; // Don't call this hook and exit
+		// Exit if we have no hook to call
+		goto exit;
 	}
 
 	// Push nil, needed for lua_next
@@ -678,6 +673,8 @@ void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int 
 
 	// Pop the hook table
 	lua_pop(l, 1);
+
+	exit:
 
 	// Call exit early, since mumble_hook_call removes the function called and its arguments from the stack
 	lua_stackguard_exit(l);

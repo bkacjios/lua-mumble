@@ -288,12 +288,11 @@ extern double gettime(clockid_t mode);
 
 extern void bin_to_strhex(char *bin, size_t binsz, char **result);
 
-extern void debugstack(lua_State *l, const char* text);
+extern void luaL_debugstack(lua_State *l, const char* text);
 extern int luaL_typerror(lua_State *L, int narg, const char *tname);
 extern int luaL_checkboolean(lua_State *L, int i);
 extern int luaL_optboolean(lua_State *L, int i, int d);
 extern int luaL_isudata(lua_State *L, int ud, const char *tname);
-extern const char* eztype(lua_State *L, int i);
 
 extern uint64_t util_get_varint(uint8_t buffer[], int *len);
 
