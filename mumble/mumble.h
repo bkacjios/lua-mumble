@@ -85,7 +85,7 @@
 
 #define PAYLOAD_SIZE_MAX (1024 * 8 - 1)
 
-#define PING_TIMEOUT 30
+#define PING_TIMEOUT 5
 
 #define UDP_BUFFER_MAX 1024
 
@@ -187,15 +187,15 @@ struct MumbleClient {
 	uint8_t				audio_target;
 
 	uint32_t			tcp_packets;
-	float				tcp_ping_avg;
-	float				tcp_ping_var;
+	double				tcp_ping_avg;
+	double				tcp_ping_var;
 
 	bool				udp_tunnel;
 
 	uint8_t				udp_ping_acc;
 	uint32_t			udp_packets;
-	float				udp_ping_avg;
-	float				udp_ping_var;
+	double				udp_ping_avg;
+	double				udp_ping_var;
 
 	uint32_t			resync;
 	mumble_crypt*		crypt;
@@ -297,6 +297,7 @@ extern int luaL_isudata(lua_State *L, int ud, const char *tname);
 extern uint64_t util_get_varint(uint8_t buffer[], int *len);
 
 extern void mumble_ping_udp(lua_State* l, MumbleClient* client);
+extern void mumble_ping_tcp(lua_State* l, MumbleClient* client);
 
 extern void mumble_create_audio_timer(MumbleClient *client, int bitspersec);
 extern void mumble_disconnect(lua_State* l, MumbleClient *client, const char* reason);

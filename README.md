@@ -165,7 +165,7 @@ mumble.client:setVolume(Number volume)
 Number volume = mumble.client:getVolume()
 
 -- Returns if the client is tunneling UDP voice data through the TCP connection
--- This will be true until "OnServerPingUDP" is called
+-- This will be true until the first "OnPongUDP" call
 Boolean tunneludp = mumble.client:isTunnelingUDP()
 
 -- Attempts to change the bots comment
@@ -184,7 +184,7 @@ Table hooks = {
 		["hook"] = function: 0xffffffff,
 		["do stuff on connection"] = function: 0xffffffff,
 	},
-	["OnServerPingTCP"] = {
+	["OnPingTCP"] = {
 		["hook"] = function: 0xffffffff,
 		["do stuff on ping"] = function: 0xffffffff,
 	},
@@ -724,7 +724,7 @@ Table event = {
 ```
 ___
 
-### `OnServerPingTCP (mumble.client client, Table event)`
+### `OnPongTCP (mumble.client client, Table event)`
 
 Called when the server sends a responce to a TCP ping request.
 
@@ -746,7 +746,7 @@ Table event = {
 ```
 ___
 
-### `OnServerPingUDP (mumble.client client, Table event)`
+### `OnPongUDP (mumble.client client, Table event)`
 
 Called when the server sends a responce to a UDP ping request.
 
@@ -1176,7 +1176,7 @@ Called when an error occurs inside a hook.
 WARNING: Erroring within this hook will cause an error on the line where mumble.loop() is called, causing the script to exit
 ___
 
-### `OnClientPingTCP (mumble.client client, Table event)`
+### `OnPingTCP (mumble.client client, Table event)`
 
 Called just before a TCP ping is sent to the server.
 This updates the users statistics found on their information panel.
@@ -1199,7 +1199,7 @@ Table event = {
 ```
 ___
 
-### `OnClientPingUDP (mumble.client client, Table event)`
+### `OnPingUDP (mumble.client client, Table event)`
 
 Called just before a UDP ping is sent to the server.
 The mumble.client will automatically ping the server every 30 seconds within mumble.loop()

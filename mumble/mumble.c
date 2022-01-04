@@ -12,7 +12,6 @@
 #include "timer.h"
 #include "packet.h"
 #include "ocb.h"
-//#include "plugindata.h"
 
 int MUMBLE_CLIENTS;
 
@@ -39,13 +38,49 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 
 	MumbleClient *client = w->client;
 	lua_State *l = w->l;
+	
+	lua_stackguard_entry(l);
 
+	mumble_ping_tcp(l, client);
+	mumble_ping_udp(l, client);
+
+	lua_stackguard_exit(l);
+}
+
+void mumble_ping_udp(lua_State *l, MumbleClient* client) {
+	if (crypt_isValid(client->crypt)) {
+		double timestamp = gettime(CLOCK_MONOTONIC);
+		uint64_t ts64 = (uint64_t) (timestamp * 1000);
+		unsigned char packet[UDP_BUFFER_MAX];
+		packet[0] = UDP_PING << 5;
+		int len = 1 + sizeof(ts64);
+		memcpy(packet + 1, &ts64, sizeof(ts64));
+
+		if (client->udp_ping_acc >= 3) {
+			printf("Server no longer responding to UDP pings, falling back to TCP..\n");
+			client->udp_tunnel = true;
+		}
+
+		lua_newtable(l);
+			lua_pushnumber(l, timestamp);
+			lua_setfield(l, -2, "timestamp");
+		mumble_hook_call(l, client, "OnPingUDP", 1);
+
+		client->udp_ping_acc++;
+
+		packet_sendudp(client, packet, len);
+	}
+}
+
+void mumble_ping_tcp(lua_State *l, MumbleClient *client)
+{
 	MumbleProto__Ping ping = MUMBLE_PROTO__PING__INIT;
 
-	uint64_t ts = (uint64_t) (gettime(CLOCK_MONOTONIC) * 1000);
+	double timestamp = gettime(CLOCK_MONOTONIC);
+	uint64_t ts64 = (uint64_t) (timestamp * 1000);
 
 	ping.has_timestamp = true;
-	ping.timestamp = ts;
+	ping.timestamp = ts64;
 
 	ping.has_tcp_packets = true;
 	ping.tcp_packets = client->tcp_packets;
@@ -76,18 +111,16 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 	
 	ping.has_udp_ping_var = true;
 	ping.udp_ping_var = client->udp_ping_var;
-	
-	lua_stackguard_entry(l);
 
 	lua_newtable(l);
 		// Push the timestamp we are sending to the server
-		lua_pushnumber(l, (double) ping.timestamp / 1000);
+		lua_pushnumber(l, timestamp);
 		lua_setfield(l, -2, "timestamp");
 		lua_pushinteger(l, ping.tcp_packets);
 		lua_setfield(l, -2, "tcp_packets");
-		lua_pushinteger(l, ping.tcp_ping_avg);
+		lua_pushnumber(l, ping.tcp_ping_avg);
 		lua_setfield(l, -2, "tcp_ping_avg");
-		lua_pushinteger(l, ping.tcp_ping_var);
+		lua_pushnumber(l, ping.tcp_ping_var);
 		lua_setfield(l, -2, "tcp_ping_var");
 		lua_pushinteger(l, ping.good);
 		lua_setfield(l, -2, "good");
@@ -99,41 +132,13 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 		lua_setfield(l, -2, "resync");
 		lua_pushinteger(l, ping.udp_packets);
 		lua_setfield(l, -2, "udp_packets");
-		lua_pushinteger(l, ping.udp_ping_avg);
+		lua_pushnumber(l, ping.udp_ping_avg);
 		lua_setfield(l, -2, "udp_ping_avg");
-		lua_pushinteger(l, ping.udp_ping_var);
+		lua_pushnumber(l, ping.udp_ping_var);
 		lua_setfield(l, -2, "udp_ping_var");
-	mumble_hook_call(l, client, "OnClientPingTCP", 1);
+	mumble_hook_call(l, client, "OnPingTCP", 1);
 
 	packet_send(client, PACKET_PING, &ping);
-
-	mumble_ping_udp(l, client);
-
-	lua_stackguard_exit(l);
-}
-
-void mumble_ping_udp(lua_State* l, MumbleClient* client) {
-	if (crypt_isValid(client->crypt)) {
-		uint64_t timestamp = (uint64_t) (gettime(CLOCK_MONOTONIC) * 1000);
-		unsigned char packet[UDP_BUFFER_MAX];
-		packet[0] = UDP_PING << 5;
-		int len = 1 + sizeof(timestamp);
-		memcpy(packet + 1, &timestamp, sizeof(timestamp));
-
-		if (client->udp_ping_acc >= 3) {
-			printf("Server no longer responding to UDP pings, falling back to TCP..\n");
-			client->udp_tunnel = true;
-		}
-
-		lua_newtable(l);
-			lua_pushnumber(l, (double) timestamp / 1000);
-			lua_setfield(l, -2, "timestamp");
-		mumble_hook_call(l, client, "OnClientPingUDP", 1);
-
-		client->udp_ping_acc++;
-
-		packet_sendudp(client, packet, len);
-	}
 }
 
 static void socket_read_event_tcp(struct ev_loop *loop, ev_io *w_, int revents)
@@ -228,15 +233,16 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 			switch (id) {
 				case UDP_PING:
 				{
-					int64_t timestamp;
+					uint64_t timestamp;
 					memcpy(&timestamp, plaintext + 1, sizeof(uint64_t));
 
-					uint64_t ms = (uint64_t) (gettime(CLOCK_MONOTONIC) * 1000) - timestamp;
+					double response = gettime(CLOCK_MONOTONIC);
+					double delay = (response * 1000) - timestamp;
 
-					uint32_t n = client->udp_packets + 1;
+					double n = client->udp_packets + 1;
 					client->udp_packets = n;
-					client->udp_ping_avg = client->udp_ping_avg * (n-1)/n + ms/n;
-					client->udp_ping_var = powf(fabs(ms - client->udp_ping_avg), 2);
+					client->udp_ping_avg = client->udp_ping_avg * (n-1)/n + delay/n;
+					client->udp_ping_var = pow(fabs(delay - client->udp_ping_avg), 2);
 
 					if (client->udp_tunnel && client->udp_ping_acc > 1) {
 						printf("Server is responding to UDP packets again, switching back to UDP..\n");
@@ -248,9 +254,13 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 					lua_newtable(l);
 						lua_pushnumber(l, (double) timestamp / 1000);
 						lua_setfield(l, -2, "timestamp");
-						lua_pushinteger(l, ms);
+						lua_pushnumber(l, delay);
 						lua_setfield(l, -2, "ping");
-					mumble_hook_call(l, client, "OnServerPingUDP", 1);
+						lua_pushnumber(l, client->udp_ping_avg);
+						lua_setfield(l, -2, "average");
+						lua_pushnumber(l, client->udp_ping_var);
+						lua_setfield(l, -2, "deviation");
+					mumble_hook_call(l, client, "OnPongUDP", 1);
 					break;
 				}
 				case UDP_OPUS:
