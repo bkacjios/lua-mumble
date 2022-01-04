@@ -504,7 +504,6 @@ static int mumble_connect(lua_State *l)
 
 	// Create a timer to ping the server every X seconds
 	ev_timer_init(&client->ping_timer.timer, mumble_ping_timer, PING_TIMEOUT, PING_TIMEOUT);
-	ev_timer_start(EV_DEFAULT, &client->ping_timer.timer);
 	return 1;
 }
 

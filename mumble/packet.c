@@ -291,6 +291,8 @@ void packet_server_sync(lua_State *l, MumbleClient *client, Packet *packet)
 	}
 
 	client->synced = true;
+	
+	ev_timer_start(EV_DEFAULT, &client->ping_timer.timer);
 
 	lua_newtable(l);
 		if (sync->has_session) {
