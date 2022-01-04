@@ -156,7 +156,7 @@ static void socket_connect_event_tcp(struct ev_loop *loop, ev_io *w_, int revent
 	ret = SSL_connect(client->ssl);
 	if (ret <= 0) {
 		int err = SSL_get_error(client->ssl, ret);
-		if (err != SSL_ERROR_WANT_READ) {
+		if (err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE) {
 			mumble_disconnect(l, client, "could not create secure connection");
 			ev_io_stop(loop, w_);
 		}

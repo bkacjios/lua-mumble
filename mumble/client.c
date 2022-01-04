@@ -749,7 +749,8 @@ static int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
-	mumble_disconnect(l, client, "garbage collected");
+	if (client->connected)
+		mumble_disconnect(l, client, "garbage collected");
 
 	mumble_unref(l, MUMBLE_REGISTRY, client->hooks);
 	mumble_unref(l, MUMBLE_REGISTRY, client->users);
