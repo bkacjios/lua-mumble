@@ -94,6 +94,10 @@ Table clients = {
 -- Should be called as soon as a connection to the server is established.
 mumble.client:auth(String username, [ String password, Table tokens ])
 
+-- Manually call a custom hook.
+-- Returns whatever the first hook that responded returned.
+Varargs ... = mumble.client:call(String hook, ...)
+
 -- Set the bots access tokens
 mumble.client:setTokens(Table tokens)
 

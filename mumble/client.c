@@ -751,7 +751,6 @@ static int client_gc(lua_State *l)
 	if (client->connected)
 		mumble_disconnect(l, client, "garbage collected");
 
-	mumble_unref(l, MUMBLE_REGISTRY, client->self);
 	mumble_unref(l, MUMBLE_REGISTRY, client->hooks);
 	mumble_unref(l, MUMBLE_REGISTRY, client->users);
 	mumble_unref(l, MUMBLE_REGISTRY, client->channels);

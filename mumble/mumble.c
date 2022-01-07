@@ -584,6 +584,8 @@ static int mumble_stop(lua_State *l)
 
 void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason)
 {
+	mumble_unref(l, MUMBLE_REGISTRY, client->self);
+
 #ifdef ENABLE_UDP
 	ev_io_stop(EV_DEFAULT, &client->socket_udp_io.io);
 #endif
@@ -728,13 +730,15 @@ int mumble_hook_call_ret(lua_State* l, MumbleClient *client, const char* hook, i
 				lua_pushcfunction(l, mumble_traceback);
 				lua_insert(l, 1);
 
+				// Call our callback with our arguments and our traceback function
 				if (lua_pcall(l, callargs, nresults, 1) != 0) {
-					// Call the OnError hook
+					// Call errored, call OnError hook
 					erroring = true;
 					fprintf(stderr, "%s\n", lua_tostring(l, -1));
 					mumble_hook_call(l, client, "OnError", 1);
 					erroring = false;
 				} else {
+					// Call success
 					const int nret = lua_gettop(l) - base;
 
 					if (!returned) {
@@ -748,11 +752,11 @@ int mumble_hook_call_ret(lua_State* l, MumbleClient *client, const char* hook, i
 						}
 					} else {
 						// We already had a hook return values, so ignore and pop these
-						printf("IGNORING RETURN VALUES %d\n", nret);
 						lua_pop(l, nret);
 					}
 				}
 
+				// Pop the traceback function
 				lua_remove(l, 1);
 			}
 		}
