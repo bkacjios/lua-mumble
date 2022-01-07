@@ -91,12 +91,13 @@ void luaL_debugstack(lua_State *l, const char* text)
 		const char* tname = lua_typename(l, t);
 		switch (t) {
 			case LUA_TSTRING:  /* strings */
+			{
 				const char* str = lua_tolstring(l, i, &len);
 				printf("\t%d - %s[\"", i, tname);
 				print_unescaped(str, len);
 				printf("\"]\n", i, tname, lua_tostring(l, i));
 				break;
-
+			}
 			case LUA_TBOOLEAN:  /* booleans */
 				printf("\t%d - %s[%s]\n", i, tname, lua_toboolean(l, i) ? "true" : "false");
 				break;
