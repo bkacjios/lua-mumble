@@ -48,6 +48,6 @@ function afk.queryUsers(client)
 end
 
 client:hook("OnUserStats", "AFK Check", afk.checkStats)
-client:hook("OnServerPing", "AFK Query Users", afk.queryUsers)
+client:hook("OnPingTCP", "AFK Query Users", afk.queryUsers)
 
 mumble.loop()

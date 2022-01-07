@@ -200,22 +200,24 @@ void packet_server_ping(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
-	uint64_t ms = 0;
-
 	lua_newtable(l);
 		if (ping->has_timestamp) {
-			ms = (gettime(CLOCK_MONOTONIC) * 1000) - ping->timestamp;
+			double response = gettime(CLOCK_MONOTONIC);
+			double delay = (response * 1000) - (double) ping->timestamp;
 
-			uint32_t n = client->tcp_packets + 1;
+			double n = client->tcp_packets + 1;
 			client->tcp_packets = n;
-			client->tcp_ping_avg = client->tcp_ping_avg * (n-1)/n + ms/n;
-			client->tcp_ping_var = powf(fabs(ms - client->tcp_ping_avg), 2);
-
-			lua_pushnumber(l, ms);
-			lua_setfield(l, -2, "ping");
+			client->tcp_ping_avg = client->tcp_ping_avg * (n-1)/n + delay/n;
+			client->tcp_ping_var = pow(fabs(delay - client->tcp_ping_avg), 2);
 
 			lua_pushnumber(l, (double) ping->timestamp / 1000);
 			lua_setfield(l, -2, "timestamp");
+			lua_pushnumber(l, delay);
+			lua_setfield(l, -2, "ping");
+			lua_pushnumber(l, client->udp_ping_avg);
+			lua_setfield(l, -2, "average");
+			lua_pushnumber(l, client->udp_ping_var);
+			lua_setfield(l, -2, "deviation");
 		}
 		if (ping->has_good) {
 			lua_pushnumber(l, ping->good);
@@ -257,7 +259,7 @@ void packet_server_ping(lua_State *l, MumbleClient *client, Packet *packet)
 			lua_pushnumber(l, ping->tcp_ping_var);
 			lua_setfield(l, -2, "tcp_ping_var");
 		}
-	mumble_hook_call(l, client, "OnServerPingTCP", 1);
+	mumble_hook_call(l, client, "OnPongTCP", 1);
 
 	mumble_proto__ping__free_unpacked(ping, NULL);
 }
@@ -289,6 +291,8 @@ void packet_server_sync(lua_State *l, MumbleClient *client, Packet *packet)
 	}
 
 	client->synced = true;
+	
+	ev_timer_start(EV_DEFAULT, &client->ping_timer.timer);
 
 	lua_newtable(l);
 		if (sync->has_session) {
@@ -922,6 +926,7 @@ void packet_crypt_setup(lua_State *l, MumbleClient *client, Packet *packet)
 
 	if (validCrypt) {
 		mumble_ping_udp(l, client);
+		mumble_ping_tcp(l, client);
 	}
 
 	lua_pushboolean(l, validCrypt);

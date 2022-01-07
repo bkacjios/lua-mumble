@@ -480,8 +480,7 @@ static int client_call(lua_State *l)
 	MumbleClient *client = mumble_checkclient(l, 1);
 	const char* hook = luaL_checkstring(l, 2);
 	int nargs = lua_gettop(l) - 2;
-	mumble_hook_call(l, client, hook, nargs);
-	return 0;
+	return mumble_hook_call_ret(l, client, hook, nargs, LUA_MULTRET);
 }
 
 static int client_getHooks(lua_State *l)
@@ -752,6 +751,7 @@ static int client_gc(lua_State *l)
 	if (client->connected)
 		mumble_disconnect(l, client, "garbage collected");
 
+	mumble_unref(l, MUMBLE_REGISTRY, client->self);
 	mumble_unref(l, MUMBLE_REGISTRY, client->hooks);
 	mumble_unref(l, MUMBLE_REGISTRY, client->users);
 	mumble_unref(l, MUMBLE_REGISTRY, client->channels);

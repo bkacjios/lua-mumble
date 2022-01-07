@@ -23,16 +23,16 @@ client:hook("OnServerSync", function(client, event)
 	print("OnServerSync", event)
 end)
 
-client:hook("OnClientPing", function(client, event)
-	print("OnClientPing", event)
+client:hook("OnPing", function(client, event)
+	print("OnPing", event)
 end)
 
-client:hook("OnServerPingTCP", function(client, event)
-	print("OnServerPingTCP", event)
+client:hook("OnPongTCP", function(client, event)
+	print("OnPongTCP", event)
 end)
 
-client:hook("OnServerPingUDP", function(client, event)
-	print("OnServerPingUDP", event)
+client:hook("OnPongUDP", function(client, event)
+	print("OnPongUDP", event)
 end)
 
 client:hook("OnChannelRemove", function(client, channel)

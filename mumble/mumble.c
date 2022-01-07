@@ -12,7 +12,6 @@
 #include "timer.h"
 #include "packet.h"
 #include "ocb.h"
-//#include "plugindata.h"
 
 int MUMBLE_CLIENTS;
 int MUMBLE_REGISTRY;
@@ -40,13 +39,49 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 
 	MumbleClient *client = w->client;
 	lua_State *l = w->l;
+	
+	lua_stackguard_entry(l);
 
+	mumble_ping_tcp(l, client);
+	mumble_ping_udp(l, client);
+
+	lua_stackguard_exit(l);
+}
+
+void mumble_ping_udp(lua_State *l, MumbleClient* client) {
+	if (crypt_isValid(client->crypt)) {
+		double timestamp = gettime(CLOCK_MONOTONIC);
+		uint64_t ts64 = (uint64_t) (timestamp * 1000);
+		unsigned char packet[UDP_BUFFER_MAX];
+		packet[0] = UDP_PING << 5;
+		int len = 1 + sizeof(ts64);
+		memcpy(packet + 1, &ts64, sizeof(ts64));
+
+		if (client->udp_ping_acc >= 3) {
+			printf("Server no longer responding to UDP pings, falling back to TCP..\n");
+			client->udp_tunnel = true;
+		}
+
+		lua_newtable(l);
+			lua_pushnumber(l, timestamp);
+			lua_setfield(l, -2, "timestamp");
+		mumble_hook_call(l, client, "OnPingUDP", 1);
+
+		client->udp_ping_acc++;
+
+		packet_sendudp(client, packet, len);
+	}
+}
+
+void mumble_ping_tcp(lua_State *l, MumbleClient *client)
+{
 	MumbleProto__Ping ping = MUMBLE_PROTO__PING__INIT;
 
-	uint64_t ts = (uint64_t) (gettime(CLOCK_MONOTONIC) * 1000);
+	double timestamp = gettime(CLOCK_MONOTONIC);
+	uint64_t ts64 = (uint64_t) (timestamp * 1000);
 
 	ping.has_timestamp = true;
-	ping.timestamp = ts;
+	ping.timestamp = ts64;
 
 	ping.has_tcp_packets = true;
 	ping.tcp_packets = client->tcp_packets;
@@ -77,18 +112,16 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 	
 	ping.has_udp_ping_var = true;
 	ping.udp_ping_var = client->udp_ping_var;
-	
-	lua_stackguard_entry(l);
 
 	lua_newtable(l);
 		// Push the timestamp we are sending to the server
-		lua_pushnumber(l, (double) ping.timestamp / 1000);
+		lua_pushnumber(l, timestamp);
 		lua_setfield(l, -2, "timestamp");
 		lua_pushinteger(l, ping.tcp_packets);
 		lua_setfield(l, -2, "tcp_packets");
-		lua_pushinteger(l, ping.tcp_ping_avg);
+		lua_pushnumber(l, ping.tcp_ping_avg);
 		lua_setfield(l, -2, "tcp_ping_avg");
-		lua_pushinteger(l, ping.tcp_ping_var);
+		lua_pushnumber(l, ping.tcp_ping_var);
 		lua_setfield(l, -2, "tcp_ping_var");
 		lua_pushinteger(l, ping.good);
 		lua_setfield(l, -2, "good");
@@ -100,41 +133,13 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 		lua_setfield(l, -2, "resync");
 		lua_pushinteger(l, ping.udp_packets);
 		lua_setfield(l, -2, "udp_packets");
-		lua_pushinteger(l, ping.udp_ping_avg);
+		lua_pushnumber(l, ping.udp_ping_avg);
 		lua_setfield(l, -2, "udp_ping_avg");
-		lua_pushinteger(l, ping.udp_ping_var);
+		lua_pushnumber(l, ping.udp_ping_var);
 		lua_setfield(l, -2, "udp_ping_var");
-	mumble_hook_call(l, client, "OnClientPingTCP", 1);
+	mumble_hook_call(l, client, "OnPingTCP", 1);
 
 	packet_send(client, PACKET_PING, &ping);
-
-	mumble_ping_udp(l, client);
-
-	lua_stackguard_exit(l);
-}
-
-void mumble_ping_udp(lua_State* l, MumbleClient* client) {
-	if (crypt_isValid(client->crypt)) {
-		uint64_t timestamp = (uint64_t) (gettime(CLOCK_MONOTONIC) * 1000);
-		unsigned char packet[UDP_BUFFER_MAX];
-		packet[0] = UDP_PING << 5;
-		int len = 1 + sizeof(timestamp);
-		memcpy(packet + 1, &timestamp, sizeof(timestamp));
-
-		if (client->udp_ping_acc >= 3) {
-			printf("Server no longer responding to UDP pings, falling back to TCP..\n");
-			client->udp_tunnel = true;
-		}
-
-		lua_newtable(l);
-			lua_pushnumber(l, (double) timestamp / 1000);
-			lua_setfield(l, -2, "timestamp");
-		mumble_hook_call(l, client, "OnClientPingUDP", 1);
-
-		client->udp_ping_acc++;
-
-		packet_sendudp(client, packet, len);
-	}
 }
 
 static void socket_connect_event_tcp(struct ev_loop *loop, ev_io *w_, int revents)
@@ -254,15 +259,16 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 			switch (id) {
 				case UDP_PING:
 				{
-					int64_t timestamp;
+					uint64_t timestamp;
 					memcpy(&timestamp, plaintext + 1, sizeof(uint64_t));
 
-					uint64_t ms = (uint64_t) (gettime(CLOCK_MONOTONIC) * 1000) - timestamp;
+					double response = gettime(CLOCK_MONOTONIC);
+					double delay = (response * 1000) - timestamp;
 
-					uint32_t n = client->udp_packets + 1;
+					double n = client->udp_packets + 1;
 					client->udp_packets = n;
-					client->udp_ping_avg = client->udp_ping_avg * (n-1)/n + ms/n;
-					client->udp_ping_var = powf(fabs(ms - client->udp_ping_avg), 2);
+					client->udp_ping_avg = client->udp_ping_avg * (n-1)/n + delay/n;
+					client->udp_ping_var = pow(fabs(delay - client->udp_ping_avg), 2);
 
 					if (client->udp_tunnel && client->udp_ping_acc > 1) {
 						printf("Server is responding to UDP packets again, switching back to UDP..\n");
@@ -274,9 +280,13 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 					lua_newtable(l);
 						lua_pushnumber(l, (double) timestamp / 1000);
 						lua_setfield(l, -2, "timestamp");
-						lua_pushinteger(l, ms);
+						lua_pushnumber(l, delay);
 						lua_setfield(l, -2, "ping");
-					mumble_hook_call(l, client, "OnServerPingUDP", 1);
+						lua_pushnumber(l, client->udp_ping_avg);
+						lua_setfield(l, -2, "average");
+						lua_pushnumber(l, client->udp_ping_var);
+						lua_setfield(l, -2, "deviation");
+					mumble_hook_call(l, client, "OnPongUDP", 1);
 					break;
 				}
 				case UDP_OPUS:
@@ -505,12 +515,10 @@ static int mumble_connect(lua_State *l)
 
 	// Create a timer to ping the server every X seconds
 	ev_timer_init(&client->ping_timer.timer, mumble_ping_timer, PING_TIMEOUT, PING_TIMEOUT);
-	ev_timer_start(EV_DEFAULT, &client->ping_timer.timer);
 
 	// Register ourself in the list of active clients
 	lua_pushvalue(l, -1);
 	client->self = mumble_ref(l, MUMBLE_CLIENTS);
-
 	return 1;
 }
 
@@ -630,9 +638,6 @@ void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason)
 	mumble_hook_call(l, client, "OnDisconnect", 1);
 	client->connected = false;
 
-	// Remove ourself from the table of connections
-	mumble_unref(l, MUMBLE_CLIENTS, client->self);
-
 	lua_stackguard_exit(l);
 }
 
@@ -652,18 +657,28 @@ static bool erroring = false;
 
 int mumble_traceback(lua_State *l)
 {
+	lua_pushfstring(l, "mumble: %s", lua_tostring(l, 1));
 #if (defined(LUA_VERSION_NUM) && LUA_VERSION_NUM >= 502) || defined(LUAJIT)
-	luaL_traceback(l, l, lua_tostring(l, 1), 1);
+	luaL_traceback(l, l, lua_tostring(l, -1), 1);
 #endif
 	return 1;
 }
 
-void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs)
+int mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs)
 {
-	lua_stackguard_entry(l);
+	return mumble_hook_call_ret(l, client, hook, nargs, 0);
+}
 
-	const int callargs = nargs + 1;
+int mumble_hook_call_ret(lua_State* l, MumbleClient *client, const char* hook, int nargs, int nresults)
+{
+	//lua_stackguard_entry(l);
+
 	const int top = lua_gettop(l);
+	const int callargs = nargs + 1;
+	const int argpos = top - nargs;
+
+	int returned = false;
+	int nreturns = 0;
 
 	// Get hook table
 	mumble_pushref(l, MUMBLE_REGISTRY, client->hooks);
@@ -679,14 +694,8 @@ void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int 
 		// Pop the nil or nontable value
 		lua_pop(l, 1);
 
-		// Call exit early, since mumble_hook_call removes the function called and its arguments from the stack
-		lua_stackguard_exit(l);
-
-		// Remove the arguments anyway despite no hook call
-		for (int i = top; i < top + nargs; i++) {
-			lua_remove(l, i);
-		}
-		return; // Don't call this hook and exit
+		// Exit if we have no hook to call
+		goto exit;
 	}
 
 	// Push nil, needed for lua_next
@@ -705,11 +714,8 @@ void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int 
 			mumble_client_raw_get(l, client);
 
 			for (int i = 1; i <= nargs; i++) {
-				// Copy number of arguments
-				int pos = top - nargs + i;
-
 				// Push a copy of the argument
-				lua_pushvalue(l, pos);
+				lua_pushvalue(l, argpos + i);
 			}
 
 			// Call
@@ -718,17 +724,36 @@ void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int 
 				lua_call(l, callargs, 0);
 			} else {
 				const int base = lua_gettop(l) - callargs;
-				lua_pushcfunction(l, mumble_traceback);
-				lua_insert(l, base);
 
-				if (lua_pcall(l, callargs, 0, base) != 0) {
+				lua_pushcfunction(l, mumble_traceback);
+				lua_insert(l, 1);
+
+				if (lua_pcall(l, callargs, nresults, 1) != 0) {
 					// Call the OnError hook
 					erroring = true;
 					fprintf(stderr, "%s\n", lua_tostring(l, -1));
 					mumble_hook_call(l, client, "OnError", 1);
 					erroring = false;
+				} else {
+					const int nret = lua_gettop(l) - base;
+
+					if (!returned) {
+						// Only return values of first called hook
+						returned = true;
+						nreturns = nret;
+
+						for (int i = 0; i < nreturns; i++) {
+							// Insert all return values at a safe location for later
+							lua_insert(l, top + argpos);
+						}
+					} else {
+						// We already had a hook return values, so ignore and pop these
+						printf("IGNORING RETURN VALUES %d\n", nret);
+						lua_pop(l, nret);
+					}
 				}
-				lua_remove(l, base);
+
+				lua_remove(l, 1);
 			}
 		}
 
@@ -739,15 +764,20 @@ void mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int 
 	// Pop the hook table
 	lua_pop(l, 1);
 
-	// Call exit early, since mumble_hook_call removes the function called and its arguments from the stack
-	lua_stackguard_exit(l);
+	exit:
 
-	// Remove the original arguments
-	for (int i = top; i < top + nargs; i++) {
+	// Call exit early, since mumble_hook_call removes the function called and its arguments from the stack
+	//lua_stackguard_exit(l);
+
+	// Remove original arguments from the stack
+	for (int i = top; i > argpos; i--) {
 		lua_remove(l, i);
 	}
 
-	//lua_gc(l, LUA_GCSTEP, 0);
+	// Stack will now contain any returns that we inserted above
+
+	// Return how many results we pushed to the stack
+	return nreturns;
 }
 
 MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session) {
