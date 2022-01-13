@@ -94,7 +94,7 @@ static int channel_getChildren(lua_State *l)
 
 	lua_newtable(l);
 
-	mumble_pushref(l, MUMBLE_REGISTRY, channel->client->channels);
+	mumble_pushref(l, channel->client->channels);
 	lua_pushnil(l);
 
 	while (lua_next(l, -2)) {
@@ -117,15 +117,14 @@ static int channel_getUsers(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
-	LinkNode* current = channel->client->session_list;
+	LinkNode* current = channel->client->user_list;
 
 	lua_newtable(l);
 	int i = 1;
 
 	while (current != NULL)
 	{
-		MumbleUser* user = mumble_user_get(l, channel->client, current->data);
-		if (user->channel_id == channel->channel_id) {
+		if (current->data == channel->channel_id) {
 			lua_pushnumber(l, i++);
 			mumble_user_raw_get(l, channel->client, current->data);
 			lua_settable(l, -3);
@@ -318,7 +317,7 @@ int channel_call(lua_State *l)
 			current = lua_touserdata(l, -1);
 			lua_remove(l, -2);
 		} else {
-			mumble_pushref(l, MUMBLE_REGISTRY, self->client->channels);
+			mumble_pushref(l, self->client->channels);
 			lua_pushnil(l);
 
 			while (lua_next(l, -2)) {
@@ -386,7 +385,7 @@ static int channel_create(lua_State *l)
 static int channel_gc(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
-	mumble_unref(l, MUMBLE_REGISTRY, channel->data);
+	mumble_unref(l, channel->data);
 	return 0;
 }
 
@@ -401,7 +400,7 @@ static int channel_newindex(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
-	mumble_pushref(l, MUMBLE_REGISTRY, channel->data);
+	mumble_pushref(l, channel->data);
 	lua_pushvalue(l, 2);
 	lua_pushvalue(l, 3);
 	lua_settable(l, -3);
@@ -412,7 +411,7 @@ static int channel_index(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
-	mumble_pushref(l, MUMBLE_REGISTRY, channel->data);
+	mumble_pushref(l, channel->data);
 	lua_pushvalue(l, 2);
 	lua_gettable(l, -2);
 

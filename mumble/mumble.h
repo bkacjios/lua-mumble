@@ -162,6 +162,7 @@ struct MumbleClient {
 	struct addrinfo*	server_host_tcp;
 	SSL_CTX				*ssl_context;
 	SSL					*ssl;
+	bool				closed;
 	bool				connected;
 	bool				synced;
 	const char*			host;
@@ -202,7 +203,8 @@ struct MumbleClient {
 	uint32_t			resync;
 	mumble_crypt*		crypt;
 
-	LinkNode*			session_list;
+	LinkNode*			channel_list;
+	LinkNode*			user_list;
 };
 
 struct LinkNode
@@ -229,8 +231,8 @@ struct MumbleChannel {
 	uint32_t		permissions;
 };
 
-void list_add(LinkNode** head_ref, uint32_t value);
-void list_remove(LinkNode **head_ref, uint32_t value);
+void list_add(LinkNode** head_ref, uint32_t data);
+void list_remove(LinkNode **head_ref, uint32_t data);
 void list_clear(LinkNode** head_ref);
 size_t list_count(LinkNode** head_ref);
 
@@ -321,7 +323,10 @@ extern int mumble_traceback(lua_State *l);
 extern int mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs);
 extern int mumble_hook_call_ret(lua_State* l, MumbleClient *client, const char* hook, int nargs, int nresults);
 
-extern int mumble_create_reference_table(lua_State *l);
-extern int mumble_ref(lua_State *l, int t);
-extern void mumble_pushref(lua_State *l, int t, int ref);
-extern void mumble_unref(lua_State *l, int t, int ref);
+extern int mumble_ref(lua_State *l);
+extern void mumble_pushref(lua_State *l, int ref);
+extern void mumble_unref(lua_State *l, int ref);
+
+extern int mumble_registry_ref(lua_State *l, int t);
+extern void mumble_registry_pushref(lua_State *l, int t, int ref);
+extern void mumble_registry_unref(lua_State *l, int t, int ref);

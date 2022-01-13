@@ -314,7 +314,7 @@ static int client_play(lua_State *l)
 	luaL_getmetatable(l, METATABLE_AUDIOSTREAM);
 	lua_setmetatable(l, -2);
 
-	mumble_pushref(l, MUMBLE_REGISTRY, client->audio_streams);
+	mumble_pushref(l, client->audio_streams);
 			lua_pushinteger(l, stream);
 			lua_pushvalue(l, -3);
 		lua_settable(l, -3);
@@ -327,7 +327,7 @@ static int client_play(lua_State *l)
 static int client_getAudioStream(lua_State *l)
 {
 	MumbleClient *client = mumble_checkclient(l, 1);
-	mumble_pushref(l, MUMBLE_REGISTRY, client->audio_streams);
+	mumble_pushref(l, client->audio_streams);
 	lua_pushinteger(l, luaL_optinteger(l, 2, 1));
 	lua_gettable(l, -2);
 	return 1;
@@ -336,7 +336,7 @@ static int client_getAudioStream(lua_State *l)
 static int client_getAudioStreams(lua_State *l)
 {
 	MumbleClient *client = mumble_checkclient(l, 1);
-	mumble_pushref(l, MUMBLE_REGISTRY, client->audio_streams);
+	mumble_pushref(l, client->audio_streams);
 	return 1;
 }
 
@@ -459,7 +459,7 @@ static int client_hook(lua_State *l)
 
 	luaL_checktype(l, funcIndex, LUA_TFUNCTION);
 
-	mumble_pushref(l, MUMBLE_REGISTRY, client->hooks);
+	mumble_pushref(l, client->hooks);
 	lua_getfield(l, -1, hook);
 
 	if (lua_istable(l, -1) == 0) {
@@ -486,7 +486,7 @@ static int client_call(lua_State *l)
 static int client_getHooks(lua_State *l)
 {
 	MumbleClient *client = mumble_checkclient(l, 1);
-	mumble_pushref(l, MUMBLE_REGISTRY, client->hooks);
+	mumble_pushref(l, client->hooks);
 	return 1;
 }
 
@@ -495,7 +495,7 @@ static int client_getUsers(lua_State *l)
 	MumbleClient *client = mumble_checkclient(l, 1);
 	lua_newtable(l);
 
-	LinkNode* current = client->session_list;
+	LinkNode* current = client->user_list;
 
 	lua_newtable(l);
 	int i = 1;
@@ -513,7 +513,7 @@ static int client_getUsers(lua_State *l)
 static int client_getChannels(lua_State *l)
 {
 	MumbleClient *client = mumble_checkclient(l, 1);
-	mumble_pushref(l, MUMBLE_REGISTRY, client->channels);
+	mumble_pushref(l, client->channels);
 	return 1;
 }
 
@@ -522,7 +522,7 @@ static int client_getChannel(lua_State *l)
 	MumbleClient *client = mumble_checkclient(l, 1);
 	//char* path = (char*) luaL_checkstring(l, 2);
 
-	mumble_pushref(l, MUMBLE_REGISTRY, client->channels);
+	mumble_pushref(l, client->channels);
 	lua_pushinteger(l, 0);	// root channel id is always 0
 	lua_gettable(l, -2);	// index the channel table by the root channel id
 	lua_remove(l, -2);		// remove table of channels from the stack
@@ -596,7 +596,7 @@ static int client_getVoiceTarget(lua_State *l)
 static int client_getEncoder(lua_State *l)
 {
 	MumbleClient *client = mumble_checkclient(l, 1);
-	mumble_pushref(l, MUMBLE_REGISTRY, client->encoder_ref);
+	mumble_pushref(l, client->encoder_ref);
 	return 1;
 }
 
@@ -748,14 +748,10 @@ static int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
-	if (client->connected)
-		mumble_disconnect(l, client, "garbage collected");
+	printf(METATABLE_CLIENT " garbage collected: %p\n", client);
 
-	mumble_unref(l, MUMBLE_REGISTRY, client->hooks);
-	mumble_unref(l, MUMBLE_REGISTRY, client->users);
-	mumble_unref(l, MUMBLE_REGISTRY, client->channels);
-	mumble_unref(l, MUMBLE_REGISTRY, client->audio_streams);
-	mumble_unref(l, MUMBLE_REGISTRY, client->encoder_ref);
+	mumble_disconnect(l, client, "garbage collected");
+
 	return 0;
 }
 

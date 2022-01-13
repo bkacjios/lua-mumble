@@ -332,6 +332,7 @@ void packet_channel_remove(lua_State *l, MumbleClient *client, Packet *packet)
 	mumble_channel_raw_get(l, client, channel->channel_id);
 	mumble_hook_call(l, client, "OnChannelRemove", 1);
 	mumble_channel_remove(l, client, channel->channel_id);
+	list_remove(&client->channel_list, channel->channel_id);
 
 	mumble_proto__channel_remove__free_unpacked(channel, NULL);
 }
@@ -470,8 +471,11 @@ void packet_user_remove(lua_State *l, MumbleClient *client, Packet *packet)
 		}
 	mumble_hook_call(l, client, "OnUserRemove", 1);
 	mumble_user_remove(l, client, user->session);
-
-	list_remove(&client->session_list, user->session);
+	list_remove(&client->user_list, user->session);
+	
+	if (client->session == user->session) {
+		mumble_disconnect(l, client, user->reason);
+	}
 
 	mumble_proto__user_remove__free_unpacked(user, NULL);
 }
@@ -625,8 +629,6 @@ void packet_user_state(lua_State *l, MumbleClient *client, Packet *packet)
 
 		if (user->connected == false) {
 			user->connected = true;
-
-			list_add(&client->session_list, state->session);
 
 			if (client->synced == true) {
 				lua_pushvalue(l, -1); // Push a copy of the event table we will send to the 'OnUserState' hook
@@ -1007,7 +1009,7 @@ void packet_permission_query(lua_State *l, MumbleClient *client, Packet *packet)
 		chan->permissions = query->permissions;
 	} else if (query->has_flush && query->flush) {
 		// Loop through all channels and set permissions to 0
-		mumble_pushref(l, MUMBLE_REGISTRY, client->channels);
+		mumble_pushref(l, client->channels);
 		lua_pushnil(l);
 		while (lua_next(l, -2)) {
 			if (lua_isuserdata(l, -1) == 1) {

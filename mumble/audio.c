@@ -159,7 +159,7 @@ void audio_transmission_stop(lua_State*l, MumbleClient *client, int stream)
 
 	if (sound == NULL) return;
 
-	mumble_pushref(l, MUMBLE_REGISTRY, client->audio_streams);
+	mumble_pushref(l, client->audio_streams);
 		lua_pushinteger(l, sound->stream); // index streams table by stream id
 		lua_gettable(l, -2); // push the audio stream object
 

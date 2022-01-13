@@ -148,20 +148,22 @@ int luaL_isudata(lua_State *L, int ud, const char *tname) {
 	This function expects a pointer to the data to be added 
 	and size of the data type */
 
-void list_add(LinkNode** head_ref, uint32_t value) 
+void list_add(LinkNode** head_ref, uint32_t data)
 {
 	LinkNode* new_node = malloc(sizeof(LinkNode));
-	new_node->data = value;
+
+	new_node->data = data;
 	new_node->next = (*head_ref);
+
 	(*head_ref) = new_node;
 }
 
-void list_remove(LinkNode **head_ref, uint32_t value)
+void list_remove(LinkNode **head_ref, uint32_t data)
 {
 	LinkNode* temp = *head_ref, *prev;
 
 	// If head node itself holds the key to be deleted
-	if (temp != NULL && temp->data == value)
+	if (temp != NULL && temp->data == data)
 	{
 		*head_ref = temp->next;   // Changed head
 		free(temp);               // free old head
@@ -170,7 +172,7 @@ void list_remove(LinkNode **head_ref, uint32_t value)
 
 	// Search for the key to be deleted, keep track of the
 	// previous node as we need to change 'prev->next'
-	while (temp != NULL && temp->data != value)
+	while (temp != NULL && temp->data != data)
 	{
 		prev = temp;
 		temp = temp->next;
@@ -182,7 +184,7 @@ void list_remove(LinkNode **head_ref, uint32_t value)
 	// Unlink the node from linked list 
 	prev->next = temp->next;
 
-	free(temp); // Free memory
+	free(temp);               // free old head
 }
 
 void list_clear(LinkNode** head_ref)

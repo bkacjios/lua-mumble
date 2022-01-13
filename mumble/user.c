@@ -444,7 +444,7 @@ static int user_requestCommentBlob(lua_State *l)
 static int user_gc(lua_State *l)
 {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
-	mumble_unref(l, MUMBLE_REGISTRY, user->data);
+	mumble_unref(l, user->data);
 	return 0;
 }
 
@@ -452,7 +452,7 @@ static int user_newindex(lua_State *l)
 {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
-	mumble_pushref(l, MUMBLE_REGISTRY, user->data);
+	mumble_pushref(l, user->data);
 	lua_pushvalue(l, 2);
 	lua_pushvalue(l, 3);
 	lua_settable(l, -3);
@@ -463,7 +463,7 @@ static int user_index(lua_State *l)
 {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
-	mumble_pushref(l, MUMBLE_REGISTRY, user->data);
+	mumble_pushref(l, user->data);
 	lua_pushvalue(l, 2);
 	lua_gettable(l, -2);
 

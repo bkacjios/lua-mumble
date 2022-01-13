@@ -13,8 +13,8 @@
 #include "packet.h"
 #include "ocb.h"
 
-int MUMBLE_CLIENTS;
 int MUMBLE_REGISTRY;
+int MUMBLE_CLIENTS;
 
 static ev_signal mumble_signal;
 
@@ -228,7 +228,7 @@ static void socket_read_event_tcp(struct ev_loop *loop, ev_io *w_, int revents)
 		lua_stackguard_exit(l);
 	}
 
-	if (SSL_pending(client->ssl) > 0) {
+	if (client->connected && SSL_pending(client->ssl) > 0) {
 		// If we still have pending packets to read, set this event to be called again
 		ev_feed_fd_event(loop, w_->fd, revents);
 	}
@@ -321,17 +321,19 @@ static int mumble_connect(lua_State *l)
 	luaL_getmetatable(l, METATABLE_CLIENT);
 	lua_setmetatable(l, -2);
 
-	lua_newtable(l);
-	client->hooks = mumble_ref(l, MUMBLE_REGISTRY);
+	client->closed = false;
 
 	lua_newtable(l);
-	client->users = mumble_ref(l, MUMBLE_REGISTRY);
+	client->hooks = mumble_ref(l);
 
 	lua_newtable(l);
-	client->channels = mumble_ref(l, MUMBLE_REGISTRY);
+	client->users = mumble_ref(l);
 
 	lua_newtable(l);
-	client->audio_streams = mumble_ref(l, MUMBLE_REGISTRY);
+	client->channels = mumble_ref(l);
+
+	lua_newtable(l);
+	client->audio_streams = mumble_ref(l);
 
 	client->host = server_host_str;
 	client->port = port;
@@ -359,7 +361,8 @@ static int mumble_connect(lua_State *l)
 
 	client->crypt = crypt_new();
 
-	client->session_list = NULL;
+	client->user_list = NULL;
+	client->channel_list = NULL;
 
 	if (client->crypt == NULL) {
 		lua_pushnil(l);
@@ -378,7 +381,7 @@ static int mumble_connect(lua_State *l)
 		return 2;
 	}
 
-	client->encoder_ref = mumble_ref(l, MUMBLE_REGISTRY);
+	client->encoder_ref = mumble_ref(l);
 
 	opus_encoder_ctl(client->encoder, OPUS_SET_VBR(0));
 	opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(AUDIO_DEFAULT_BITRATE));
@@ -518,7 +521,7 @@ static int mumble_connect(lua_State *l)
 
 	// Register ourself in the list of active clients
 	lua_pushvalue(l, -1);
-	client->self = mumble_ref(l, MUMBLE_CLIENTS);
+	client->self = mumble_registry_ref(l, MUMBLE_CLIENTS);
 	return 1;
 }
 
@@ -584,7 +587,10 @@ static int mumble_stop(lua_State *l)
 
 void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason)
 {
-	mumble_unref(l, MUMBLE_REGISTRY, client->self);
+	if (client->closed) return;
+
+	client->closed = true;
+	client->connected = false;
 
 #ifdef ENABLE_UDP
 	ev_io_stop(EV_DEFAULT, &client->socket_udp_io.io);
@@ -638,7 +644,33 @@ void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason)
 
 	lua_pushstring(l, reason);
 	mumble_hook_call(l, client, "OnDisconnect", 1);
-	client->connected = false;
+
+	LinkNode* current = client->user_list;
+
+	if (current) {
+		while (current != NULL)
+		{
+			mumble_user_remove(l, client, current->data);
+			current = current->next;
+		}
+	}
+
+	current = client->channel_list;
+
+	if (current) {
+		while (current != NULL)
+		{
+			mumble_channel_remove(l, client, current->data);
+			current = current->next;
+		}
+	}
+
+	mumble_registry_unref(l, MUMBLE_CLIENTS, client->self);
+	mumble_unref(l, client->hooks);
+	mumble_unref(l, client->users);
+	mumble_unref(l, client->channels);
+	mumble_unref(l, client->audio_streams);
+	mumble_unref(l, client->encoder_ref);
 
 	lua_stackguard_exit(l);
 }
@@ -683,7 +715,7 @@ int mumble_hook_call_ret(lua_State* l, MumbleClient *client, const char* hook, i
 	int nreturns = 0;
 
 	// Get hook table
-	mumble_pushref(l, MUMBLE_REGISTRY, client->hooks);
+	mumble_pushref(l, client->hooks);
 
 	// Get the table of callbacks
 	lua_getfield(l, -1, hook);
@@ -787,8 +819,7 @@ int mumble_hook_call_ret(lua_State* l, MumbleClient *client, const char* hook, i
 MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session) {
 	MumbleUser* user = NULL;
 
-	mumble_pushref(l, MUMBLE_REGISTRY, client->users);
-
+	mumble_pushref(l, client->users);
 	lua_pushinteger(l, session);
 	lua_gettable(l, -2);
 
@@ -801,7 +832,7 @@ MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session
 		{
 			user->client = client;
 			lua_newtable(l);
-			user->data = mumble_ref(l, MUMBLE_REGISTRY);
+			user->data = mumble_ref(l);
 			user->connected = false;
 			user->session = session;
 			user->user_id = 0;
@@ -827,6 +858,8 @@ MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session
 		luaL_getmetatable(l, METATABLE_USER);
 		lua_setmetatable(l, -2);
 
+		list_add(&client->user_list, session);
+
 		lua_pushinteger(l, session);
 		lua_pushvalue(l, -2); // Push a copy of the new user metatable
 		lua_settable(l, -4); // Set the user metatable to where we store the table of users, using session as its index
@@ -839,12 +872,12 @@ MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session
 }
 
 void mumble_client_raw_get(lua_State* l, MumbleClient* client) {
-	mumble_pushref(l, MUMBLE_CLIENTS, client->self);
+	mumble_registry_pushref(l, MUMBLE_CLIENTS, client->self);
 }
 
 bool mumble_user_isnil(lua_State* l, MumbleClient* client, uint32_t session) {
 
-	mumble_pushref(l, MUMBLE_REGISTRY, client->users);
+	mumble_pushref(l, client->users);
 	lua_pushinteger(l, session);
 	lua_gettable(l, -2);
 
@@ -857,15 +890,12 @@ bool mumble_user_isnil(lua_State* l, MumbleClient* client, uint32_t session) {
 
 void mumble_user_raw_get(lua_State* l, MumbleClient* client, uint32_t session)
 {
-	mumble_pushref(l, MUMBLE_REGISTRY, client->users);
-	lua_pushinteger(l, session);
-	lua_gettable(l, -2);
-	lua_remove(l, -2);
+	mumble_registry_pushref(l, client->users, session);
 }
 
 void mumble_user_remove(lua_State* l, MumbleClient* client, uint32_t session)
 {
-	mumble_pushref(l, MUMBLE_REGISTRY, client->users);
+	mumble_pushref(l, client->users);
 		lua_pushinteger(l, session);
 		lua_pushnil(l);
 		lua_settable(l, -3);
@@ -874,14 +904,14 @@ void mumble_user_remove(lua_State* l, MumbleClient* client, uint32_t session)
 
 void mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t channel_id)
 {
-	mumble_pushref(l, MUMBLE_CLIENTS, client->channels);
+	mumble_registry_pushref(l, client->channels, channel_id);
 }
 
 MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t channel_id)
 {
 	MumbleChannel* channel = NULL;
 
-	mumble_pushref(l, MUMBLE_REGISTRY, client->channels);
+	mumble_pushref(l, client->channels);
 
 	lua_pushinteger(l, channel_id);
 	lua_gettable(l, -2);
@@ -895,7 +925,7 @@ MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t c
 		{
 			channel->client = client;
 			lua_newtable(l);
-			channel->data = mumble_ref(l, MUMBLE_REGISTRY);
+			channel->data = mumble_ref(l);
 			channel->name = "";
 			channel->channel_id = channel_id;
 			channel->parent = 0;
@@ -911,6 +941,8 @@ MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t c
 		luaL_getmetatable(l, METATABLE_CHAN);
 		lua_setmetatable(l, -2);
 
+		list_add(&client->channel_list, channel_id);
+
 		lua_pushinteger(l, channel_id);
 		lua_pushvalue(l, -2); // Push a copy of the new channel object
 		lua_settable(l, -4); // Set the channel metatable to where we store the table of cahnnels, using channel_id as its index
@@ -924,7 +956,7 @@ MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t c
 
 void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_id)
 {
-	mumble_pushref(l, MUMBLE_REGISTRY, client->channels);
+	mumble_pushref(l, client->channels);
 		lua_pushinteger(l, channel_id);
 		lua_pushnil(l);
 		lua_settable(l, -3);
@@ -1053,8 +1085,11 @@ int luaopen_mumble(lua_State *l)
 	signal(SIGPIPE, SIG_IGN);
 	SSL_library_init();
 
-	MUMBLE_CLIENTS = mumble_create_reference_table(l);
-	MUMBLE_REGISTRY = mumble_create_reference_table(l);
+	lua_newtable(l);
+	MUMBLE_REGISTRY = luaL_ref(l, LUA_REGISTRYINDEX);
+
+	lua_newtable(l);
+	MUMBLE_CLIENTS = mumble_ref(l);
 
 	luaL_register(l, "mumble", mumble);
 	{
@@ -1270,38 +1305,50 @@ int luaopen_mumble(lua_State *l)
 	return 0;
 }
 
-int mumble_create_reference_table(lua_State *l)
-{
-	lua_newtable(l);
-	/*lua_newtable(l);
-	{
-		lua_pushliteral(l, "v");
-		lua_setfield(l, -2, "__mode");
-	}
-	lua_setmetatable(l, -2);*/
-	return luaL_ref(l, LUA_REGISTRYINDEX);
-}
-
-int mumble_ref(lua_State *l, int t)
+int mumble_ref(lua_State *l)
 {
 	int ref;
-	lua_rawgeti(l, LUA_REGISTRYINDEX, t);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_REGISTRY);
 	lua_pushvalue(l, -2);
 	ref = luaL_ref(l, -2);
 	lua_pop(l, 2);
 	return ref;
 }
 
-void mumble_pushref(lua_State *l, int t, int ref)
+void mumble_pushref(lua_State *l, int ref)
 {
-	lua_rawgeti(l, LUA_REGISTRYINDEX, t);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_REGISTRY);
 	lua_rawgeti(l, -1, ref);
 	lua_remove(l, -2);
 }
 
-void mumble_unref(lua_State *l, int t, int ref)
+void mumble_unref(lua_State *l, int ref)
 {
-	lua_rawgeti(l, LUA_REGISTRYINDEX, t);
+	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_REGISTRY);
+	luaL_unref(l, -1, ref);
+	lua_pop(l, 1);
+}
+
+int mumble_registry_ref(lua_State *l, int t)
+{
+	int ref;
+	mumble_pushref(l, t);
+	lua_pushvalue(l, -2);
+	ref = luaL_ref(l, -2);
+	lua_pop(l, 2);
+	return ref;
+}
+
+void mumble_registry_pushref(lua_State *l, int t, int ref)
+{
+	mumble_pushref(l, t);
+	lua_rawgeti(l, -1, ref);
+	lua_remove(l, -2);
+}
+
+void mumble_registry_unref(lua_State *l, int t, int ref)
+{
+	mumble_pushref(l, t);
 	luaL_unref(l, -1, ref);
 	lua_pop(l, 1);
 }
