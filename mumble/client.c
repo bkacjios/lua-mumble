@@ -747,11 +747,7 @@ static int client_isTunnelingUDP(lua_State *l)
 static int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-
-	printf(METATABLE_CLIENT " garbage collected: %p\n", client);
-
 	mumble_disconnect(l, client, "garbage collected");
-
 	return 0;
 }
 

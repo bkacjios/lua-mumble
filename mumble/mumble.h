@@ -110,6 +110,8 @@ typedef struct my_timer my_timer;
 typedef struct lua_timer lua_timer;
 typedef struct my_signal my_signal;
 typedef struct mumble_crypt mumble_crypt;
+typedef struct thread_io thread_io;
+typedef struct UserThread UserThread;
 
 struct my_io {
 	ev_io io;
@@ -152,6 +154,19 @@ struct AudioStream {
 	int stream;
 	int loop_count;
 	bool looping;
+};
+
+struct thread_io {
+	ev_io io;
+	lua_State* l;
+};
+
+struct UserThread {
+    lua_State *l;
+    pthread_t thread;
+	int self;
+	int worker;
+	int finished;
 };
 
 struct MumbleClient {
@@ -288,6 +303,10 @@ typedef struct {
 
 extern int MUMBLE_CLIENTS;
 extern int MUMBLE_REGISTRY;
+
+extern int user_thread_pipe[2];
+extern void mumble_audio_timer(EV_P_ ev_timer *w_, int revents);
+extern void mumble_thread_event(struct ev_loop *loop, ev_io *w, int revents);
 
 extern double gettime(clockid_t mode);
 

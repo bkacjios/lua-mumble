@@ -10,6 +10,7 @@
 #include "user.h"
 #include "target.h"
 #include "timer.h"
+#include "thread.h"
 #include "packet.h"
 #include "ocb.h"
 
@@ -17,20 +18,13 @@ int MUMBLE_REGISTRY;
 int MUMBLE_CLIENTS;
 
 static ev_signal mumble_signal;
+static thread_io user_thread_watcher;
+
+int user_thread_pipe[2];
 
 static void mumble_signal_event(struct ev_loop *loop, ev_signal *w, int revents)
 {
 	ev_break(EV_DEFAULT, EVBREAK_ALL);
-}
-
-static void mumble_audio_timer(EV_P_ ev_timer *w_, int revents)
-{
-	my_timer *w = (my_timer *) w_;
-	MumbleClient *client = w->client;
-
-	if (client->connected) {
-		audio_transmission_event(w->l, client);
-	}
 }
 
 static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
@@ -1085,6 +1079,11 @@ int luaopen_mumble(lua_State *l)
 	signal(SIGPIPE, SIG_IGN);
 	SSL_library_init();
 
+	if (pipe(user_thread_pipe) != 0) {
+		fprintf(stderr, "could not create user thread pipe\n");
+		return 0;
+	}
+
 	lua_newtable(l);
 	MUMBLE_REGISTRY = luaL_ref(l, LUA_REGISTRYINDEX);
 
@@ -1285,6 +1284,23 @@ int luaopen_mumble(lua_State *l)
 		lua_setmetatable(l, -2);
 		lua_setfield(l, -2, "timer");
 
+		// Register thread metatable
+		luaL_newmetatable(l, METATABLE_THREAD);
+		{
+			lua_pushvalue(l, -1);
+			lua_setfield(l, -2, "__index");
+		}
+		luaL_register(l, NULL, mumble_thread);
+
+		// If you call the voice target metatable as a function it will return a new voice target object
+		lua_newtable(l);
+		{
+			lua_pushcfunction(l, mumble_thread_new);
+			lua_setfield(l, -2, "__call");
+		}
+		lua_setmetatable(l, -2);
+		lua_setfield(l, -2, "thread");
+
 		// Register encoder metatable
 		luaL_newmetatable(l, METATABLE_AUDIOSTREAM);
 		{
@@ -1301,6 +1317,11 @@ int luaopen_mumble(lua_State *l)
 	// Break out of mumble.loop() when a SIGINT signal is received
 	ev_signal_init(&mumble_signal, mumble_signal_event, SIGINT);
 	ev_signal_start(EV_DEFAULT, &mumble_signal);
+
+	user_thread_watcher.l = l;
+
+	ev_io_init(&user_thread_watcher.io, mumble_thread_event, user_thread_pipe[0], EV_READ);
+	ev_io_start(EV_DEFAULT, &user_thread_watcher.io);
 
 	return 0;
 }

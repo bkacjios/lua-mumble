@@ -81,7 +81,13 @@ static int timer_stop(lua_State *l)
 {
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	ev_timer_stop(EV_DEFAULT, &ltimer->timer);
-	mumble_unref(l, ltimer->callback);
+	return 0;
+}
+
+static int timer_close(lua_State *l)
+{
+	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	ev_timer_stop(EV_DEFAULT, &ltimer->timer);
 	mumble_unref(l, ltimer->self);
 	return 0;
 }
@@ -98,7 +104,6 @@ static int timer_gc(lua_State *l)
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	ev_timer_stop(EV_DEFAULT, &ltimer->timer);
 	mumble_unref(l, ltimer->callback);
-	mumble_unref(l, ltimer->self);
 	return 0;
 }
 
@@ -107,6 +112,7 @@ const luaL_Reg mumble_timer[] = {
 	{"set", timer_set},
 	{"again", timer_again},
 	{"stop", timer_stop},
+	{"close", timer_close},
 	{"__tostring", timer_tostring},
 	{"__gc", timer_gc},
 	{NULL, NULL}

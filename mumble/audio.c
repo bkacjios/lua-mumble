@@ -173,6 +173,16 @@ void audio_transmission_stop(lua_State*l, MumbleClient *client, int stream)
 	client->audio_jobs[index] = NULL;
 }
 
+void mumble_audio_timer(EV_P_ ev_timer *w_, int revents)
+{
+	my_timer *w = (my_timer *) w_;
+	MumbleClient *client = w->client;
+
+	if (client->connected) {
+		audio_transmission_event(w->l, client);
+	}
+}
+
 void audio_transmission_event(lua_State* l, MumbleClient *client)
 {
 	lua_stackguard_entry(l);
