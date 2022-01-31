@@ -97,8 +97,7 @@ static int decoder_decode_float(lua_State *l)
 
 static int decoder_tostring(lua_State *l)
 {
-	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);
-	lua_pushfstring(l, "%s: %p", METATABLE_DECODER, decoder);
+	lua_pushfstring(l, "%s: %p", METATABLE_DECODER, lua_topointer(l, 1));
 	return 1;
 }
 

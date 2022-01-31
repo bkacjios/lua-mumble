@@ -162,10 +162,8 @@ struct thread_io {
 };
 
 struct UserThread {
-    lua_State *l;
-    pthread_t thread;
-	int self;
-	int worker;
+    pthread_t pthread;
+	const char *filename;
 	int finished;
 };
 
@@ -303,6 +301,8 @@ typedef struct {
 
 extern int MUMBLE_CLIENTS;
 extern int MUMBLE_REGISTRY;
+extern int MUMBLE_TIMER_REG;
+extern int MUMBLE_THREAD_REG;
 
 extern int user_thread_pipe[2];
 extern void mumble_audio_timer(EV_P_ ev_timer *w_, int revents);

@@ -14,8 +14,8 @@ static void mumble_lua_timer(EV_P_ ev_timer *w_, int revents)
 	lua_pushcfunction(l, mumble_traceback);
 
 	// Push the callback function from the registry
-	mumble_pushref(l, w->callback);
-	mumble_pushref(l, w->self);
+	mumble_registry_pushref(l, MUMBLE_TIMER_REG, w->callback);
+	mumble_registry_pushref(l, MUMBLE_TIMER_REG, w->self);
 
 	// Call the callback with our custom error handler function
 	if (lua_pcall(l, 1, 0, -3) != 0) {
@@ -37,10 +37,10 @@ int mumble_timer_new(lua_State *l)
 	ltimer->l = l;
 
 	lua_pushvalue(l, -1); // Push a copy of the timers userdata
-	ltimer->self = mumble_ref(l); // Pop it off as a reference
+	ltimer->self = mumble_registry_ref(l, MUMBLE_TIMER_REG); // Pop it off as a reference
 
 	lua_pushvalue(l, 2); // Push a copy of our callback function
-	ltimer->callback = mumble_ref(l); // Pop it off as a reference
+	ltimer->callback = mumble_registry_ref(l, MUMBLE_TIMER_REG); // Pop it off as a reference
 
 	luaL_getmetatable(l, METATABLE_TIMER);
 	lua_setmetatable(l, -2);
@@ -88,14 +88,13 @@ static int timer_close(lua_State *l)
 {
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	ev_timer_stop(EV_DEFAULT, &ltimer->timer);
-	mumble_unref(l, ltimer->self);
+	mumble_registry_unref(l, MUMBLE_TIMER_REG, ltimer->self);
 	return 0;
 }
 
 static int timer_tostring(lua_State *l)
 {
-	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
-	lua_pushfstring(l, "%s: %p", METATABLE_TIMER, ltimer);
+	lua_pushfstring(l, "%s: %p", METATABLE_TIMER, lua_topointer(l, 1));
 	return 1;
 }
 
@@ -103,7 +102,7 @@ static int timer_gc(lua_State *l)
 {
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	ev_timer_stop(EV_DEFAULT, &ltimer->timer);
-	mumble_unref(l, ltimer->callback);
+	mumble_registry_unref(l, MUMBLE_TIMER_REG, ltimer->callback);
 	return 0;
 }
 

@@ -16,6 +16,8 @@
 
 int MUMBLE_REGISTRY;
 int MUMBLE_CLIENTS;
+int MUMBLE_TIMER_REG;
+int MUMBLE_THREAD_REG;
 
 static ev_signal mumble_signal;
 static thread_io user_thread_watcher;
@@ -1089,6 +1091,12 @@ int luaopen_mumble(lua_State *l)
 
 	lua_newtable(l);
 	MUMBLE_CLIENTS = mumble_ref(l);
+
+	lua_newtable(l);
+	MUMBLE_TIMER_REG = mumble_ref(l);
+
+	lua_newtable(l);
+	MUMBLE_THREAD_REG = mumble_ref(l);
 
 	luaL_register(l, "mumble", mumble);
 	{

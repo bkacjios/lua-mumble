@@ -115,8 +115,7 @@ static int encoder_encode_float(lua_State *l)
 
 static int encoder_tostring(lua_State *l)
 {
-	OpusEncoder *encoder = luaL_checkudata(l, 1, METATABLE_ENCODER);
-	lua_pushfstring(l, "%s: %p", METATABLE_ENCODER, encoder);
+	lua_pushfstring(l, "%s: %p", METATABLE_ENCODER, lua_topointer(l, 1));
 	return 1;
 }
 

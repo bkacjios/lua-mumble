@@ -107,9 +107,7 @@ static int target_getChildren(lua_State *l)
 
 static int target_tostring(lua_State *l)
 {	
-	MumbleProto__VoiceTarget__Target *target = luaL_checkudata(l, 1, METATABLE_VOICETARGET);
-
-	lua_pushfstring(l, "%s: %p", METATABLE_VOICETARGET, target);
+	lua_pushfstring(l, "%s: %p", METATABLE_VOICETARGET, lua_topointer(l, 1));
 	return 1;
 }
 
