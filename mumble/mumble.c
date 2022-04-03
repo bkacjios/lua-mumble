@@ -23,6 +23,7 @@ static ev_signal mumble_signal;
 static thread_io user_thread_watcher;
 
 int user_thread_pipe[2];
+int channel_thread_pipe[2];
 
 static void mumble_signal_event(struct ev_loop *loop, ev_signal *w, int revents)
 {
@@ -54,7 +55,7 @@ void mumble_ping_udp(lua_State *l, MumbleClient* client) {
 		memcpy(packet + 1, &ts64, sizeof(ts64));
 
 		if (client->udp_ping_acc >= 3) {
-			printf("Server no longer responding to UDP pings, falling back to TCP..\n");
+			mumble_log(LOG_WARN, "Server no longer responding to UDP pings, falling back to TCP..\n");
 			client->udp_tunnel = true;
 		}
 
@@ -164,6 +165,16 @@ static void socket_connect_event_tcp(struct ev_loop *loop, ev_io *w_, int revent
 		return;
 	}
 
+	char address[INET6_ADDRSTRLEN];
+
+	if (client->server_host_tcp->ai_family == AF_INET) {
+		inet_ntop(AF_INET, &(((struct sockaddr_in*)(client->server_host_tcp->ai_addr))->sin_addr), address, INET_ADDRSTRLEN);
+	} else {
+		inet_ntop(AF_INET6, &(((struct sockaddr_in6*)(client->server_host_tcp->ai_addr))->sin6_addr), address, INET6_ADDRSTRLEN);
+	}
+
+	mumble_log(LOG_INFO, "%s[%d] connected to server %s:%d\n", METATABLE_CLIENT, client->self, address, client->port);
+
 	client->connected = true;
 	mumble_hook_call(l, client, "OnConnect", 0);
 	ev_io_stop(loop, w_);
@@ -239,7 +250,7 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 
 	int caddrlen;
 	struct sockaddr_in cliaddr;
-	char encrypted[UDP_BUFFER_MAX];
+	char encrypted[UDP_BUFFER_MAX+4];
 
 	ssize_t size;
 	size = recvfrom(client->socket_udp, encrypted, sizeof(encrypted), 0, client->server_host_udp->ai_addr, &client->server_host_udp->ai_addrlen);
@@ -267,7 +278,7 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 					client->udp_ping_var = pow(fabs(delay - client->udp_ping_avg), 2);
 
 					if (client->udp_tunnel && client->udp_ping_acc > 1) {
-						printf("Server is responding to UDP packets again, switching back to UDP..\n");
+						mumble_log(LOG_WARN, "Server is responding to UDP packets again, switching back to UDP..\n");
 					}
 
 					client->udp_ping_acc = 0;
@@ -436,7 +447,7 @@ static int mumble_connect(lua_State *l)
 		return 2;
 	}
 
-	int n = UDP_BUFFER_MAX;
+	int n = UDP_BUFFER_MAX+4;
 	if (setsockopt(client->socket_udp, SOL_SOCKET, SO_RCVBUF, &n, sizeof(n)) < 0) {
 		lua_pushnil(l);
 		lua_pushfstring(l, "could not set udp socket buffer size: %s", strerror(errno));
@@ -518,6 +529,9 @@ static int mumble_connect(lua_State *l)
 	// Register ourself in the list of active clients
 	lua_pushvalue(l, -1);
 	client->self = mumble_registry_ref(l, MUMBLE_CLIENTS);
+
+	mumble_log(LOG_INFO, "%s[%d] connecting to host %s:%d\n", METATABLE_CLIENT, client->self, server_host_str, port);
+
 	return 1;
 }
 
@@ -556,7 +570,7 @@ void mumble_create_audio_timer(MumbleClient *client, int bitspersec)
 		bitrate = 8000;
 
 	if (bitrate != AUDIO_DEFAULT_BITRATE) {
-		printf("Server maximum network bandwidth is only %d kbit/s. Audio quality auto-adjusted to %d kbit/s (%d ms)\n", bitspersec / 1000, bitrate / 1000, frames * 10);
+		mumble_log(LOG_WARN, "Server maximum network bandwidth is only %d kbit/s. Audio quality auto-adjusted to %d kbit/s (%d ms)\n", bitspersec / 1000, bitrate / 1000, frames * 10);
 		client->audio_frames = frames * 10;
 		opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(bitrate));
 	}
@@ -638,6 +652,7 @@ void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason)
 		}
 	}
 
+	mumble_log(LOG_INFO, "%s[%d] disconnected from server: %s\n", METATABLE_CLIENT, client->self, reason);
 	lua_pushstring(l, reason);
 	mumble_hook_call(l, client, "OnDisconnect", 1);
 
@@ -680,6 +695,12 @@ static int mumble_getTime(lua_State *l)
 static int mumble_getConnections(lua_State *l)
 {
 	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
+	return 1;
+}
+
+static int mumble_getTimers(lua_State *l)
+{
+	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_TIMER_REG);
 	return 1;
 }
 
@@ -1086,6 +1107,11 @@ int luaopen_mumble(lua_State *l)
 		return 0;
 	}
 
+	if (pipe(channel_thread_pipe) != 0) {
+		fprintf(stderr, "could not create channel thread pipe\n");
+		return 0;
+	}
+
 	lua_newtable(l);
 	MUMBLE_REGISTRY = luaL_ref(l, LUA_REGISTRYINDEX);
 
@@ -1177,8 +1203,23 @@ int luaopen_mumble(lua_State *l)
 			lua_setfield(l, -2, "MEDIUM");
 			lua_pushinteger(l, 3);
 			lua_setfield(l, -2, "HIGH");
+			lua_pushinteger(l, 4);
+			lua_setfield(l, -2, "BEST");
 		}
 		lua_setfield(l, -2, "quality");
+
+		lua_newtable(l);
+		{
+			lua_pushinteger(l, UDP_OPUS);
+			lua_setfield(l, -2, "OPUS");
+			lua_pushinteger(l, UDP_SPEEX);
+			lua_setfield(l, -2, "SPEEX");
+			lua_pushinteger(l, UDP_CELT_ALPHA);
+			lua_setfield(l, -2, "CELT_ALPHA");
+			lua_pushinteger(l, UDP_CELT_BETA);
+			lua_setfield(l, -2, "UCELT_BETA");
+		}
+		lua_setfield(l, -2, "codec");
 
 		// Register client metatable
 		luaL_newmetatable(l, METATABLE_CLIENT);

@@ -392,7 +392,7 @@ static int channel_gc(lua_State *l)
 static int channel_tostring(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
-	lua_pushfstring(l, "%s [%d][%s]", METATABLE_CHAN, channel->channel_id, channel->name);
+	lua_pushfstring(l, "%s [%d][\"%s\"]", METATABLE_CHAN, channel->channel_id, channel->name);
 	return 1;
 }
 

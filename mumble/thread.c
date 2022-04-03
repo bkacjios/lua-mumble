@@ -4,11 +4,11 @@
 
 static void *mumble_thread_worker(void *arg)
 {
-    UserThread *uthread = arg;
+	UserThread *uthread = arg;
 
-    int finished = uthread->finished;
+	int finished = uthread->finished;
 
-    // Create state and load libs
+	// Create state and load libs
 	lua_State *l = luaL_newstate();
 	luaL_openlibs(l);
 
@@ -18,10 +18,10 @@ static void *mumble_thread_worker(void *arg)
 	lua_pushcfunction(l, mumble_traceback);
 
 	// Load the file in our thread
-	luaL_loadfile(l, uthread->filename);
+	int err = luaL_loadfile(l, uthread->filename);
 
 	// Call the worker with our custom error handler function
-	if (lua_pcall(l, 0, 0, -2) != 0) {
+	if (err > 0 || lua_pcall(l, 0, 0, -2) != 0) {
 		fprintf(stderr, "%s\n", lua_tostring(l, -1));
 		lua_pop(l, 1); // Pop the error
 	}

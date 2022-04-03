@@ -297,7 +297,7 @@ static int user_setTexture(lua_State *l)
 static int user_tostring(lua_State *l)
 {	
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
-	lua_pushfstring(l, "%s [%d][%s]", METATABLE_USER, user->session, user->name);
+	lua_pushfstring(l, "%s [%d][\"%s\"]", METATABLE_USER, user->session, user->name);
 	return 1;
 }
 

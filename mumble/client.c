@@ -357,13 +357,11 @@ static int client_setAudioQuality(lua_State *l) {
 		case 3:
 			frames = 40;
 			break;
-		//case 4: // 60 causes opus_encode to crash, even though it says a frame size of 2880 @ 48khz is permitted
-			//frames = 60;
-			//break;
-		default:
-			frames = 20;
-			luaL_error(l, "invalid quality value \"%d\" (must be one the following values: 1, 2, 3)", quality);
+		case 4:
+			frames = 60;
 			break;
+		default:
+			return luaL_error(l, "invalid quality value \"%d\" (must be one the following values: 1, 2, 3, 4)", quality);
 	}
 
 	client->audio_frames = frames;
@@ -754,7 +752,7 @@ static int client_gc(lua_State *l)
 static int client_tostring(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_pushfstring(l, "%s: %p", METATABLE_CLIENT, client);
+	lua_pushfstring(l, "%s [%d][%s:%d] %p", METATABLE_CLIENT, client->self, client->host, client->port, client);
 	return 1;
 }
 

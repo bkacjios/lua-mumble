@@ -29,6 +29,43 @@ void bin_to_strhex(char *bin, size_t binsz, char **result)
 	}
 }
 
+static void mumble_print(int level, const char* msg)
+{
+	if (level > LOG_LEVEL) return;
+
+	char* lcolor;
+	char* llevel;
+	switch (level) {
+		case LOG_INFO:
+			llevel = " INFO";
+			lcolor = "\x1b[36;1m";
+			break;
+		case LOG_WARN:
+			llevel = " WARN";
+			lcolor = "\x1b[33;1m";
+			break;
+		case LOG_ERROR:
+			llevel = "ERROR";
+			lcolor = "\x1b[31;1m";
+			break;
+		default:
+			llevel = "";
+			lcolor = "\x1b[0m";
+			break;
+	}
+	printf("[\x1b[34;1mMUMBLE\x1b[0m - %s%s\x1b[0m] %s", lcolor, llevel, msg);
+}
+
+void mumble_log(int level, const char* fmt, ...)
+{
+	va_list va;
+	va_start(va,fmt);
+	char buff[2048];
+	vsprintf(buff,fmt,va);
+	mumble_print(level, buff);
+	va_end(va);
+}
+
 static void iterate_and_print(lua_State *L, int index)
 {
 	// Push another reference to the table on top of the stack (so we know

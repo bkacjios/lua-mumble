@@ -3,6 +3,9 @@
 #include "packet.h"
 #include "ocb.h"
 
+#include "user.h"
+#include "client.h"
+
 int packet_sendudp(MumbleClient* client, const void *message, const int length)
 {
 	unsigned char encrypted[length + 4];
@@ -79,7 +82,7 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 			payload_size = mumble_proto__plugin_data_transmission__get_packed_size(message);
 			break;
 		default:
-			printf("WARNING: unable to get payload size for packet #%i\n", type);
+			mumble_log(LOG_WARN, "unable to get payload size for packet #%i\n", type);
 			return 1;
 	}
 	if (payload_size >= PAYLOAD_SIZE_MAX) {
@@ -149,7 +152,7 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 				mumble_proto__plugin_data_transmission__pack(message, packet_out.buffer + 6);
 				break;
 			default:
-				printf("WARNING: attempted to pack unspported packet #%i\n", type);
+				mumble_log(LOG_WARN, "attempted to pack unspported packet #%i\n", type);
 				break;
 		}
 	}
@@ -178,6 +181,9 @@ void packet_server_version(lua_State *l, MumbleClient *client, Packet *packet)
 		lua_pushstring(l, version->os_version);
 		lua_setfield(l, -2, "os_version");
 	mumble_hook_call(l, client, "OnServerVersion", 1);
+
+	mumble_log(LOG_INFO, "%s[%d] server version: %s\n", METATABLE_CLIENT, client->self, version->release);
+	mumble_log(LOG_INFO, "%s[%d] server system : %s - %s\n", METATABLE_CLIENT, client->self, version->os, version->os_version);
 
 	mumble_proto__version__free_unpacked(version, NULL);
 }
@@ -271,6 +277,8 @@ void packet_server_reject(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
+	mumble_log(LOG_WARN, "%s[%d] server rejected connection: %s\n", METATABLE_CLIENT, client->self, reject->reason);
+
 	lua_newtable(l);
 		if (reject->has_type) {
 			lua_pushinteger(l, reject->type);
@@ -291,7 +299,6 @@ void packet_server_sync(lua_State *l, MumbleClient *client, Packet *packet)
 	}
 
 	client->synced = true;
-	
 	ev_timer_start(EV_DEFAULT, &client->ping_timer.timer);
 
 	lua_newtable(l);
@@ -474,6 +481,15 @@ void packet_user_remove(lua_State *l, MumbleClient *client, Packet *packet)
 	list_remove(&client->user_list, user->session);
 	
 	if (client->session == user->session) {
+		char* type = (user->has_ban && user->ban) ? "banned" : "kicked";
+		char* reason = (user->reason != NULL && strcmp(user->reason,"") != 0) ? user->reason : "No reason given";
+
+		if (user->has_actor && user->has_ban) {			
+			MumbleUser* actor = mumble_user_get(l, client, user->actor);
+			mumble_log(LOG_INFO, "%s[%d] %s from server by %s [%d][\"%s\"] (Reason \"%s\")\n", METATABLE_CLIENT, client->self, type, METATABLE_USER, actor->session, actor->name, reason);
+		} else {
+			mumble_log(LOG_INFO, "%s[%d] %s from server (Reason \"%s\")\n", METATABLE_CLIENT, client->self, type, reason);
+		}
 		mumble_disconnect(l, client, user->reason);
 	}
 
@@ -909,12 +925,12 @@ void packet_crypt_setup(lua_State *l, MumbleClient *client, Packet *packet)
 #ifdef ENABLE_UDP
 	if (crypt->has_key && crypt->has_client_nonce && crypt->has_server_nonce) {
 		if (!crypt_setKey(client->crypt, crypt->key, crypt->client_nonce, crypt->server_nonce)) {
-			printf("CryptState: Cipher resync failed: Invalid key/nonce from the server\n");
+			mumble_log(LOG_ERROR, "\x1b[35;1mCryptState\x1b[0m: cipher resync failed: Invalid key/nonce from the server\n");
 		}
 	} else if (crypt->has_server_nonce) {
 		client->resync++;
 		if (!crypt_setDecryptIV(client->crypt, crypt->server_nonce)) {
-			printf("CryptState: Cipher resync failed: Invalid nonce from the server\n");
+			mumble_log(LOG_ERROR, "\x1b[35;1mCryptState\x1b[0m: cipher resync failed: Invalid nonce from the server\n");
 		}
 	} else {
 		MumbleProto__CryptSetup msg = MUMBLE_PROTO__CRYPT_SETUP__INIT;
@@ -922,11 +938,13 @@ void packet_crypt_setup(lua_State *l, MumbleClient *client, Packet *packet)
 		msg.client_nonce.len = AES_BLOCK_SIZE;
 		msg.client_nonce.data = (uint8_t*) crypt_getEncryptIV(client->crypt);
 		packet_send(client, PACKET_CRYPTSETUP, &msg);
+		mumble_log(LOG_WARN, "\x1b[35;1mCryptState\x1b[0m: cipher disagreement, renegotiating with server\n");
 	}
 
 	bool validCrypt = crypt_isValid(client->crypt);
 
 	if (validCrypt) {
+		mumble_log(LOG_INFO, "\x1b[35;1mCryptState\x1b[0m: cipher agreement\n");
 		mumble_ping_udp(l, client);
 		mumble_ping_tcp(l, client);
 	}
@@ -1263,10 +1281,12 @@ void packet_suggest_config(lua_State *l, MumbleClient *client, Packet *packet)
 			lua_setfield(l, -2, "version");
 		}
 		if (config->has_positional) {
+			mumble_log(LOG_WARN, "%s[%d] server recommends posisional audio\n", METATABLE_CLIENT, client->self);
 			lua_pushboolean(l, config->positional);
 			lua_setfield(l, -2, "positional");
 		}
 		if (config->has_push_to_talk) {
+			mumble_log(LOG_WARN, "%s[%d] server recommends push-to-talk\n", METATABLE_CLIENT, client->self);
 			lua_pushboolean(l, config->push_to_talk);
 			lua_setfield(l, -2, "push_to_talk");
 		}

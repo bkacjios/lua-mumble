@@ -60,7 +60,9 @@ mumble.user = mumble.client:getSelf()
 
 -- A new timer object
 -- The timer itself will do a best-effort at avoiding drift, that is, if you configure a timer to trigger every 10 seconds, then it will normally trigger at exactly 10 second intervals. If, however, your program cannot keep up with the timer (because it takes longer than those 10 seconds to do stuff) the timer will not fire more than once per event loop iteration.
-mumble.timer = mumble.timer(Function callback(mumble.timer))
+-- Timers will keep the reference active until mumble.timer:close() is called.
+-- Timers will dereference themselves if the timer is stopped after the callback funciton call.
+mumble.timer = mumble.timer(Function callback(mumble.timer), Number after = 0, Number repeat = 0)
 
 -- A new voicetarget object
 mumble.voicetarget = mumble.voicetarget()
@@ -146,17 +148,19 @@ Table audiostreams = {
 -- Sets the duration of each audio packet played.
 -- Higher quality = higher audio latency
 -- Lower quality  = lower audio latency
+-- The higher the quality = bigger audio chunks = less chance of static
 
 Table mumble.quality = {
 	["LOW"]		= 1,
 	["MEDIUM"]	= 2,
 	["HIGH"]	= 3,
+	["BEST"]	= 4,
 }
 
-mumble.client:setAudioQuality(Number quality = [LOW = 1, MEDIUM = 2, HIGH = 3])
+mumble.client:setAudioQuality(Number quality = [LOW = 1, MEDIUM = 2, HIGH = 3, BEST = 4])
 
 -- Returns the current duration of each audio packet
--- Default: mumble.quality.HIGH = 3
+-- Default: mumble.quality.BEST = 4
 Number size = mumble.client:getAudioQuality()
 
 -- Checks if the client is currently playing an audio file on the specified audio stream
@@ -488,15 +492,18 @@ mumble.channel:create(String name, String description = "", Number position = 0,
 ### mumble.timer
 
 ``` lua
--- Configure the timer to trigger after after seconds (fractional and negative values are supported).
--- If repeat is 0, then it will automatically be stopped once the timeout is reached.
--- If it is positive, then the timer will automatically be configured to trigger again repeat seconds later, again, and again, until stopped manually.
-mumble.timer:start(Number after, Number repeat = 0)
+-- Run the timer
+mumble.timer = mumble.timer:start()
+
+-- Retruns if the timer is currently running
+Boolean running = mumble.timer:isActive()
 
 -- Configure the timer to trigger after after seconds (fractional and negative values are supported).
 -- If repeat is 0., then it will automatically be stopped once the timeout is reached.
 -- If it is positive, then the timer will automatically be configured to trigger again repeat seconds later, again, and again, until stopped manually.
-mumble.timer:set(Number after, Number repeat = 0)
+mumble.timer = mumble.timer:set(Number after, Number repeat = 0)
+
+Number after, repeat = mumble.timer:get()
 
 -- This will act as if the timer timed out, and restarts it again if it is repeating. It basically works like calling mumble.timer.stop, updating the timeout to the repeat value and calling mumble.timer.start.
 -- The exact semantics are as in the following rules, all of which will be applied to the watcher:
@@ -507,6 +514,9 @@ mumble.timer:again()
 
 -- Stops the timer
 mumble.timer:stop()
+
+-- Closes the timer and marks it for garbage collection
+mumble.timer:close()
 ```
 
 ### mumble.voicetarget

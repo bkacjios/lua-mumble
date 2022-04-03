@@ -63,9 +63,9 @@
 #define AUDIO_DEFAULT_BITRATE 96000
 
 // Number of frames to send per packet
-// Allowed values (10, 20 40, 60)
+// Allowed values (10, 20, 40, 60)
 // 10 = Lower latency, 40 = Better quality
-#define AUDIO_DEFAULT_FRAMES 40
+#define AUDIO_DEFAULT_FRAMES 60
 
 // How many channels the ogg file playback should handle
 #define AUDIO_PLAYBACK_CHANNELS 2
@@ -94,6 +94,11 @@
 #define UDP_SPEEX 2
 #define UDP_CELT_BETA 3
 #define UDP_OPUS 4
+
+#define LOG_INFO 1
+#define LOG_WARN 2
+#define LOG_ERROR 3
+#define LOG_LEVEL LOG_ERROR
 
 /*
  * Structures
@@ -130,6 +135,7 @@ struct lua_timer {
 	lua_State* l;
 	int self;
 	int callback;
+	bool closed;
 };
 
 struct my_signal {
@@ -305,6 +311,10 @@ extern int MUMBLE_TIMER_REG;
 extern int MUMBLE_THREAD_REG;
 
 extern int user_thread_pipe[2];
+extern int channel_thread_pipe[2];
+
+extern void mumble_log(int level, const char* fmt, ...);
+
 extern void mumble_audio_timer(EV_P_ ev_timer *w_, int revents);
 extern void mumble_thread_event(struct ev_loop *loop, ev_io *w, int revents);
 
