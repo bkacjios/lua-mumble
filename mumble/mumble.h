@@ -44,6 +44,7 @@
 #include <opus/opus.h>
 
 #include "proto/Mumble.pb-c.h"
+#include "proto/MumbleUDP.pb-c.h"
 
 // Enables UDP packets
 #define ENABLE_UDP
@@ -53,9 +54,15 @@
 
 #define MODULE_NAME "lua-mumble"
 
-#define MUMBLE_VER_MAJOR	1
-#define MUMBLE_VER_MINOR	4
-#define MUMBLE_VER_REVISION	0
+#define MUMBLE_VERSION_MAJOR	1
+#define MUMBLE_VERSION_MINOR	5
+#define MUMBLE_VERSION_PATCH 	0
+
+#define MUMBLE_VERSION_V1 MUMBLE_VERSION_MAJOR << 16 | MUMBLE_VERSION_MINOR << 8 | MUMBLE_VERSION_PATCH
+#define MUMBLE_VERSION_V2 MUMBLE_VERSION_MAJOR << 48 | MUMBLE_VERSION_MINOR << 32 | MUMBLE_VERSION_PATCH << 16
+
+#define CLIENT_TYPE_USER 0
+#define CLIENT_TYPE_BOT  1
 
 // The default audio quality the encoder will try to use.
 // If the servers maximum bandwidth doesn't allow for such
@@ -65,7 +72,7 @@
 // Number of frames to send per packet
 // Allowed values (10, 20, 40, 60)
 // 10 = Lower latency, 40 = Better quality
-#define AUDIO_DEFAULT_FRAMES 60
+#define AUDIO_DEFAULT_FRAMES 40
 
 // How many channels the ogg file playback should handle
 #define AUDIO_PLAYBACK_CHANNELS 2
@@ -85,20 +92,25 @@
 
 #define PAYLOAD_SIZE_MAX (1024 * 8 - 1)
 
-#define PING_TIMEOUT 5
+#define PING_TIMEOUT 30
 
 #define UDP_BUFFER_MAX 1024
 
-#define UDP_CELT_ALPHA 0
+#define LEGACY_UDP_CELT_ALPHA 0
+#define LEGACY_UDP_PING 1
+#define LEGACY_UDP_SPEEX 2
+#define LEGACY_UDP_CELT_BETA 3
+#define LEGACY_UDP_OPUS 4
+
+#define UDP_AUDIO 0
 #define UDP_PING 1
-#define UDP_SPEEX 2
-#define UDP_CELT_BETA 3
-#define UDP_OPUS 4
 
 #define LOG_INFO 1
 #define LOG_WARN 2
 #define LOG_ERROR 3
-#define LOG_LEVEL LOG_ERROR
+#define LOG_DEBUG 4
+#define LOG_TRACE 5
+#define LOG_LEVEL LOG_DEBUG
 
 /*
  * Structures
@@ -116,7 +128,7 @@ typedef struct lua_timer lua_timer;
 typedef struct my_signal my_signal;
 typedef struct mumble_crypt mumble_crypt;
 typedef struct thread_io thread_io;
-typedef struct UserThread UserThread;
+typedef struct MumbleThread MumbleThread;
 
 struct my_io {
 	ev_io io;
@@ -167,10 +179,13 @@ struct thread_io {
 	lua_State* l;
 };
 
-struct UserThread {
+struct MumbleThread {
     pthread_t pthread;
 	const char *filename;
 	int finished;
+	pthread_mutex_t lock;
+	int pipe[2];
+	thread_io event;
 };
 
 struct MumbleClient {
@@ -184,6 +199,7 @@ struct MumbleClient {
 	bool				closed;
 	bool				connected;
 	bool				synced;
+	bool				legacy;
 	const char*			host;
 	uint16_t			port;
 	int					hooks;
@@ -248,6 +264,7 @@ struct MumbleChannel {
 	bool			is_enter_restricted;
 	bool			can_enter;
 	uint32_t		permissions;
+	float			volume_adjustment;
 };
 
 void list_add(LinkNode** head_ref, uint32_t data);
@@ -310,8 +327,8 @@ extern int MUMBLE_REGISTRY;
 extern int MUMBLE_TIMER_REG;
 extern int MUMBLE_THREAD_REG;
 
-extern int user_thread_pipe[2];
-extern int channel_thread_pipe[2];
+extern void mumble_init(lua_State *l);
+extern int luaopen_mumble(lua_State *l);
 
 extern void mumble_log(int level, const char* fmt, ...);
 
@@ -330,7 +347,9 @@ extern int luaL_isudata(lua_State *L, int ud, const char *tname);
 
 extern uint64_t util_get_varint(uint8_t buffer[], int *len);
 
-extern void mumble_ping_udp(lua_State* l, MumbleClient* client);
+extern void mumble_ping(lua_State* l, MumbleClient* client);
+extern uint64_t mumble_ping_udp_legacy(lua_State* l, MumbleClient* client);
+extern uint64_t mumble_ping_udp_protobuf(lua_State* l, MumbleClient* client);
 extern void mumble_ping_tcp(lua_State* l, MumbleClient* client);
 
 extern void mumble_create_audio_timer(MumbleClient *client, int bitspersec);
@@ -352,6 +371,8 @@ extern int mumble_traceback(lua_State *l);
 extern int mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs);
 extern int mumble_hook_call_ret(lua_State* l, MumbleClient *client, const char* hook, int nargs, int nresults);
 
+extern int mumble_immutable(lua_State *l);
+extern void mumble_weak_table(lua_State *l);
 extern int mumble_ref(lua_State *l);
 extern void mumble_pushref(lua_State *l, int ref);
 extern void mumble_unref(lua_State *l, int ref);

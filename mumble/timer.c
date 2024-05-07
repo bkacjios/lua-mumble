@@ -25,6 +25,7 @@ static void mumble_lua_timer(EV_P_ ev_timer *w_, int revents)
 
 	// Push the callback function from the registry
 	mumble_registry_pushref(l, MUMBLE_TIMER_REG, w->callback);
+	// Push ourself to the callback for use
 	mumble_registry_pushref(l, MUMBLE_TIMER_REG, w->self);
 
 	// Call the callback with our custom error handler function
@@ -137,6 +138,9 @@ static int timer_get(lua_State *l)
 static int timer_setDuration(lua_State *l)
 {
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+
+	if (ltimer->closed) return luaL_error(l, "attempt to call 'setDuration' on closed timer");
+
 	ltimer->timer.at = luaL_checknumber(l, 2);
 
 	// Return ourself
@@ -154,6 +158,9 @@ static int timer_getDuration(lua_State *l)
 static int timer_setRepeat(lua_State *l)
 {
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+
+	if (ltimer->closed) return luaL_error(l, "attempt to call 'setRepeat' on closed timer");
+	
 	ltimer->timer.repeat = luaL_checknumber(l, 2);
 
 	// Return ourself
@@ -188,6 +195,15 @@ static int timer_isActive(lua_State *l)
 	return 1;
 }
 
+static int timer_gc(lua_State *l)
+{
+	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_TIMER, ltimer);
+	ev_timer_stop(EV_DEFAULT, &ltimer->timer);
+	mumble_lua_timer_close(l, ltimer);
+	return 0;
+}
+
 static int timer_tostring(lua_State *l)
 {
 	lua_pushfstring(l, "%s: %p", METATABLE_TIMER, lua_topointer(l, 1));
@@ -207,5 +223,6 @@ const luaL_Reg mumble_timer[] = {
 	{"again", timer_again},
 	{"isActive", timer_isActive},
 	{"__tostring", timer_tostring},
+	{"__gc", timer_gc},
 	{NULL, NULL}
 };

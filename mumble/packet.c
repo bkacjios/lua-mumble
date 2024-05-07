@@ -8,7 +8,7 @@
 
 int packet_sendudp(MumbleClient* client, const void *message, const int length)
 {
-	unsigned char encrypted[length + 4];
+	uint8_t encrypted[length + 4];
 	if (crypt_isValid(client->crypt) && crypt_encrypt(client->crypt, message, encrypted, length))
 	{
 		sendto(client->socket_udp, encrypted, sizeof(encrypted), 0, client->server_host_udp->ai_addr, client->server_host_udp->ai_addrlen);
@@ -170,9 +170,14 @@ void packet_server_version(lua_State *l, MumbleClient *client, Packet *packet)
 	}
 
 	lua_newtable(l);
-		if (version->has_version) {
-			lua_pushinteger(l, version->version);
-			lua_setfield(l, -2, "version");
+		if (version->has_version_v1) {
+			lua_pushinteger(l, version->version_v1);
+			lua_setfield(l, -2, "version_v1");
+		}
+		if (version->has_version_v2) {
+			lua_pushinteger(l, version->version_v2);
+			lua_setfield(l, -2, "version_v2");
+			client->legacy = false;
 		}
 		lua_pushstring(l, version->release);
 		lua_setfield(l, -2, "release");
@@ -639,6 +644,21 @@ void packet_user_state(lua_State *l, MumbleClient *client, Packet *packet)
 			}
 			lua_setfield(l , -2, "listening_channel_remove");
 		}
+		if (state->n_listening_volume_adjustment > 0) {
+			lua_newtable(l);
+			for (uint32_t i = 0; i < state->n_listening_volume_adjustment; i++) {
+				uint32_t channel_id = state->listening_volume_adjustment[i]->listening_channel;
+				float volume_adjustment = state->listening_volume_adjustment[i]->volume_adjustment;
+
+				lua_pushinteger(l, channel_id);
+				lua_pushnumber(l, volume_adjustment);
+				lua_settable(l, -3);
+
+				MumbleChannel* chan = mumble_channel_get(l, client, channel_id);
+				chan->volume_adjustment = volume_adjustment;
+			}
+			lua_setfield(l , -2, "listening_volume_adjustment");
+		}
 
 		mumble_user_raw_get(l, client, state->session);
 		lua_setfield(l, -2, "user");
@@ -944,14 +964,12 @@ void packet_crypt_setup(lua_State *l, MumbleClient *client, Packet *packet)
 	bool validCrypt = crypt_isValid(client->crypt);
 
 	if (validCrypt) {
-		mumble_log(LOG_INFO, "\x1b[35;1mCryptState\x1b[0m: cipher agreement\n");
-		mumble_ping_udp(l, client);
-		mumble_ping_tcp(l, client);
+		mumble_log(LOG_INFO, "\x1b[35;1mCryptState\x1b[0m: handshake complete\n");
+		mumble_ping(l, client);
 	}
 
 	lua_pushboolean(l, validCrypt);
 	lua_setfield(l, -2, "valid");
-
 #endif
 
 	if(crypt->has_key) {
@@ -1178,8 +1196,11 @@ void packet_user_stats(lua_State *l, MumbleClient *client, Packet *packet)
 
 		if (stats->version != NULL) {
 			lua_newtable(l);
-				if (stats->version->has_version) {
-					lua_pushinteger(l, stats->version->version);
+				if (stats->version->has_version_v1) {
+					lua_pushinteger(l, stats->version->version_v1);
+					lua_setfield(l, -2, "version");
+				} else if (stats->version->has_version_v2) {
+					lua_pushinteger(l, stats->version->version_v2);
 					lua_setfield(l, -2, "version");
 				}
 				lua_pushstring(l, stats->version->release);
@@ -1263,6 +1284,10 @@ void packet_server_config(lua_State *l, MumbleClient *client, Packet *packet)
 			lua_pushinteger(l, config->max_users);
 			lua_setfield(l, -2, "max_users");
 		}
+		if (config->has_recording_allowed) {
+			lua_pushinteger(l, config->recording_allowed);
+			lua_setfield(l , -2, "recording_allowed");
+		}
 	mumble_hook_call(l, client, "OnServerConfig", 1);
 
 	mumble_proto__server_config__free_unpacked(config, NULL);
@@ -1276,8 +1301,11 @@ void packet_suggest_config(lua_State *l, MumbleClient *client, Packet *packet)
 	}
 
 	lua_newtable(l);
-		if (config->has_version) {
-			lua_pushinteger(l, config->version);
+		if (config->has_version_v1) {
+			lua_pushinteger(l, config->version_v1);
+			lua_setfield(l, -2, "version");
+		} else if (config->has_version_v2) {
+			lua_pushinteger(l, config->version_v2);
 			lua_setfield(l, -2, "version");
 		}
 		if (config->has_positional) {

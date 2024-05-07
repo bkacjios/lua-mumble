@@ -298,6 +298,28 @@ static int channel_hasPermission(lua_State *l)
 	return 1;
 }
 
+static int channel_setVolumeAdjustment(lua_State *l)
+{
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+
+	MumbleProto__UserState__VolumeAdjustment adjustment = MUMBLE_PROTO__USER_STATE__VOLUME_ADJUSTMENT__INIT;
+
+	adjustment.has_listening_channel = true;
+	adjustment.listening_channel = channel->channel_id;
+	adjustment.has_volume_adjustment = true;
+	adjustment.volume_adjustment = luaL_checknumber(l, 2);
+
+	packet_send(channel->client, PACKET_USERSTATE, &adjustment);
+	return 0;
+}
+
+static int channel_getVolumeAdjustment(lua_State *l)
+{
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+	lua_pushnumber(l, channel->volume_adjustment);
+	return 1;
+}
+
 int channel_call(lua_State *l)
 {
 	MumbleChannel *self = luaL_checkudata(l, 1, METATABLE_CHAN);
@@ -360,7 +382,7 @@ static int channel_requestDescriptionBlob(lua_State *l)
 	
 	msg.channel_description[0] = channel->channel_id;
 
-	packet_send(channel->client, PACKET_USERSTATE, &msg);
+	packet_send(channel->client, PACKET_REQUESTBLOB, &msg);
 	free(msg.channel_description);
 	return 0;
 }
@@ -385,6 +407,7 @@ static int channel_create(lua_State *l)
 static int channel_gc(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_CHAN, channel);
 	mumble_unref(l, channel->data);
 	return 0;
 }
@@ -392,7 +415,7 @@ static int channel_gc(lua_State *l)
 static int channel_tostring(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
-	lua_pushfstring(l, "%s [%d][\"%s\"]", METATABLE_CHAN, channel->channel_id, channel->name);
+	lua_pushfstring(l, "%s [%d][\"%s\"] %p", METATABLE_CHAN, channel->channel_id, channel->name, channel);
 	return 1;
 }
 
@@ -448,6 +471,8 @@ const luaL_Reg mumble_channel[] = {
 	{"getPermissions", channel_getPermissions},
 	{"hasPermission", channel_hasPermission},
 	{"hasPermissions", channel_hasPermission},
+	{"setVolumeAdjustment", channel_setVolumeAdjustment},
+	{"getVolumeAdjustment", channel_getVolumeAdjustment},
 	{"requestDescriptionBlob", channel_requestDescriptionBlob},
 	{"create", channel_create},
 

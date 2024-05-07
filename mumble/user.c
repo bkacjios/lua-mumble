@@ -297,7 +297,7 @@ static int user_setTexture(lua_State *l)
 static int user_tostring(lua_State *l)
 {	
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
-	lua_pushfstring(l, "%s [%d][\"%s\"]", METATABLE_USER, user->session, user->name);
+	lua_pushfstring(l, "%s [%d][\"%s\"] %p", METATABLE_USER, user->session, user->name, user);
 	return 1;
 }
 
@@ -444,6 +444,7 @@ static int user_requestCommentBlob(lua_State *l)
 static int user_gc(lua_State *l)
 {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_USER, user);
 	mumble_unref(l, user->data);
 	return 0;
 }

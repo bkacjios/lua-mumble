@@ -38,7 +38,7 @@ static void mumble_print(int level, const char* msg)
 	switch (level) {
 		case LOG_INFO:
 			llevel = " INFO";
-			lcolor = "\x1b[36;1m";
+			lcolor = "\x1b[32;1m";
 			break;
 		case LOG_WARN:
 			llevel = " WARN";
@@ -48,8 +48,16 @@ static void mumble_print(int level, const char* msg)
 			llevel = "ERROR";
 			lcolor = "\x1b[31;1m";
 			break;
+		case LOG_DEBUG:
+			llevel = "DEBUG";
+			lcolor = "\x1b[35;1m";
+			break;
+		case LOG_TRACE:
+			llevel = "TRACE";
+			lcolor = "\x1b[36;1m";
+			break;
 		default:
-			llevel = "";
+			llevel = "UNKWN";
 			lcolor = "\x1b[0m";
 			break;
 	}
@@ -120,7 +128,7 @@ void print_unescaped(const char* ptr, int len) {
 
 void luaL_debugstack(lua_State *l, const char* text)
 {
-	printf("%s stack dump\n", text);
+	mumble_log(LOG_DEBUG, "%s stack dump\n", text);
 	for (int i=1; i<=lua_gettop(l); i++)
 	{
 		int t = lua_type(l, i);

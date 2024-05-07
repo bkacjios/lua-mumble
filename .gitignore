@@ -1,9 +1,10 @@
 *.o
-proto/Mumble.pb-c.c
-proto/Mumble.pb-c.h
+proto/*.c
+proto/*.h
 config/
 *.so
 *.lua
 *.pem
 *.d
+*.ogg
 gitversion.h

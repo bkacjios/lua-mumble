@@ -2,23 +2,89 @@
 
 #include "thread.h"
 
+typedef struct ThreadNode ThreadNode;
+struct ThreadNode
+{
+	pthread_t thread;
+	struct ThreadNode *next;
+};
+
+typedef struct ClientThread ClientThread;
+struct ClientThread
+{
+	MumbleThread *thread;
+};
+
+static ThreadNode* mumble_threads;
+
+void thread_add(ThreadNode** head_ref, pthread_t thread)
+{
+	ThreadNode* new_node = malloc(sizeof(ThreadNode));
+
+	new_node->thread = thread;
+	new_node->next = (*head_ref);
+
+	(*head_ref) = new_node;
+}
+
+void thread_remove(ThreadNode **head_ref, pthread_t thread)
+{
+	ThreadNode* temp = *head_ref, *prev;
+
+	// If head node itself holds the key to be deleted
+	if (temp != NULL && temp->thread == thread)
+	{
+		*head_ref = temp->next;   // Changed head
+		free(temp);               // free old head
+		return;
+	}
+
+	// Search for the key to be deleted, keep track of the
+	// previous node as we need to change 'prev->next'
+	while (temp != NULL && temp->thread != thread)
+	{
+		prev = temp;
+		temp = temp->next;
+	}
+
+	// If key was not present in linked list 
+	if (temp == NULL) return;
+
+	// Unlink the node from linked list 
+	prev->next = temp->next;
+
+	free(temp);               // free old head
+}
+
 static void *mumble_thread_worker(void *arg)
 {
-	UserThread *uthread = arg;
+	MumbleThread *thread = arg;
 
-	int finished = uthread->finished;
+	int finished = thread->finished;
 
 	// Create state and load libs
 	lua_State *l = luaL_newstate();
-	luaL_openlibs(l);
 
 	lua_stackguard_entry(l);
+	
+	luaL_openlibs(l);
+
+	// mumble_init(l);
+	// lua_getfield(l, -1, "thread");
+	// lua_remove(l, -2);
+
+	// ClientThread *cthread = lua_newuserdata(l, sizeof(ClientThread));
+	// cthread->thread = thread;
+	// luaL_getmetatable(l, METATABLE_THREAD_CLIENT);
+	// lua_setmetatable(l, -2);
+	// lua_setfield(l, -2, "worker");
+	// lua_pop(l,1);
 
 	// Push our error handler
 	lua_pushcfunction(l, mumble_traceback);
 
 	// Load the file in our thread
-	int err = luaL_loadfile(l, uthread->filename);
+	int err = luaL_loadfile(l, thread->filename);
 
 	// Call the worker with our custom error handler function
 	if (err > 0 || lua_pcall(l, 0, 0, -2) != 0) {
@@ -35,7 +101,7 @@ static void *mumble_thread_worker(void *arg)
 	lua_close(l);
 
 	// Signal the main Lua stack that our thread has completed
-	write(user_thread_pipe[1], &finished, sizeof(int));
+	write(thread->pipe[1], &finished, sizeof(int));
 
 	return NULL;
 }
@@ -50,11 +116,14 @@ void mumble_thread_event(struct ev_loop *loop, ev_io *w_, int revents)
 		return;
 	}
 
-	lua_State *l = w->l; // Use the lua_State of the main
+	mumble_thread_exit(w->l, finished);
+}
 
+int mumble_thread_exit(lua_State *l, int finished)
+{
 	lua_stackguard_entry(l);
 
-	// Check if we have a finished callback
+	// Check if we have a finished callback reference
 	if (finished > 0) {
 		// Push our error handler
 		lua_pushcfunction(l, mumble_traceback);
@@ -79,30 +148,64 @@ void mumble_thread_event(struct ev_loop *loop, ev_io *w_, int revents)
 
 int mumble_thread_new(lua_State *l)
 {
-	UserThread *uthread = lua_newuserdata(l, sizeof(UserThread));
+	MumbleThread *thread = lua_newuserdata(l, sizeof(MumbleThread));
 
-	uthread->filename = luaL_checkstring(l, 2);
-	uthread->finished = 0;
+	thread->filename = luaL_checkstring(l, 2);
+	thread->finished = 0;
+
+	if (pipe(thread->pipe) != 0) {
+		return luaL_error(l, "could not create thread pipe");
+	}
 
 	if (lua_isfunction(l, 3)) {
 		lua_pushvalue(l, 3); // Push a copy of our callback function
-		uthread->finished = mumble_registry_ref(l, MUMBLE_THREAD_REG); // Pop it off as a reference
+		thread->finished = mumble_registry_ref(l, MUMBLE_THREAD_REG); // Pop it off as a reference
 	}
 
-	luaL_getmetatable(l, METATABLE_THREAD);
+	luaL_getmetatable(l, METATABLE_THREAD_SERVER);
 	lua_setmetatable(l, -2);
 
-	pthread_create(&uthread->pthread, NULL, mumble_thread_worker, uthread);
-	return 0;
-}
+	thread->event.l = l;
 
-static int thread_tostring(lua_State *l)
-{
-	lua_pushfstring(l, "%s: %p", METATABLE_THREAD, lua_topointer(l, 1));
+	// ev_io_init(&thread->event.io, mumble_thread_event, thread->pipe[0], EV_READ);
+	// ev_io_start(EV_DEFAULT, &thread->event.io);
+
+	pthread_create(&thread->pthread, NULL, mumble_thread_worker, thread);
+
+	thread_add(&mumble_threads, thread->pthread);
+	
 	return 1;
 }
 
-const luaL_Reg mumble_thread[] = {
-	{"__tostring", thread_tostring},
+void mumble_thread_join_all()
+{
+	ThreadNode* current = mumble_threads;
+
+	while (current != NULL)
+	{
+		pthread_join(current->thread, NULL);
+		current = current->next;
+	}
+}
+
+static int thread_server_tostring(lua_State *l)
+{
+	lua_pushfstring(l, "%s: %p", METATABLE_THREAD_SERVER, lua_topointer(l, 1));
+	return 1;
+}
+
+const luaL_Reg mumble_thread_server[] = {
+	{"__tostring", thread_server_tostring},
+	{NULL, NULL}
+};
+
+static int thread_client_tostring(lua_State *l)
+{
+	lua_pushfstring(l, "%s: %p", METATABLE_THREAD_CLIENT, lua_topointer(l, 1));
+	return 1;
+}
+
+const luaL_Reg mumble_thread_client[] = {
+	{"__tostring", thread_client_tostring},
 	{NULL, NULL}
 };

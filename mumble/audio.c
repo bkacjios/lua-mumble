@@ -2,7 +2,7 @@
 #include "packet.h"
 #include "audio.h"
 
-int util_set_varint(uint8_t buffer[], const uint64_t value)
+uint8_t util_set_varint(uint8_t buffer[], const uint64_t value)
 {
 	if (value < 0x80) {
 		buffer[0] = value;
@@ -41,7 +41,7 @@ int util_set_varint(uint8_t buffer[], const uint64_t value)
 		buffer[8] = value & 0xFF;
 		return 9;
 	}
-	return -1;
+	return 0;
 }
 
 uint64_t util_get_varint(uint8_t buffer[], int *len)
@@ -127,10 +127,10 @@ int voicepacket_setframe(VoicePacket *packet, const uint8_t type, const uint16_t
 		return -2;
 	}
 
-	if (type == UDP_OPUS) {
+	if (type == LEGACY_UDP_OPUS) {
 		// Opus uses a varint for the frame header
 		offset = util_set_varint(packet->buffer + packet->header_length, frame_header);
-	} else if (type == UDP_SPEEX || type == UDP_CELT_ALPHA || type == UDP_CELT_BETA) {
+	} else if (type == LEGACY_UDP_SPEEX || type == LEGACY_UDP_CELT_ALPHA || type == LEGACY_UDP_CELT_BETA) {
 		// Every other codec uses a single byte as the frame header
 		offset += 1;
 		packet->buffer[packet->header_length] = frame_header;
@@ -282,24 +282,52 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 
 	if (encoded_len <= 0) return;
 
-	uint32_t frame_header = encoded_len;
-	// If the largest PCM buffer is smaller than our frame size, it has to be the last frame available
-	if (!didLoop && biggest_read < frame_size) {
-		// Set 14th bit to 1 to signal end of stream.
-		frame_header = ((1 << 13) | frame_header);
-	}
+	bool end_frame = !didLoop && biggest_read < frame_size;
 
-	uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
-	voicepacket_init(&packet, packet_buffer);
-	voicepacket_setheader(&packet, UDP_OPUS, client->audio_target, client->audio_sequence);
-	voicepacket_setframe(&packet, UDP_OPUS, frame_header, encoded, encoded_len);
+	if (false) {
+		uint32_t frame_header = encoded_len;
+		// If the largest PCM buffer is smaller than our frame size, it has to be the last frame available
+		if (end_frame) {
+			// Set 14th bit to 1 to signal end of stream.
+			frame_header = ((1 << 13) | frame_header);
+		}
 
-	mumble_handle_speaking_hooks(l, client, packet.buffer + 1, UDP_OPUS, client->audio_target, client->session);
+		uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
+		voicepacket_init(&packet, packet_buffer);
+		voicepacket_setheader(&packet, LEGACY_UDP_OPUS, client->audio_target, client->audio_sequence);
+		voicepacket_setframe(&packet, LEGACY_UDP_OPUS, frame_header, encoded, encoded_len);
 
-	if (client->udp_tunnel) {
-		packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
+		mumble_handle_speaking_hooks(l, client, packet.buffer + 1, LEGACY_UDP_OPUS, client->audio_target, client->session);
+
+		if (client->udp_tunnel) {
+			packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
+		} else {
+			packet_sendudp(client, packet_buffer, voicepacket_getlength(&packet));
+		}
 	} else {
-		packet_sendudp(client, packet_buffer, voicepacket_getlength(&packet));
+		MumbleUDP__Audio audio = MUMBLE_UDP__AUDIO__INIT;
+
+		ProtobufCBinaryData audio_data;
+		audio_data.data = encoded;
+		audio_data.len = encoded_len;
+
+		audio.frame_number = client->audio_sequence;
+		audio.opus_data = audio_data;
+
+		audio.is_terminator = end_frame;
+
+		audio.target = client->audio_target;
+
+		unsigned char packet_buffer[UDP_BUFFER_MAX];
+		packet_buffer[0] = UDP_AUDIO;
+
+		int len = 1 + mumble_udp__audio__pack(&audio, packet_buffer + 1);
+
+		if (client->udp_tunnel) {
+			packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, len);
+		} else {
+			packet_sendudp(client, packet_buffer, len);
+		}
 	}
 
 	client->audio_sequence = (client->audio_sequence + 1) % 100000;
@@ -509,8 +537,7 @@ static int audiostream_gc(lua_State *l)
 
 static int audiostream_tostring(lua_State *l)
 {
-	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
-	lua_pushfstring(l, "%s: %p", METATABLE_AUDIOSTREAM, sound);
+	lua_pushfstring(l, "%s: %p", METATABLE_AUDIOSTREAM, lua_topointer(l, 1));
 	return 1;
 }
 

@@ -6,6 +6,7 @@
 #pragma once
 
 #include <openssl/aes.h>
+#include <openssl/evp.h>
 #include <stdbool.h>
 #include <protobuf-c/protobuf-c.h>
 
@@ -20,17 +21,21 @@ struct mumble_crypt {
 		unsigned char decrypt_iv[AES_BLOCK_SIZE];
 		unsigned char decrypt_history[0x100];
 
+		EVP_CIPHER_CTX *enc_ctx_ocb_enc;
+		EVP_CIPHER_CTX *dec_ctx_ocb_enc;
+		EVP_CIPHER_CTX *enc_ctx_ocb_dec;
+		EVP_CIPHER_CTX *dec_ctx_ocb_dec;
+
 		unsigned int uiGood;
 		unsigned int uiLate;
 		unsigned int uiLost;
 		unsigned int uiResync;
 
-		AES_KEY encrypt_key;
-		AES_KEY decrypt_key;
 		bool bInit;
 };
 
 extern mumble_crypt* crypt_new();
+extern void crypt_free(mumble_crypt *crypt);
 
 extern bool crypt_isValid(mumble_crypt *crypt);
 extern void crypt_genKey(mumble_crypt *crypt);
@@ -47,7 +52,7 @@ extern unsigned int crypt_getGood(mumble_crypt *crypt);
 extern unsigned int crypt_getLate(mumble_crypt *crypt);
 extern unsigned int crypt_getLost(mumble_crypt *crypt);
 
-extern bool crypt_ocb_encrypt(mumble_crypt *crypt, const unsigned char* plain, unsigned char* encrypted, unsigned int len, const unsigned char* nonce, unsigned char* tag);
+extern bool crypt_ocb_encrypt(mumble_crypt *crypt, const unsigned char* plain, unsigned char* encrypted, unsigned int len, const unsigned char* nonce, unsigned char* tag, bool modifyPlainOnXEXStarAttack);
 extern bool crypt_ocb_decrypt(mumble_crypt *crypt, const unsigned char* encrypted, unsigned char* plain, unsigned int len, const unsigned char* nonce, unsigned char* tag);
 
 extern bool crypt_decrypt(mumble_crypt *crypt, const unsigned char* source, unsigned char* dst, unsigned int crypted_length);

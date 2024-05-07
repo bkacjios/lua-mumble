@@ -41,6 +41,8 @@ static int client_auth(lua_State *l)
 	auth.opus = true;
 	auth.username = (char*) luaL_checkstring(l, 2);
 	auth.n_tokens = 0;
+	auth.has_client_type = true;
+	auth.client_type = CLIENT_TYPE_BOT;
 
 	if (lua_isnoneornil(l, 3) == 0) {
 		auth.password = (char*) luaL_checkstring(l, 3);
@@ -72,8 +74,10 @@ static int client_auth(lua_State *l)
 	struct utsname unameData;
 	uname(&unameData);
 
-	version.has_version = true;
-	version.version = MUMBLE_VER_MAJOR << 16 | MUMBLE_VER_MINOR << 8 | MUMBLE_VER_REVISION;
+	version.has_version_v1 = true;
+	version.version_v1 = MUMBLE_VERSION_V1;
+	//version.has_version_v2 = true;
+	//version.version_v2 = MUMBLE_VERSION_V2;
 	version.release = MODULE_NAME " " GIT_VERSION;
 	version.os = unameData.sysname;
 	version.os_version = unameData.release;
@@ -214,10 +218,10 @@ static int client_transmit(lua_State *l) {
 	bool speaking = luaL_optboolean(l, 4, true);
 
 	uint16_t frame_header = outputlen;
-	if (codec == UDP_OPUS && !speaking) {
+	if (codec == LEGACY_UDP_OPUS && !speaking) {
 		// Set 14th bit to 1 to signal end of stream.
 		frame_header = (1 << 13) | outputlen;
-	} else if ((codec == UDP_SPEEX || codec == UDP_CELT_ALPHA || codec == UDP_CELT_BETA) && speaking) {
+	} else if ((codec == LEGACY_UDP_SPEEX || codec == LEGACY_UDP_CELT_ALPHA || codec == LEGACY_UDP_CELT_BETA) && speaking) {
 		// Set continuation bit at the MSB if we are not at the end of the stream
 		frame_header = (1 << 0) | outputlen;
 	}
@@ -230,7 +234,11 @@ static int client_transmit(lua_State *l) {
 
 	mumble_handle_speaking_hooks(l, client, packet.buffer + 1, codec, client->audio_target, client->session);
 
-	packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
+	if (client->udp_tunnel) {
+		packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
+	} else {
+		packet_sendudp(client, packet_buffer, voicepacket_getlength(&packet));
+	}
 
 	client->audio_sequence = (client->audio_sequence + 1) % 100000;
 	return 0;
@@ -673,7 +681,7 @@ static int client_requestCommentBlob(lua_State *l)
 
 	lua_pop(l, 1);
 
-	packet_send(client, PACKET_USERSTATE, &msg);
+	packet_send(client, PACKET_REQUESTBLOB, &msg);
 	free(msg.session_comment);
 	return 0;
 }
@@ -706,7 +714,7 @@ static int client_requestDescriptionBlob(lua_State *l)
 
 	lua_pop(l, 1);
 
-	packet_send(client, PACKET_USERSTATE, &msg);
+	packet_send(client, PACKET_REQUESTBLOB, &msg);
 	free(msg.channel_description);
 	return 0;
 }
@@ -746,13 +754,14 @@ static int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	mumble_disconnect(l, client, "garbage collected");
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_CLIENT, client);
 	return 0;
 }
 
 static int client_tostring(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_pushfstring(l, "%s [%d][%s:%d] %p", METATABLE_CLIENT, client->self, client->host, client->port, client);
+	lua_pushfstring(l, "%s [%d][\"%s:%d\"] %p", METATABLE_CLIENT, client->self, client->host, client->port, client);
 	return 1;
 }
 
