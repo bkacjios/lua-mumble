@@ -417,7 +417,7 @@ static int user_requestTextureBlob(lua_State *l)
 
 	msg.session_texture[0] = user->session;
 
-	packet_send(user->client, PACKET_USERSTATE, &msg);
+	packet_send(user->client, PACKET_REQUESTBLOB, &msg);
 	free(msg.session_texture);
 	return 0;
 }
@@ -436,7 +436,7 @@ static int user_requestCommentBlob(lua_State *l)
 
 	msg.session_comment[0] = user->session;
 
-	packet_send(user->client, PACKET_USERSTATE, &msg);
+	packet_send(user->client, PACKET_REQUESTBLOB, &msg);
 	free(msg.session_comment);
 	return 0;
 }

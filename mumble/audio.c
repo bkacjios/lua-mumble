@@ -284,7 +284,7 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 
 	bool end_frame = !didLoop && biggest_read < frame_size;
 
-	if (false) {
+	if (client->legacy) {
 		uint32_t frame_header = encoded_len;
 		// If the largest PCM buffer is smaller than our frame size, it has to be the last frame available
 		if (end_frame) {
@@ -318,7 +318,7 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 
 		audio.target = client->audio_target;
 
-		unsigned char packet_buffer[UDP_BUFFER_MAX];
+		uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
 		packet_buffer[0] = UDP_AUDIO;
 
 		int len = 1 + mumble_udp__audio__pack(&audio, packet_buffer + 1);

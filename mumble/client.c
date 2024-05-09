@@ -76,8 +76,8 @@ static int client_auth(lua_State *l)
 
 	version.has_version_v1 = true;
 	version.version_v1 = MUMBLE_VERSION_V1;
-	//version.has_version_v2 = true;
-	//version.version_v2 = MUMBLE_VERSION_V2;
+	version.has_version_v2 = true;
+	version.version_v2 = MUMBLE_VERSION_V2;
 	version.release = MODULE_NAME " " GIT_VERSION;
 	version.os = unameData.sysname;
 	version.os_version = unameData.release;
@@ -374,7 +374,8 @@ static int client_setAudioQuality(lua_State *l) {
 
 	client->audio_frames = frames;
 
-	float time = (float) client->audio_frames / 1000;
+	float time = mumble_adjust_audio_bandwidth(client);
+
 	ev_timer_set(&client->audio_timer.timer, 0, time);
 	return 0;
 }

@@ -49,7 +49,7 @@ void mumble_ping(lua_State *l, MumbleClient* client) {
 	if (crypt_isValid(client->crypt)) {
 
 		uint64_t timestamp;
-		if (false) {
+		if (client->legacy) {
 			timestamp = mumble_ping_udp_legacy(l, client);
 		} else {
 			timestamp = mumble_ping_udp_protobuf(l, client);
@@ -332,50 +332,52 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 		{
 			size -= 4; // Decryption got rid of 4 bytes
 			uint8_t header = unencrypted[0];
-			uint8_t id = header;
-			uint8_t id_legacy = (header >> 5) & 0x7;
 
-			switch (id) {
-				case UDP_AUDIO:
-				{
-					MumbleUDP__Audio *audio = mumble_udp__audio__unpack(NULL, size - 1, unencrypted + 1);
-					return;
-				}
-				case UDP_PING:
-				{
-					MumbleUDP__Ping *ping = mumble_udp__ping__unpack(NULL, size - 1, unencrypted + 1);
+			if (client->legacy) {
+				uint8_t id = (header >> 5) & 0x7;
 
-					if (ping != NULL) {
-						mumble_update_ping(l, client, ping->timestamp);
-						mumble_udp__ping__free_unpacked(ping, NULL);
-					} else {
-						mumble_log(LOG_ERROR, "Error unpacking UDP ping packet\n");
+				switch (id) {
+					case LEGACY_UDP_PING:
+					{
+						uint64_t timestamp;
+						memcpy(&timestamp, unencrypted + 1, sizeof(uint64_t));
+
+						mumble_update_ping(l, client, timestamp);
+						return;
 					}
-					return;
+					case LEGACY_UDP_OPUS:
+					case LEGACY_UDP_SPEEX:
+					case LEGACY_UDP_CELT_ALPHA:
+					case LEGACY_UDP_CELT_BETA:
+					{
+						uint8_t target = header >> 0x1F;
+
+						int read = 1;
+						int session = util_get_varint(unencrypted + read, &read);
+
+						mumble_handle_speaking_hooks(l, client, unencrypted + read, id, target, session);
+						return;
+					}
 				}
-			}
+			} else {
+				switch (header) {
+					case UDP_AUDIO:
+					{
+						MumbleUDP__Audio *audio = mumble_udp__audio__unpack(NULL, size - 1, unencrypted + 1);
+						return;
+					}
+					case UDP_PING:
+					{
+						MumbleUDP__Ping *ping = mumble_udp__ping__unpack(NULL, size - 1, unencrypted + 1);
 
-			switch (id_legacy) {
-				case LEGACY_UDP_PING:
-				{
-					uint64_t timestamp;
-					memcpy(&timestamp, unencrypted + 1, sizeof(uint64_t));
-
-					mumble_update_ping(l, client, timestamp);
-					return;
-				}
-				case LEGACY_UDP_OPUS:
-				case LEGACY_UDP_SPEEX:
-				case LEGACY_UDP_CELT_ALPHA:
-				case LEGACY_UDP_CELT_BETA:
-				{
-					uint8_t target = header >> 0x1F;
-
-					int read = 1;
-					int session = util_get_varint(unencrypted + read, &read);
-
-					mumble_handle_speaking_hooks(l, client, unencrypted + read, id, target, session);
-					return;
+						if (ping != NULL) {
+							mumble_update_ping(l, client, ping->timestamp);
+							mumble_udp__ping__free_unpacked(ping, NULL);
+						} else {
+							mumble_log(LOG_ERROR, "Error unpacking UDP ping packet\n");
+						}
+						return;
+					}
 				}
 			}
 		}
@@ -615,41 +617,48 @@ static int getNetworkBandwidth(int bitrate, int frames)
 	return overhead + bitrate;
 }
 
-void mumble_create_audio_timer(MumbleClient *client, int bitspersec)
-{
+float mumble_adjust_audio_bandwidth(MumbleClient *client) {
 	int frames = client->audio_frames / 10;
+	int maxbitrate = client->max_bandwidth;
 	int bitrate;
 
 	opus_encoder_ctl(client->encoder, OPUS_GET_BITRATE(&bitrate));
 
-	if (bitspersec == -1) {
+	if (maxbitrate == -1) {
 		// No limit
 	}
-	else if (getNetworkBandwidth(bitrate, frames) > bitspersec) {
-		if ((frames <= 4) && (bitspersec <= 32000))
+	else if (getNetworkBandwidth(bitrate, frames) > maxbitrate) {
+		if ((frames <= 4) && (maxbitrate <= 32000))
 			frames = 4;
-		else if ((frames == 1) &&  (bitspersec <= 64000))
+		else if ((frames == 1) && (maxbitrate <= 64000))
 			frames = 2;
-		else if ((frames == 2) &&  (bitspersec <= 48000))
+		else if ((frames == 2) && (maxbitrate <= 48000))
 			frames = 4;
 
-		if (getNetworkBandwidth(bitrate, frames) > bitspersec) {
+		if (getNetworkBandwidth(bitrate, frames) > maxbitrate) {
 			do {
 				bitrate -= 1000;
-			} while ((bitrate > 8000) && (getNetworkBandwidth(bitrate, frames) > bitspersec));
+			} while ((bitrate > 8000) && (getNetworkBandwidth(bitrate, frames) > maxbitrate));
 		}
 	}
 	if (bitrate < 8000)
 		bitrate = 8000;
 
-	if (bitrate != AUDIO_DEFAULT_BITRATE) {
-		mumble_log(LOG_WARN, "Server maximum network bandwidth is only %d kbit/s. Audio quality auto-adjusted to %d kbit/s (%d ms)\n", bitspersec / 1000, bitrate / 1000, frames * 10);
+	if (bitrate < maxbitrate) {
+		mumble_log(LOG_WARN, "Server maximum network bandwidth is only %d kbit/s. Audio quality auto-adjusted to %d kbit/s (%d ms)\n", maxbitrate / 1000, bitrate / 1000, frames * 10);
 		client->audio_frames = frames * 10;
 		opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(bitrate));
 	}
 
 	// Get the length of our timer for the audio stream..
 	float time = (float) frames / 100;
+
+	return time;
+}
+
+void mumble_create_audio_timer(MumbleClient *client)
+{
+	float time = mumble_adjust_audio_bandwidth(client);
 
 	// Create a timer for audio data
 	ev_timer_init(&client->audio_timer.timer, mumble_audio_timer, 0, time);

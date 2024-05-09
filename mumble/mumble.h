@@ -54,9 +54,9 @@
 
 #define MODULE_NAME "lua-mumble"
 
-#define MUMBLE_VERSION_MAJOR	1
-#define MUMBLE_VERSION_MINOR	5
-#define MUMBLE_VERSION_PATCH 	0
+#define MUMBLE_VERSION_MAJOR	(uint64_t) 1
+#define MUMBLE_VERSION_MINOR	(uint64_t) 5
+#define MUMBLE_VERSION_PATCH 	(uint64_t) 0
 
 #define MUMBLE_VERSION_V1 MUMBLE_VERSION_MAJOR << 16 | MUMBLE_VERSION_MINOR << 8 | MUMBLE_VERSION_PATCH
 #define MUMBLE_VERSION_V2 MUMBLE_VERSION_MAJOR << 48 | MUMBLE_VERSION_MINOR << 32 | MUMBLE_VERSION_PATCH << 16
@@ -72,7 +72,7 @@
 // Number of frames to send per packet
 // Allowed values (10, 20, 40, 60)
 // 10 = Lower latency, 40 = Better quality
-#define AUDIO_DEFAULT_FRAMES 40
+#define AUDIO_DEFAULT_FRAMES 20
 
 // How many channels the ogg file playback should handle
 #define AUDIO_PLAYBACK_CHANNELS 2
@@ -92,7 +92,7 @@
 
 #define PAYLOAD_SIZE_MAX (1024 * 8 - 1)
 
-#define PING_TIMEOUT 30
+#define PING_TIMEOUT 5
 
 #define UDP_BUFFER_MAX 1024
 
@@ -110,7 +110,12 @@
 #define LOG_ERROR 3
 #define LOG_DEBUG 4
 #define LOG_TRACE 5
+
+#ifdef DEBUG
 #define LOG_LEVEL LOG_DEBUG
+#else
+#define LOG_LEVEL LOG_ERROR
+#endif
 
 /*
  * Structures
@@ -145,9 +150,9 @@ struct my_timer {
 struct lua_timer {
 	ev_timer timer;
 	lua_State* l;
+	bool started;
 	int self;
 	int callback;
-	bool closed;
 };
 
 struct my_signal {
@@ -206,6 +211,7 @@ struct MumbleClient {
 	int					users;
 	int					channels;
 	int					audio_streams;
+	uint32_t			max_bandwidth;
 	double				time;
 	uint32_t			session;
 	float				volume;
@@ -352,7 +358,8 @@ extern uint64_t mumble_ping_udp_legacy(lua_State* l, MumbleClient* client);
 extern uint64_t mumble_ping_udp_protobuf(lua_State* l, MumbleClient* client);
 extern void mumble_ping_tcp(lua_State* l, MumbleClient* client);
 
-extern void mumble_create_audio_timer(MumbleClient *client, int bitspersec);
+extern float mumble_adjust_audio_bandwidth(MumbleClient *client);
+extern void mumble_create_audio_timer(MumbleClient *client);
 extern void mumble_disconnect(lua_State* l, MumbleClient *client, const char* reason);
 
 extern void mumble_client_raw_get(lua_State* l, MumbleClient* client);

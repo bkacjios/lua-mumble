@@ -2,13 +2,25 @@
 
 #include "timer.h"
 
-static void mumble_lua_timer_close(lua_State *l, lua_timer *ltimer)
+static lua_timer* mumble_checktimer(lua_State *l, int index)
 {
-	if (!ltimer->closed) {
+	lua_timer *timer = luaL_checkudata(l, index, METATABLE_TIMER);
+
+	return timer;
+}
+
+static void mumble_lua_timer_finish(lua_State *l, lua_timer *ltimer)
+{
+	if (ltimer->started) {
+		if (ev_is_active(&ltimer->timer)) {
+			mumble_log(LOG_DEBUG, "mumble.timer: %p stopping\n", ltimer);
+			ev_timer_stop(EV_DEFAULT, &ltimer->timer);
+		}
 		// Cleanup all our references
+		mumble_log(LOG_DEBUG, "mumble.timer: %p cleanup\n", ltimer);
 		mumble_registry_unref(l, MUMBLE_TIMER_REG, ltimer->self);
 		mumble_registry_unref(l, MUMBLE_TIMER_REG, ltimer->callback);
-		ltimer->closed = true;
+		ltimer->started = false;
 	}
 }
 
@@ -39,9 +51,9 @@ static void mumble_lua_timer(EV_P_ ev_timer *w_, int revents)
 
 	// If the timer isn't active after our callback function call..
 	if (!ev_is_active(w_)) {
-		// Mark our timer as closed.
-		// This allows the timer object to be garbage collected, in most cases, when improperly used..
-		mumble_lua_timer_close(l, w);
+		// Mark our timer as finished.
+		// This allows the timer object to be garbage collected the moment our callback is done being used.
+		mumble_lua_timer_finish(l, w);
 	}
 
 	lua_stackguard_exit(l);
@@ -49,26 +61,12 @@ static void mumble_lua_timer(EV_P_ ev_timer *w_, int revents)
 
 int mumble_timer_new(lua_State *l)
 {
-	luaL_checktype(l, 2, LUA_TFUNCTION);
-
-	double after = luaL_optnumber(l, 3, 0);
-	double repeat = luaL_optnumber(l, 4, 0);
-
 	lua_timer *ltimer = lua_newuserdata(l, sizeof(lua_timer));
 	ltimer->l = l;
-	ltimer->closed = false;
-
-	lua_pushvalue(l, -1); // Push a copy of the timers userdata
-	ltimer->self = mumble_registry_ref(l, MUMBLE_TIMER_REG); // Pop it off as a reference
-
-	lua_pushvalue(l, 2); // Push a copy of our callback function
-	ltimer->callback = mumble_registry_ref(l, MUMBLE_TIMER_REG); // Pop it off as a reference
+	ltimer->started = false;
 
 	luaL_getmetatable(l, METATABLE_TIMER);
 	lua_setmetatable(l, -2);
-
-	// Initialize our timer object
-	ev_timer_init(&ltimer->timer, mumble_lua_timer, after, repeat);
 
 	// Return the timer metatable
 	return 1;
@@ -77,8 +75,21 @@ int mumble_timer_new(lua_State *l)
 static int timer_start(lua_State *l)
 {
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	luaL_checktype(l, 2, LUA_TFUNCTION);
 
-	if (ltimer->closed) return luaL_error(l, "attempt to call 'start' on closed timer");
+	double after = luaL_optnumber(l, 3, 0);
+	double repeat = luaL_optnumber(l, 4, 0);
+
+	ltimer->started = true;
+
+	lua_pushvalue(l, 1); // Push a copy of the timers userdata
+	ltimer->self = mumble_registry_ref(l, MUMBLE_TIMER_REG); // Pop it off as a reference
+
+	lua_pushvalue(l, 2); // Push a copy of our callback function
+	ltimer->callback = mumble_registry_ref(l, MUMBLE_TIMER_REG); // Pop it off as a reference
+
+	// Initialize our timer object
+	ev_timer_init(&ltimer->timer, mumble_lua_timer, after, repeat);
 
 	ev_timer_start(EV_DEFAULT, &ltimer->timer);
 
@@ -90,33 +101,15 @@ static int timer_start(lua_State *l)
 static int timer_stop(lua_State *l)
 {
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
-
-	if (ltimer->closed) return luaL_error(l, "attempt to call 'stop' on closed timer");
-
-	ev_timer_stop(EV_DEFAULT, &ltimer->timer);
-
+	mumble_lua_timer_finish(l, ltimer);
 	// Return ourself
 	lua_settop(l, 1);
 	return 1;
 }
 
-static int timer_close(lua_State *l)
-{
-	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
-
-	if (ltimer->closed) return luaL_error(l, "attempt to call 'close' on closed timer");
-
-	ev_timer_stop(EV_DEFAULT, &ltimer->timer);
-	mumble_lua_timer_close(l, ltimer);
-	return 0;
-}
-
 static int timer_set(lua_State *l)
 {
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
-
-	if (ltimer->closed) return luaL_error(l, "attempt to call 'set' on closed timer");
-
 	double after = luaL_checknumber(l, 2);
 	double repeat = luaL_optnumber(l, 3, 0);
 
@@ -139,8 +132,6 @@ static int timer_setDuration(lua_State *l)
 {
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 
-	if (ltimer->closed) return luaL_error(l, "attempt to call 'setDuration' on closed timer");
-
 	ltimer->timer.at = luaL_checknumber(l, 2);
 
 	// Return ourself
@@ -158,8 +149,6 @@ static int timer_getDuration(lua_State *l)
 static int timer_setRepeat(lua_State *l)
 {
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
-
-	if (ltimer->closed) return luaL_error(l, "attempt to call 'setRepeat' on closed timer");
 	
 	ltimer->timer.repeat = luaL_checknumber(l, 2);
 
@@ -179,8 +168,6 @@ static int timer_again(lua_State *l)
 {
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 
-	if (ltimer->closed) return luaL_error(l, "attempt to call 'again' on closed timer");
-
 	ev_timer_again(EV_DEFAULT, &ltimer->timer);
 
 	// Return ourself
@@ -198,9 +185,8 @@ static int timer_isActive(lua_State *l)
 static int timer_gc(lua_State *l)
 {
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	mumble_lua_timer_finish(l, ltimer);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_TIMER, ltimer);
-	ev_timer_stop(EV_DEFAULT, &ltimer->timer);
-	mumble_lua_timer_close(l, ltimer);
 	return 0;
 }
 
@@ -213,7 +199,6 @@ static int timer_tostring(lua_State *l)
 const luaL_Reg mumble_timer[] = {
 	{"start", timer_start},
 	{"stop", timer_stop},
-	{"close", timer_close},
 	{"set", timer_set},
 	{"get", timer_get},
 	{"setDuration", timer_setDuration},

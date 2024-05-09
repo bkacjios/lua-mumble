@@ -31,8 +31,6 @@ void bin_to_strhex(char *bin, size_t binsz, char **result)
 
 static void mumble_print(int level, const char* msg)
 {
-	if (level > LOG_LEVEL) return;
-
 	char* lcolor;
 	char* llevel;
 	switch (level) {
@@ -66,6 +64,8 @@ static void mumble_print(int level, const char* msg)
 
 void mumble_log(int level, const char* fmt, ...)
 {
+	if (level > LOG_LEVEL) return;
+	
 	va_list va;
 	va_start(va,fmt);
 	char buff[2048];
