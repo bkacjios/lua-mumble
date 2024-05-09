@@ -444,8 +444,8 @@ static int user_requestCommentBlob(lua_State *l)
 static int user_gc(lua_State *l)
 {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_USER, user);
 	mumble_unref(l, user->data);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_USER, user);
 	return 0;
 }
 

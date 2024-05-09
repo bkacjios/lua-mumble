@@ -360,7 +360,7 @@ extern void mumble_ping_tcp(lua_State* l, MumbleClient* client);
 
 extern float mumble_adjust_audio_bandwidth(MumbleClient *client);
 extern void mumble_create_audio_timer(MumbleClient *client);
-extern void mumble_disconnect(lua_State* l, MumbleClient *client, const char* reason);
+extern void mumble_disconnect(lua_State* l, MumbleClient *client, const char* reason, bool garbagecollected);
 
 extern void mumble_client_raw_get(lua_State* l, MumbleClient* client);
 extern MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session);
@@ -372,7 +372,8 @@ extern void mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t 
 extern void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_id);
 
 extern int mumble_push_address(lua_State* l, ProtobufCBinaryData address);
-extern int mumble_handle_speaking_hooks(lua_State* l, MumbleClient* client, uint8_t buffer[], uint8_t codec, uint8_t target, uint32_t session);
+extern void mumble_handle_speaking_hooks_legacy(lua_State* l, MumbleClient* client, uint8_t buffer[], uint8_t codec, uint8_t target, uint32_t session);
+extern void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, MumbleUDP__Audio *audio);
 
 extern int mumble_traceback(lua_State *l);
 extern int mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs);

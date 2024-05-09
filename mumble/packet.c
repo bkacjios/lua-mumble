@@ -201,7 +201,7 @@ void packet_udp_tunnel(lua_State *l, MumbleClient *client, Packet *packet)
 	int read = 1;
 	int session = util_get_varint(packet->buffer + read, &read);
 
-	mumble_handle_speaking_hooks(l, client, packet->buffer + read, codec, target, session);
+	mumble_handle_speaking_hooks_legacy(l, client, packet->buffer + read, codec, target, session);
 }
 
 void packet_server_ping(lua_State *l, MumbleClient *client, Packet *packet)
@@ -492,13 +492,13 @@ void packet_user_remove(lua_State *l, MumbleClient *client, Packet *packet)
 		char* type = (user->has_ban && user->ban) ? "banned" : "kicked";
 		char* reason = (user->reason != NULL && strcmp(user->reason,"") != 0) ? user->reason : "No reason given";
 
-		if (user->has_actor && user->has_ban) {			
+		if (user->has_actor && user->has_ban) {
 			MumbleUser* actor = mumble_user_get(l, client, user->actor);
 			mumble_log(LOG_INFO, "%s[%d] %s from server by %s [%d][\"%s\"] (Reason \"%s\")\n", METATABLE_CLIENT, client->self, type, METATABLE_USER, actor->session, actor->name, reason);
 		} else {
 			mumble_log(LOG_INFO, "%s[%d] %s from server (Reason \"%s\")\n", METATABLE_CLIENT, client->self, type, reason);
 		}
-		mumble_disconnect(l, client, user->reason);
+		mumble_disconnect(l, client, user->reason, false);
 	}
 
 	mumble_proto__user_remove__free_unpacked(user, NULL);

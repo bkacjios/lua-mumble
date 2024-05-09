@@ -297,7 +297,7 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 		voicepacket_setheader(&packet, LEGACY_UDP_OPUS, client->audio_target, client->audio_sequence);
 		voicepacket_setframe(&packet, LEGACY_UDP_OPUS, frame_header, encoded, encoded_len);
 
-		mumble_handle_speaking_hooks(l, client, packet.buffer + 1, LEGACY_UDP_OPUS, client->audio_target, client->session);
+		mumble_handle_speaking_hooks_legacy(l, client, packet.buffer + 1, LEGACY_UDP_OPUS, client->audio_target, client->session);
 
 		if (client->udp_tunnel) {
 			packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
@@ -532,6 +532,7 @@ static int audiostream_gc(lua_State *l)
 {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	stb_vorbis_close(sound->ogg);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_AUDIOSTREAM, sound);
 	return 0;
 }
 

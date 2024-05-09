@@ -447,6 +447,7 @@ int buffer_gc(lua_State *l)
 {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
 	free(buffer->data);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_BUFFER, buffer);
 	return 0;
 }
 

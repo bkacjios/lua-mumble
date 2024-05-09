@@ -123,6 +123,7 @@ static int encoder_gc(lua_State *l)
 {
 	OpusEncoder *encoder = luaL_checkudata(l, 1, METATABLE_ENCODER);
 	// no need to destroy since we allocated ourselves via lua_newuserdata and used opus_encoder_init
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_ENCODER, encoder);
 	return 0;
 }
 

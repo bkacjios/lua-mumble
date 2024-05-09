@@ -125,7 +125,7 @@ static int client_setTokens(lua_State *l)
 static int client_disconnect(lua_State *l)
 {
 	MumbleClient *client = mumble_checkclient(l, 1);
-	mumble_disconnect(l, client, "connection closed by client");
+	mumble_disconnect(l, client, "connection closed by client", false);
 	return 0;
 }
 
@@ -232,7 +232,7 @@ static int client_transmit(lua_State *l) {
 	voicepacket_setheader(&packet, codec, client->audio_target, client->audio_sequence);
 	voicepacket_setframe(&packet, codec, frame_header, output, outputlen);
 
-	mumble_handle_speaking_hooks(l, client, packet.buffer + 1, codec, client->audio_target, client->session);
+	mumble_handle_speaking_hooks_legacy(l, client, packet.buffer + 1, codec, client->audio_target, client->session);
 
 	if (client->udp_tunnel) {
 		packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
@@ -754,7 +754,7 @@ static int client_isTunnelingUDP(lua_State *l)
 static int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	mumble_disconnect(l, client, "garbage collected");
+	mumble_disconnect(l, client, "garbage collected", true);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_CLIENT, client);
 	return 0;
 }
