@@ -46,8 +46,8 @@ static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
 
 void mumble_ping(lua_State *l, MumbleClient* client) {
 	mumble_ping_tcp(l, client);
-	if (crypt_isValid(client->crypt)) {
 
+	if (crypt_isValid(client->crypt)) {
 		uint64_t timestamp;
 		if (client->legacy) {
 			timestamp = mumble_ping_udp_legacy(l, client);
@@ -55,9 +55,10 @@ void mumble_ping(lua_State *l, MumbleClient* client) {
 			timestamp = mumble_ping_udp_protobuf(l, client);
 		}
 
-		if (client->udp_ping_acc >= 3 && !client->udp_tunnel) {
+		if (client->udp_ping_acc >= UDP_TCP_FALLBACK && !client->tcp_udp_tunnel) {
+			// We didn't get a response from a ping 3 times in a row
 			mumble_log(LOG_WARN, "Server no longer responding to UDP pings, falling back to TCP..\n");
-			client->udp_tunnel = true;
+			client->tcp_udp_tunnel = true;
 		}
 
 		lua_newtable(l);
@@ -72,25 +73,14 @@ void mumble_ping(lua_State *l, MumbleClient* client) {
 uint64_t mumble_ping_udp_legacy(lua_State *l, MumbleClient* client) {
 	double milliseconds = gettime(CLOCK_MONOTONIC);
 	uint64_t timestamp = (uint64_t) (milliseconds * 1000);
+
 	unsigned char packet[UDP_BUFFER_MAX];
 	packet[0] = LEGACY_UDP_PING << 5;
-	int len = 1 + sizeof(timestamp);
-	memcpy(packet + 1, &timestamp, sizeof(timestamp));
 
-	if (client->udp_ping_acc >= 3 && !client->udp_tunnel) {
-		mumble_log(LOG_WARN, "Server no longer responding to UDP pings, falling back to TCP..\n");
-		client->udp_tunnel = true;
-	}
+	int len = 1 + util_set_varint(packet + 1, timestamp);
 
-	lua_newtable(l);
-		lua_pushnumber(l, timestamp);
-		lua_setfield(l, -2, "timestamp");
-	mumble_hook_call(l, client, "OnPingUDP", 1);
-
-	client->udp_ping_acc++;
-
+	mumble_log(LOG_TRACE, "[UDP] Sending legacy ping packet: %p\n", &packet);
 	packet_sendudp(client, packet, len);
-
 	return timestamp;
 }
 
@@ -107,6 +97,7 @@ uint64_t mumble_ping_udp_protobuf(lua_State *l, MumbleClient* client) {
 
 	int len = 1 + mumble_udp__ping__pack(&ping, packet + 1);
 
+	mumble_log(LOG_TRACE, "[UDP] Sending %s: %p\n", "MumbleUDP.Ping", &ping);
 	packet_sendudp(client, packet, len);
 	return timestamp;
 }
@@ -291,12 +282,18 @@ static void mumble_update_ping(lua_State* l, MumbleClient* client, uint64_t time
 	client->udp_ping_avg = client->udp_ping_avg * (n-1)/n + delay/n;
 	client->udp_ping_var = pow(fabs(delay - client->udp_ping_avg), 2);
 
-	if (client->udp_tunnel && client->udp_ping_acc > 1) {
-		mumble_log(LOG_WARN, "Server is responding to UDP packets again, switching back to UDP..\n");
+	if (client->tcp_udp_tunnel) {
+		if (client->udp_ping_acc >= UDP_TCP_FALLBACK) {
+			// We suddenly got a response, after sending out pings with multiple missing responses
+			mumble_log(LOG_WARN, "Server is responding to UDP packets again, switching back to UDP..\n");
+		}
+		// Fallback to tunneling UDP data through TCP
+		mumble_log(LOG_DEBUG, "[UDP] Connection active\n");
+		client->tcp_udp_tunnel = false;
 	}
 
+	// Reset our ping accumulation counter
 	client->udp_ping_acc = 0;
-	client->udp_tunnel = false;
 
 	lua_newtable(l);
 		lua_pushnumber(l, (double) timestamp / 1000);
@@ -323,6 +320,7 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 
 	ssize_t size;
 	size = recvfrom(client->socket_udp, encrypted, sizeof(encrypted), 0, client->server_host_udp->ai_addr, &client->server_host_udp->ai_addrlen);
+
 	if (size > 0)
 	{
 		uint8_t unencrypted[size];
@@ -339,8 +337,10 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 				switch (id) {
 					case LEGACY_UDP_PING:
 					{
-						uint64_t timestamp;
-						memcpy(&timestamp, unencrypted + 1, sizeof(uint64_t));
+						int read = 1;
+						uint64_t timestamp = util_get_varint(unencrypted + read, &read);
+
+						mumble_log(LOG_TRACE, "[UDP] Received legacy ping packet (size=%u, id=%u, timestamp=%lu)\n", size, id, timestamp);
 
 						mumble_update_ping(l, client, timestamp);
 						return;
@@ -355,6 +355,7 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 						int read = 1;
 						int session = util_get_varint(unencrypted + read, &read);
 
+						mumble_log(LOG_TRACE, "[UDP] Received legacy audio packet (size=%u, id=%u, target=%u, session=%u)\n", size, id, target, session);
 						mumble_handle_speaking_hooks_legacy(l, client, unencrypted + read, id, target, session);
 						return;
 					}
@@ -365,10 +366,11 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 					{
 						MumbleUDP__Audio *audio = mumble_udp__audio__unpack(NULL, size - 1, unencrypted + 1);
 						if (audio != NULL) {
-							mumble_handle_speaking_hooks_protobuf(l, client, audio);
+							mumble_log(LOG_TRACE, "[UDP] Received %s: %p\n", audio->base.descriptor->name, audio);
+							mumble_handle_speaking_hooks_protobuf(l, client, audio, audio->sender_session);
 							mumble_udp__audio__free_unpacked(audio, NULL);
 						} else {
-							mumble_log(LOG_ERROR, "Error unpacking UDP audio packet\n");
+							mumble_log(LOG_ERROR, "[UDP] Error unpacking UDP audio packet\n");
 						}
 						return;
 					}
@@ -376,10 +378,11 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 					{
 						MumbleUDP__Ping *ping = mumble_udp__ping__unpack(NULL, size - 1, unencrypted + 1);
 						if (ping != NULL) {
+							mumble_log(LOG_TRACE, "[UDP] Received %s: %p\n", ping->base.descriptor->name, ping);
 							mumble_update_ping(l, client, ping->timestamp);
 							mumble_udp__ping__free_unpacked(ping, NULL);
 						} else {
-							mumble_log(LOG_ERROR, "Error unpacking UDP ping packet\n");
+							mumble_log(LOG_ERROR, "[UDP] Error unpacking ping packet\n");
 						}
 						return;
 					}
@@ -387,7 +390,7 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 			}
 		}
 
-		mumble_log(LOG_ERROR, "Failed to decrypt UDP data packet\n");
+		mumble_log(LOG_WARN, "[UDP] Received unknown UDP data packet\n");
 	}
 }
 
@@ -426,12 +429,10 @@ static int mumble_connect(lua_State *l)
 	client->volume = 0.5;
 	client->connected = false;
 	client->synced = false;
-	client->legacy = true;
+	client->legacy = MUMBLE_VERSION_MINOR < 5;
+	client->audio_sequence = 0;
 	client->audio_target = 0;
 	client->audio_frames = AUDIO_DEFAULT_FRAMES;
-
-	for(int i = 0; i < AUDIO_MAX_STREAMS; ++i)
-		client->audio_jobs[i] = NULL;
 
 	client->tcp_packets = 0;
 	client->tcp_ping_avg = 0;
@@ -442,10 +443,11 @@ static int mumble_connect(lua_State *l)
 	client->udp_ping_avg = 0;
 	client->udp_ping_var = 0;
 
-	client->udp_tunnel = true;
+	client->tcp_udp_tunnel = true;
 
 	client->crypt = crypt_new();
 
+	client->stream_list = NULL;
 	client->user_list = NULL;
 	client->channel_list = NULL;
 
@@ -468,7 +470,7 @@ static int mumble_connect(lua_State *l)
 
 	client->encoder_ref = mumble_ref(l);
 
-	opus_encoder_ctl(client->encoder, OPUS_SET_VBR(1));
+	opus_encoder_ctl(client->encoder, OPUS_SET_VBR(0));
 	opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(AUDIO_DEFAULT_BITRATE));
 	opus_encoder_ctl(client->encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_MUSIC));
 
@@ -502,7 +504,6 @@ static int mumble_connect(lua_State *l)
 		return 2;
 	}
 
-#ifdef ENABLE_UDP
 	// UDP Connection
 
 	struct addrinfo hint_udp;
@@ -525,14 +526,6 @@ static int mumble_connect(lua_State *l)
 		lua_pushfstring(l, "could not create udp socket: %s", strerror(errno));
 		return 2;
 	}
-
-	int n = UDP_BUFFER_MAX+4;
-	if (setsockopt(client->socket_udp, SOL_SOCKET, SO_RCVBUF, &n, sizeof(n)) < 0) {
-		lua_pushnil(l);
-		lua_pushfstring(l, "could not set udp socket buffer size: %s", strerror(errno));
-		return 2;
-	}
-#endif
 
 	client->socket_tcp = socket(client->server_host_tcp->ai_family, client->server_host_tcp->ai_socktype, 0);
 	if (client->socket_tcp < 0) {
@@ -586,20 +579,20 @@ static int mumble_connect(lua_State *l)
 	client->ping_timer.l = l;
 	client->ping_timer.client = client;
 
-#ifdef ENABLE_UDP
 	client->socket_udp_io.l = l;
 	client->socket_udp_io.client = client;
 
 	// Create a callback for when the udp socket is ready to be read from
 	ev_io_init(&client->socket_udp_io.io, socket_read_event_udp, client->socket_udp, EV_READ);
 	ev_io_start(EV_DEFAULT, &client->socket_udp_io.io);
-#endif
 
 	// Create a callback for when the tcp socket is ready to be read from
 	ev_io_init(&client->socket_tcp_io.io, socket_read_event_tcp, client->socket_tcp, EV_READ);
 	ev_io_start(EV_DEFAULT, &client->socket_tcp_io.io);
 
+	// Create a callback for when the tcp socket is ready to be written to
 	ev_io_init(&client->socket_tcp_connect.io, socket_connect_event_tcp, client->socket_tcp, EV_WRITE);
+	ev_set_priority(&client->ping_timer.timer, EV_MAXPRI);
 	ev_io_start(EV_DEFAULT, &client->socket_tcp_connect.io);
 
 	// Create a timer to ping the server every X seconds
@@ -624,10 +617,10 @@ static int getNetworkBandwidth(int bitrate, int frames)
 
 float mumble_adjust_audio_bandwidth(MumbleClient *client) {
 	int frames = client->audio_frames / 10;
-	int maxbitrate = client->max_bandwidth;
-	int bitrate;
-
+	uint32_t maxbitrate = client->max_bandwidth;
+	opus_int32 bitrate;
 	opus_encoder_ctl(client->encoder, OPUS_GET_BITRATE(&bitrate));
+	opus_int32 original_bitrate = bitrate;
 
 	if (maxbitrate == -1) {
 		// No limit
@@ -649,16 +642,16 @@ float mumble_adjust_audio_bandwidth(MumbleClient *client) {
 	if (bitrate < 8000)
 		bitrate = 8000;
 
-	if (bitrate < maxbitrate) {
+	if (bitrate != original_bitrate) {
 		mumble_log(LOG_WARN, "Server maximum network bandwidth is only %d kbit/s. Audio quality auto-adjusted to %d kbit/s (%d ms)\n", maxbitrate / 1000, bitrate / 1000, frames * 10);
 		client->audio_frames = frames * 10;
 		opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(bitrate));
 	}
 
-	// Get the length of our timer for the audio stream..
-	float time = (float) frames / 100;
+    // Get the length of our timer for the audio stream..
+    float time = (float) frames / 100;
 
-	return time;
+    return time;
 }
 
 void mumble_create_audio_timer(MumbleClient *client)
@@ -666,7 +659,7 @@ void mumble_create_audio_timer(MumbleClient *client)
 	float time = mumble_adjust_audio_bandwidth(client);
 
 	// Create a timer for audio data
-	ev_timer_init(&client->audio_timer.timer, mumble_audio_timer, 0, time);
+	ev_timer_init(&client->audio_timer.timer, mumble_audio_timer, 1, time);
 	ev_set_priority(&client->audio_timer.timer, EV_MAXPRI);
 	ev_timer_start(EV_DEFAULT, &client->audio_timer.timer);
 }
@@ -690,9 +683,7 @@ void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason, b
 	client->closed = true;
 	client->connected = false;
 
-#ifdef ENABLE_UDP
 	ev_io_stop(EV_DEFAULT, &client->socket_udp_io.io);
-#endif
 	ev_io_stop(EV_DEFAULT, &client->socket_tcp_io.io);
 	ev_io_stop(EV_DEFAULT, &client->socket_tcp_connect.io);
 	ev_timer_stop(EV_DEFAULT, &client->ping_timer.timer);
@@ -734,24 +725,28 @@ void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason, b
 
 	lua_stackguard_entry(l);
 
-	if (client->audio_jobs) {
-		for(int i = 1; i <= AUDIO_MAX_STREAMS; ++i) {
-			audio_transmission_stop(l, client, i);
-		}
-	}
+	LinkNode* current = client->stream_list;
 
 	if (!garbagecollected) {
 		mumble_log(LOG_INFO, "%s[%d] disconnected from server: %s\n", METATABLE_CLIENT, client->self, reason);
 		lua_pushstring(l, reason);
 		mumble_hook_call(l, client, "OnDisconnect", 1);
+
+		if (current) {
+			while (current != NULL)
+			{
+				audio_transmission_unreference(l, current->data);
+				current = current->next;
+			}
+		}
 	}
 
-	LinkNode* current = client->user_list;
+	current = client->user_list;
 
 	if (current) {
 		while (current != NULL)
 		{
-			mumble_user_remove(l, client, current->data);
+			mumble_user_remove(l, client, current->index);
 			current = current->next;
 		}
 	}
@@ -761,7 +756,7 @@ void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason, b
 	if (current) {
 		while (current != NULL)
 		{
-			mumble_channel_remove(l, client, current->data);
+			mumble_channel_remove(l, client, current->index);
 			current = current->next;
 		}
 	}
@@ -974,7 +969,7 @@ MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session
 		luaL_getmetatable(l, METATABLE_USER);
 		lua_setmetatable(l, -2);
 
-		list_add(&client->user_list, session);
+		list_add(&client->user_list, session, NULL);
 
 		lua_pushinteger(l, session);
 		lua_pushvalue(l, -2); // Push a copy of the new user metatable
@@ -1057,7 +1052,7 @@ MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t c
 		luaL_getmetatable(l, METATABLE_CHAN);
 		lua_setmetatable(l, -2);
 
-		list_add(&client->channel_list, channel_id);
+		list_add(&client->channel_list, channel_id, NULL);
 
 		lua_pushinteger(l, channel_id);
 		lua_pushvalue(l, -2); // Push a copy of the new channel object
@@ -1124,12 +1119,11 @@ int mumble_push_address(lua_State* l, ProtobufCBinaryData address)
 	return 1;
 }
 
-void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, MumbleUDP__Audio *audio)
+void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, MumbleUDP__Audio *audio, uint32_t session)
 {
 	lua_stackguard_entry(l);
 
 	uint64_t sequence = audio->frame_number;
-	uint32_t session = audio->sender_session;
 	
 	bool speaking = !audio->is_terminator;
 	MumbleUser* user = mumble_user_get(l, client, session);
@@ -1148,6 +1142,8 @@ void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, M
 	}
 
 	lua_newtable(l);
+		lua_pushnumber(l, LEGACY_UDP_OPUS);
+		lua_setfield(l, -2, "codec");
 		lua_pushnumber(l, audio->target);
 		lua_setfield(l, -2, "target");
 		lua_pushnumber(l, sequence);
@@ -1219,8 +1215,6 @@ void mumble_handle_speaking_hooks_legacy(lua_State* l, MumbleClient* client, uin
 		lua_setfield(l, -2, "speaking");
 		lua_pushlstring(l, buffer + read, payload_len);
 		lua_setfield(l, -2, "data");
-		lua_pushinteger(l, frame_header);
-		lua_setfield(l, -2, "frame_header");
 	mumble_hook_call(l, client, "OnUserSpeak", 1);
 
 	if (one_frame || state_change && !speaking) {
@@ -1235,6 +1229,7 @@ const luaL_Reg mumble[] = {
 	{"connect", mumble_connect},
 	{"loop", mumble_loop},
 	{"stop", mumble_stop},
+	{"time", mumble_getTime},
 	{"gettime", mumble_getTime},
 	{"getTime", mumble_getTime},
 	{"getConnections", mumble_getConnections},
@@ -1348,15 +1343,15 @@ void mumble_init(lua_State *l)
 		lua_newtable(l);
 		{
 			lua_pushinteger(l, 1);
-			lua_setfield(l, -2, "LOW");
+			lua_setfield(l, -2, "TINY");
 			lua_pushinteger(l, 2);
-			lua_setfield(l, -2, "MEDIUM");
+			lua_setfield(l, -2, "SMALL");
 			lua_pushinteger(l, 3);
-			lua_setfield(l, -2, "HIGH");
+			lua_setfield(l, -2, "MEDIUM");
 			lua_pushinteger(l, 4);
-			lua_setfield(l, -2, "BEST");
+			lua_setfield(l, -2, "LARGE");
 		}
-		lua_setfield(l, -2, "quality");
+		lua_setfield(l, -2, "audio");
 
 		lua_newtable(l);
 		{

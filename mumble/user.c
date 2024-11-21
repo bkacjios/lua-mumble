@@ -174,10 +174,17 @@ static int user_getChannel(lua_State *l)
 	return 1;
 }
 
-static int user_getID(lua_State *l)
+static int user_getId(lua_State *l)
 {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushinteger(l, user->user_id);
+	return 1;
+}
+
+static int user_isRegistered(lua_State *l)
+{
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+	lua_pushboolean(l, user->user_id > 0);
 	return 1;
 }
 
@@ -364,8 +371,8 @@ static int user_getListens(lua_State *l)
 
 	// Add all linked channels to the table
     while (current != NULL) {
-		lua_pushinteger(l, current->data);
-		mumble_channel_raw_get(l, user->client, current->data);
+		lua_pushinteger(l, current->index);
+		mumble_channel_raw_get(l, user->client, current->index);
 		lua_settable(l, -3);
         current = current->next;
     }
@@ -490,7 +497,9 @@ const luaL_Reg mumble_user[] = {
 	{"getSession", user_getSession},
 	{"getName", user_getName},
 	{"getChannel", user_getChannel},
-	{"getID", user_getID},
+	{"getId", user_getId},
+	{"getID", user_getId},
+	{"isRegistered", user_isRegistered},
 	{"isMute", user_isMute},
 	{"isMuted", user_isMute},
 	{"isDeaf", user_isDeaf},

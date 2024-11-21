@@ -8,7 +8,8 @@
 extern const luaL_Reg mumble_audiostream[];
 
 extern void audio_transmission_event(lua_State* l, MumbleClient *client);
-extern void audio_transmission_stop(lua_State*l, MumbleClient *client, int channel);
+extern void audio_transmission_reference(lua_State *l, AudioStream *sound);
+extern void audio_transmission_unreference(lua_State*l, AudioStream *sound);
 
 extern uint8_t util_set_varint_size(const uint64_t value);
 extern uint8_t util_set_varint(uint8_t buffer[], const uint64_t value);

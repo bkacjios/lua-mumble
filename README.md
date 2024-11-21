@@ -148,23 +148,23 @@ Table audiostreams = {
 	...
 }
 
--- Sets the duration of each audio packet played.
--- Higher quality = higher audio latency
--- Lower quality  = lower audio latency
--- The higher the quality = bigger audio chunks = less chance of static
+-- Sets the size of each audio packet played.
+-- The larger the packet size, the less chance of static.
+-- Larger  = higher audio latency.
+-- Smaller = lower audio latency.
 
-Table mumble.quality = {
-	["LOW"]		= 1,
-	["MEDIUM"]	= 2,
-	["HIGH"]	= 3,
-	["BEST"]	= 4,
+Table mumble.audio = {
+	["TINY"]	= 1,
+	["SMALL"]	= 2,
+	["MEDIUM"]	= 3,
+	["LARGE"]	= 4,
 }
 
-mumble.client:setAudioQuality(Number quality = [LOW = 1, MEDIUM = 2, HIGH = 3, BEST = 4])
+mumble.client:setAudioPacketSize(Number size = [TINY = 1, SMALL = 2, MEDIUM = 3, LARGE = 4])
 
 -- Returns the current duration of each audio packet
--- Default: mumble.quality.BEST = 4
-Number size = mumble.client:getAudioQuality()
+-- Default: mumble.audio.TINY = 1
+Number size = mumble.client:getAudioPacketSize()
 
 -- Checks if the client is currently playing an audio file on the specified audio stream
 Boolean playing = mumble.client:isPlaying(Number stream = 1)
@@ -316,7 +316,7 @@ mumble.channel channel = mumble.user:getChannel()
 
 -- Gets the registered ID of the user
 -- Is 0 for unregistered users
-Number userid = mumble.user:getID()
+Number userid = mumble.user:getId()
 
 -- Returns if the user is muted or not
 Boolean muted = mumble.user:isMuted()
@@ -414,7 +414,7 @@ mumble.client client = mumble.channel:getClient()
 String name = mumble.channel:getName()
 
 -- Gets the channel ID
-Number id = mumble.channel:getID()
+Number id = mumble.channel:getId()
 
 -- Gets the parent channel
 -- Returns nil on root channel

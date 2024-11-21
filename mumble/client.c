@@ -217,30 +217,60 @@ static int client_transmit(lua_State *l) {
 
 	bool speaking = luaL_optboolean(l, 4, true);
 
-	uint16_t frame_header = outputlen;
-	if (codec == LEGACY_UDP_OPUS && !speaking) {
-		// Set 14th bit to 1 to signal end of stream.
-		frame_header = (1 << 13) | outputlen;
-	} else if ((codec == LEGACY_UDP_SPEEX || codec == LEGACY_UDP_CELT_ALPHA || codec == LEGACY_UDP_CELT_BETA) && speaking) {
-		// Set continuation bit at the MSB if we are not at the end of the stream
-		frame_header = (1 << 0) | outputlen;
-	}
+	if (client->legacy) {
+		uint16_t frame_header = outputlen;
+		if (codec == LEGACY_UDP_OPUS && !speaking) {
+			// Set 14th bit to 1 to signal end of stream.
+			frame_header = (1 << 13) | outputlen;
+		} else if ((codec == LEGACY_UDP_SPEEX || codec == LEGACY_UDP_CELT_ALPHA || codec == LEGACY_UDP_CELT_BETA) && speaking) {
+			// Set continuation bit at the MSB if we are not at the end of the stream
+			frame_header = (1 << 0) | outputlen;
+		}
 
-	VoicePacket packet;
-	uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
-	voicepacket_init(&packet, packet_buffer);
-	voicepacket_setheader(&packet, codec, client->audio_target, client->audio_sequence);
-	voicepacket_setframe(&packet, codec, frame_header, output, outputlen);
+		VoicePacket packet;
+		uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
+		voicepacket_init(&packet, packet_buffer);
+		voicepacket_setheader(&packet, codec, client->audio_target, client->audio_sequence);
+		voicepacket_setframe(&packet, codec, frame_header, output, outputlen);
 
-	mumble_handle_speaking_hooks_legacy(l, client, packet.buffer + 1, codec, client->audio_target, client->session);
+		mumble_handle_speaking_hooks_legacy(l, client, packet.buffer + 1, codec, client->audio_target, client->session);
 
-	if (client->udp_tunnel) {
-		packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, voicepacket_getlength(&packet));
+		if (client->tcp_udp_tunnel) {
+			packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, NULL, voicepacket_getlength(&packet));
+		} else {
+			packet_sendudp(client, packet_buffer, voicepacket_getlength(&packet));
+		}
 	} else {
-		packet_sendudp(client, packet_buffer, voicepacket_getlength(&packet));
+		MumbleUDP__Audio audio = MUMBLE_UDP__AUDIO__INIT;
+
+		ProtobufCBinaryData audio_data;
+		audio_data.data = output;
+		audio_data.len = outputlen;
+
+		audio.frame_number = client->audio_sequence;
+		audio.opus_data = audio_data;
+
+		audio.is_terminator = !speaking;
+
+		audio.target = client->audio_target;
+
+		audio.n_positional_data = 0;
+
+		uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
+		packet_buffer[0] = UDP_AUDIO;
+
+		int len = 1 + mumble_udp__audio__pack(&audio, packet_buffer + 1);
+
+		mumble_handle_speaking_hooks_protobuf(l, client, &audio, client->session);
+
+		if (client->tcp_udp_tunnel) {
+			packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, NULL, len);
+		} else {
+			packet_sendudp(client, packet_buffer, len);
+		}
 	}
 
-	client->audio_sequence = (client->audio_sequence + 1) % 100000;
+	client->audio_sequence++;
 	return 0;
 }
 
@@ -287,28 +317,28 @@ static const char *verrtbl[] = {
 
 static int client_play(lua_State *l)
 {
-	MumbleClient *client = mumble_checkclient(l, 1);
+	MumbleClient *client 	= mumble_checkclient(l, 1);
 	const char* filepath	= luaL_checkstring(l, 2);
-	int stream				= luaL_optinteger(l, 3, 1);
-	float volume			= (float) luaL_optnumber(l, 4, 1);
+	float volume			= (float) luaL_optnumber(l, 3, 1);
+	uint32_t stream			= luaL_optinteger(l, 4, 1);
 
-	if (stream < 1)
-		stream = 1;
+	AudioStream *sound = list_get(client->stream_list, stream);
+	if (sound) {
+		// If we are already playing something on this stream, stop & unreference it
+		audio_transmission_unreference(l, sound);
+	}
 
-	if (stream > AUDIO_MAX_STREAMS)
-		stream = AUDIO_MAX_STREAMS;
-
-	audio_transmission_stop(l, client, stream);
-
-	AudioStream *sound = lua_newuserdata(l, sizeof(AudioStream));
+	sound = lua_newuserdata(l, sizeof(AudioStream));
+	luaL_getmetatable(l, METATABLE_AUDIOSTREAM);
+	lua_setmetatable(l, -2);
 
 	int error = VORBIS__no_error;
 	sound->ogg = stb_vorbis_open_filename(filepath, &error, NULL);
+	sound->client = client;
 	sound->stream = stream;
+	sound->playing = true;
 	sound->looping = false;
 	sound->loop_count = 0;
-	sound->playing = true;
-	sound->client = client;
 	sound->volume = volume;
 
 	if (error != VORBIS__no_error) {
@@ -319,24 +349,19 @@ static int client_play(lua_State *l)
 
 	sound->info = stb_vorbis_get_info(sound->ogg);
 
-	luaL_getmetatable(l, METATABLE_AUDIOSTREAM);
-	lua_setmetatable(l, -2);
-
-	mumble_pushref(l, client->audio_streams);
-			lua_pushinteger(l, stream);
-			lua_pushvalue(l, -3);
-		lua_settable(l, -3);
-	lua_pop(l, 1);
-
-	client->audio_jobs[stream - 1] = sound;
+	// Insert this new audio stream metatable into our registry.
+	// This allows us to hold the reference until the auduio is finished playing.
+	lua_pushvalue(l, -1);
+	audio_transmission_reference(l, sound);
 	return 1;
 }
 
 static int client_getAudioStream(lua_State *l)
 {
 	MumbleClient *client = mumble_checkclient(l, 1);
+	uint32_t stream = luaL_optinteger(l, 2, 1);
 	mumble_pushref(l, client->audio_streams);
-	lua_pushinteger(l, luaL_optinteger(l, 2, 1));
+	lua_pushinteger(l, stream);
 	lua_gettable(l, -2);
 	return 1;
 }
@@ -348,76 +373,42 @@ static int client_getAudioStreams(lua_State *l)
 	return 1;
 }
 
-static int client_setAudioQuality(lua_State *l) {
+static int client_setAudioPacketSize(lua_State *l) {
 	MumbleClient *client = mumble_checkclient(l, 1);
 
-	int quality = luaL_checkinteger(l, 2);
+	int size = luaL_checkinteger(l, 2);
 
 	int frames;
 
-	switch (quality) {
-		case 1:
-			frames = 10;
+	switch (size) {
+		case AUDIO_FRAME_SIZE_TINY:
+			frames = AUDIO_FRAME_SIZE_TINY;
 			break;
-		case 2:
-			frames = 20;
+		case AUDIO_FRAME_SIZE_SMALL:
+			frames = AUDIO_FRAME_SIZE_SMALL;
 			break;
-		case 3:
-			frames = 40;
+		case AUDIO_FRAME_SIZE_MEDIUM:
+			frames = AUDIO_FRAME_SIZE_MEDIUM;
 			break;
-		case 4:
-			frames = 60;
+		case AUDIO_FRAME_SIZE_LARGE:
+			frames = AUDIO_FRAME_SIZE_LARGE;
 			break;
 		default:
-			return luaL_error(l, "invalid quality value \"%d\" (must be one the following values: 1, 2, 3, 4)", quality);
+			return luaL_error(l, "invalid value \"%d\" (must be one the following values: 10, 20, 40, 60)", size);
 	}
 
 	client->audio_frames = frames;
 
 	float time = mumble_adjust_audio_bandwidth(client);
-
-	ev_timer_set(&client->audio_timer.timer, 0, time);
+	client->audio_timer.timer.repeat = time;
+	ev_timer_again(EV_DEFAULT, &client->audio_timer.timer);
 	return 0;
 }
 
-static int client_getAudioQuality(lua_State *l) {
+static int client_getAudioPacketSize(lua_State *l) {
 	MumbleClient *client = mumble_checkclient(l, 1);
-
-	int quality;
-
-	switch (client->audio_frames) {
-		case 10:
-			quality = 1;
-			break;
-		case 20:
-			quality = 2;
-			break;
-		case 40:
-			quality = 3;
-			break;
-		case 60:
-			quality = 4;
-			break;
-	}
-
-	lua_pushinteger(l, quality);
+	lua_pushinteger(l, client->audio_frames);
 	return 1;
-}
-
-static int client_isPlaying(lua_State *l)
-{
-	MumbleClient *client = mumble_checkclient(l, 1);
-	int stream = luaL_optinteger(l, 2, 1);
-	lua_pushboolean(l, client->audio_jobs[stream - 1] != NULL);
-	return 1;
-}
-
-static int client_stopPlaying(lua_State *l)
-{
-	MumbleClient *client = mumble_checkclient(l, 1);
-	int stream = luaL_optinteger(l, 2, 1);
-	audio_transmission_stop(l, client, stream);
-	return 0;
 }
 
 static int client_setVolume(lua_State *l)
@@ -510,7 +501,7 @@ static int client_getUsers(lua_State *l)
 	while (current != NULL)
 	{
 		lua_pushnumber(l, i++);
-		mumble_user_raw_get(l, client, current->data);
+		mumble_user_raw_get(l, client, current->index);
 		lua_settable(l, -3);
 		current = current->next;
 	}
@@ -649,7 +640,7 @@ static int client_requestTextureBlob(lua_State *l)
 
 	lua_pop(l, 1);
 
-	packet_send(client, PACKET_USERSTATE, &msg);
+	packet_send(client, PACKET_REQUESTBLOB, &msg);
 	free(msg.session_texture);
 	return 0;
 }
@@ -747,7 +738,7 @@ static int client_getMe(lua_State *l)
 static int client_isTunnelingUDP(lua_State *l)
 {
 	MumbleClient *client = mumble_checkclient(l, 1);
-	lua_pushboolean(l, client->udp_tunnel);
+	lua_pushboolean(l, client->tcp_udp_tunnel);
 	return 1;
 }
 
@@ -801,10 +792,8 @@ const luaL_Reg mumble_client[] = {
 	{"play", client_play},
 	{"getAudioStream", client_getAudioStream},
 	{"getAudioStreams", client_getAudioStreams},
-	{"setAudioQuality", client_setAudioQuality},
-	{"getAudioQuality", client_getAudioQuality},
-	{"isPlaying", client_isPlaying},
-	{"stopPlaying", client_stopPlaying},
+	{"setAudioPacketSize", client_setAudioPacketSize},
+	{"getAudioPacketSize", client_getAudioPacketSize},
 	{"setComment", client_setComment},
 	{"setVolume", client_setVolume},
 	{"getVolume", client_getVolume},

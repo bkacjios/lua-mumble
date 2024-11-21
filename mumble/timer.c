@@ -13,11 +13,11 @@ static void mumble_lua_timer_finish(lua_State *l, lua_timer *ltimer)
 {
 	if (ltimer->started) {
 		if (ev_is_active(&ltimer->timer)) {
-			mumble_log(LOG_DEBUG, "mumble.timer: %p stopping\n", ltimer);
+			mumble_log(LOG_TRACE, "mumble.timer: %p stopping\n", ltimer);
 			ev_timer_stop(EV_DEFAULT, &ltimer->timer);
 		}
 		// Cleanup all our references
-		mumble_log(LOG_DEBUG, "mumble.timer: %p cleanup\n", ltimer);
+		mumble_log(LOG_TRACE, "mumble.timer: %p cleanup\n", ltimer);
 		mumble_registry_unref(l, MUMBLE_TIMER_REG, ltimer->self);
 		mumble_registry_unref(l, MUMBLE_TIMER_REG, ltimer->callback);
 		ltimer->started = false;
@@ -29,6 +29,7 @@ static void mumble_lua_timer(EV_P_ ev_timer *w_, int revents)
 	struct lua_timer *w = (struct lua_timer *) w_;
 
 	lua_State *l = w->l;
+	w->count++;
 
 	lua_stackguard_entry(l);
 
@@ -62,6 +63,7 @@ static void mumble_lua_timer(EV_P_ ev_timer *w_, int revents)
 int mumble_timer_new(lua_State *l)
 {
 	lua_timer *ltimer = lua_newuserdata(l, sizeof(lua_timer));
+	ltimer->count = 0;
 	ltimer->l = l;
 	ltimer->started = false;
 
@@ -90,6 +92,7 @@ static int timer_start(lua_State *l)
 
 	// Initialize our timer object
 	ev_timer_init(&ltimer->timer, mumble_lua_timer, after, repeat);
+	ev_set_priority(&ltimer->timer, EV_MINPRI);
 
 	ev_timer_start(EV_DEFAULT, &ltimer->timer);
 
@@ -164,6 +167,13 @@ static int timer_getRepeat(lua_State *l)
 	return 1;
 }
 
+static int timer_getCount(lua_State *l)
+{
+	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	lua_pushinteger(l, ltimer->count);
+	return 1;
+}
+
 static int timer_again(lua_State *l)
 {
 	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
@@ -205,6 +215,7 @@ const luaL_Reg mumble_timer[] = {
 	{"getDuration", timer_getDuration},
 	{"setRepeat", timer_setRepeat},
 	{"getRepeat", timer_getRepeat},
+	{"getCount", timer_getCount},
 	{"again", timer_again},
 	{"isActive", timer_isActive},
 	{"__tostring", timer_tostring},

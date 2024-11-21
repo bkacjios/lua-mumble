@@ -46,17 +46,18 @@
 #include "proto/Mumble.pb-c.h"
 #include "proto/MumbleUDP.pb-c.h"
 
-// Enables UDP packets
-#define ENABLE_UDP
-
 #define STB_VORBIS_HEADER_ONLY
 #include "stb_vorbis.c"
 
 #define MODULE_NAME "lua-mumble"
 
+// You can change this to simulate older clients.
+// If you change the MINOR version to be less than 5,
+// we will fallback into a legacy messaging mode.
+// In legacy mode, pings are handled differently.
 #define MUMBLE_VERSION_MAJOR	(uint64_t) 1
 #define MUMBLE_VERSION_MINOR	(uint64_t) 5
-#define MUMBLE_VERSION_PATCH 	(uint64_t) 0
+#define MUMBLE_VERSION_PATCH 	(uint64_t) 643
 
 #define MUMBLE_VERSION_V1 MUMBLE_VERSION_MAJOR << 16 | MUMBLE_VERSION_MINOR << 8 | MUMBLE_VERSION_PATCH
 #define MUMBLE_VERSION_V2 MUMBLE_VERSION_MAJOR << 48 | MUMBLE_VERSION_MINOR << 32 | MUMBLE_VERSION_PATCH << 16
@@ -67,24 +68,23 @@
 // The default audio quality the encoder will try to use.
 // If the servers maximum bandwidth doesn't allow for such
 // a high value, it will try to auto ajust.
-#define AUDIO_DEFAULT_BITRATE 96000
+#define AUDIO_DEFAULT_BITRATE 128000
 
 // Number of frames to send per packet
 // Allowed values (10, 20, 40, 60)
-// 10 = Lower latency, 40 = Better quality
-#define AUDIO_DEFAULT_FRAMES 20
+#define AUDIO_FRAME_SIZE_TINY	10
+#define AUDIO_FRAME_SIZE_SMALL	20
+#define AUDIO_FRAME_SIZE_MEDIUM	40
+#define AUDIO_FRAME_SIZE_LARGE	60
+
+// 10 = Lower latency, 60 = Better quality
+#define AUDIO_DEFAULT_FRAMES AUDIO_FRAME_SIZE_TINY
 
 // How many channels the ogg file playback should handle
 #define AUDIO_PLAYBACK_CHANNELS 2
 
 // The sample rate in which all ogg files should be encoded to
 #define AUDIO_SAMPLE_RATE 48000
-
-// Number of audio "streams" for playing multiple sounds at once
-#define AUDIO_MAX_STREAMS 128
-
-// Maximum length an encoded opus packet can be
-#define AUDIO_MAX_FRAME_SIZE 6*960
 
 // The size of the PCM buffer
 // Technically, it should be FRAMESIZE*SAMPLERATE/100
@@ -93,6 +93,8 @@
 #define PAYLOAD_SIZE_MAX (1024 * 8 - 1)
 
 #define PING_TIMEOUT 5
+// How many dropped UDP pings will result in falling back to TCP tunnel
+#define UDP_TCP_FALLBACK 2
 
 #define UDP_BUFFER_MAX 1024
 
@@ -112,7 +114,7 @@
 #define LOG_TRACE 5
 
 #ifdef DEBUG
-#define LOG_LEVEL LOG_DEBUG
+#define LOG_LEVEL LOG_TRACE
 #else
 #define LOG_LEVEL LOG_ERROR
 #endif
@@ -151,6 +153,7 @@ struct lua_timer {
 	ev_timer timer;
 	lua_State* l;
 	bool started;
+	uint32_t count;
 	int self;
 	int callback;
 };
@@ -170,6 +173,7 @@ struct AudioStream {
 	lua_State *lua;
 	stb_vorbis *ogg;
 	MumbleClient *client;
+	bool closed;
 	bool playing;
 	float volume;
 	AudioFrame buffer[PCM_BUFFER];
@@ -224,7 +228,6 @@ struct MumbleClient {
 	AudioFrame			audio_buffer[PCM_BUFFER];
 	AudioFrame			audio_rebuffer[PCM_BUFFER];
 	uint32_t			audio_sequence;
-	AudioStream*		audio_jobs[AUDIO_MAX_STREAMS];
 	int					audio_frames;
 	OpusEncoder*		encoder;
 	int					encoder_ref;
@@ -234,7 +237,7 @@ struct MumbleClient {
 	double				tcp_ping_avg;
 	double				tcp_ping_var;
 
-	bool				udp_tunnel;
+	bool				tcp_udp_tunnel;
 
 	uint8_t				udp_ping_acc;
 	uint32_t			udp_packets;
@@ -244,13 +247,15 @@ struct MumbleClient {
 	uint32_t			resync;
 	mumble_crypt*		crypt;
 
+	LinkNode*			stream_list;
 	LinkNode*			channel_list;
 	LinkNode*			user_list;
 };
 
 struct LinkNode
 {
-	uint32_t data;
+	uint32_t index;
+	void* data;
 	struct LinkNode	*next;
 };
 
@@ -273,10 +278,11 @@ struct MumbleChannel {
 	float			volume_adjustment;
 };
 
-void list_add(LinkNode** head_ref, uint32_t data);
-void list_remove(LinkNode **head_ref, uint32_t data);
+void list_add(LinkNode** head_ref, uint32_t index, void *data);
+void list_remove(LinkNode **head_ref, uint32_t index);
 void list_clear(LinkNode** head_ref);
 size_t list_count(LinkNode** head_ref);
+void* list_get(LinkNode* current, uint32_t index);
 
 struct MumbleUser
 {
@@ -373,7 +379,7 @@ extern void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t c
 
 extern int mumble_push_address(lua_State* l, ProtobufCBinaryData address);
 extern void mumble_handle_speaking_hooks_legacy(lua_State* l, MumbleClient* client, uint8_t buffer[], uint8_t codec, uint8_t target, uint32_t session);
-extern void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, MumbleUDP__Audio *audio);
+extern void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, MumbleUDP__Audio *audio, uint32_t session);
 
 extern int mumble_traceback(lua_State *l);
 extern int mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs);

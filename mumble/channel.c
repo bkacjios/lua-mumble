@@ -67,7 +67,7 @@ static int channel_getName(lua_State *l)
 	return 1;
 }
 
-static int channel_getID(lua_State *l)
+static int channel_getId(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 	lua_pushinteger(l, channel->channel_id);
@@ -124,9 +124,9 @@ static int channel_getUsers(lua_State *l)
 
 	while (current != NULL)
 	{
-		if (current->data == channel->channel_id) {
+		if (current->index == channel->channel_id) {
 			lua_pushnumber(l, i++);
-			mumble_user_raw_get(l, channel->client, current->data);
+			mumble_user_raw_get(l, channel->client, current->index);
 			lua_settable(l, -3);
 		}
 		current = current->next;
@@ -235,8 +235,8 @@ static int channel_getLinks(lua_State *l)
 
 	// Add all linked channels to the table
     while (current != NULL) {
-		lua_pushinteger(l, current->data);
-		mumble_channel_raw_get(l, channel->client, current->data);
+		lua_pushinteger(l, current->index);
+		mumble_channel_raw_get(l, channel->client, current->index);
 		lua_settable(l, -3);
 
         current = current->next;
@@ -452,7 +452,8 @@ const luaL_Reg mumble_channel[] = {
 	{"remove", channel_remove},
 	{"getClient", channel_getClient},
 	{"getName", channel_getName},
-	{"getID", channel_getID},
+	{"getId", channel_getId},
+	{"getID", channel_getId},
 	{"getParent", channel_getParent},
 	{"getChildren", channel_getChildren},
 	{"getUsers", channel_getUsers},
