@@ -684,8 +684,8 @@ int mumble_client_connect(lua_State *l) {
 }
 
 static int getNetworkBandwidth(int bitrate, int frames) {
-	int overhead = 20 + 8 + 4 + 1 + 2 + 12 + 12 + 8 + frames;
-	overhead *= (800 / frames) * AUDIO_PLAYBACK_CHANNELS;
+	int overhead = 20 + 8 + 4 + 1 + 2 + 12 + 12 + 8;
+	overhead *= (frames * 48 * AUDIO_PLAYBACK_CHANNELS);
     return overhead + bitrate;
 }
 
