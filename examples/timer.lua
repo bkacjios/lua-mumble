@@ -1,15 +1,21 @@
 local mumble = require("mumble")
 
-local client = assert(mumble.connect("raspberrypi.lan", 64738, "bot.pem", "bot.key"))
+local client = mumble.client()
+
+assert(client:connect("raspberrypi.lan", 64738, "bot.pem", "bot.key"))
 
 client:hook("OnConnect", function(client)
 	client:auth("Mumble-Bot")
 end)
 
-client:hook("OnServerSync", function(event)
+client:hook("OnServerSync", function(client, event)
 	local i = 0
 
-	local timer = mumble.timer(function(t)
+	local timer = mumble.timer()
+
+	-- A timer that will start after 1 second and repeat every 1 second thereafter
+	-- Once our counter hits 3, disconnect and break out of the main client loop
+	timer:start(function(t)
 		i = i + 1
 
 		print(i)
@@ -18,13 +24,12 @@ client:hook("OnServerSync", function(event)
 			print("Stopping timer..")
 			t:stop()
 			client:disconnect()
-			mumble.stop()
 		end
-	end)
+	end, 1, 1)
+end)
 
-	-- A timer that will start after 1 second and repeat every 1 second thereafter
-	-- Once our counter hits 3, stop the timer
-	timer:start(1, 1)
+client:hook("OnDisconnect", function(client, reason)
+	mumble.stop()
 end)
 
 mumble.loop()

@@ -25,10 +25,12 @@ ByteBuffer* buffer_init(ByteBuffer* buffer, uint64_t size)
 static void buffer_adjust(ByteBuffer* buffer, uint64_t size)
 {
 	if(buffer->position + size > buffer->capacity) {
+		// The write will cause us to go beyond our buffers capacity.
+		// Resize by adding double of what we are about to write, to give us some headroom.
 		uint64_t resize = buffer->capacity * ceil((buffer->position + size) / buffer->capacity) * 2;
 		buffer->data = realloc(buffer->data, resize);
 		if (buffer->data != NULL) {
-			//printf("%s: %p resizing from %d to %d bytes\n", METATABLE_BUFFER, buffer, buffer->capacity, resize);
+			mumble_log(LOG_DEBUG, "%s: %p resizing from %d to %d bytes\n", METATABLE_BUFFER, buffer, buffer->capacity, resize);
 			buffer->capacity = resize;
 			buffer->limit = resize;
 		}

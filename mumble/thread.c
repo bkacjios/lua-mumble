@@ -88,7 +88,7 @@ static void *mumble_thread_worker(void *arg)
 
 	// Call the worker with our custom error handler function
 	if (err > 0 || lua_pcall(l, 0, 0, -2) != 0) {
-		fprintf(stderr, "%s\n", lua_tostring(l, -1));
+		mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
 		lua_pop(l, 1); // Pop the error
 	}
 
@@ -113,6 +113,7 @@ void mumble_thread_event(struct ev_loop *loop, ev_io *w_, int revents)
 	int finished;
 
 	if (read(w_->fd, &finished, sizeof(int)) != sizeof(int)) {
+		mumble_log(LOG_DEBUG, "thread received unexpected data size from pipe\n");
 		return;
 	}
 
@@ -133,7 +134,7 @@ int mumble_thread_exit(lua_State *l, int finished)
 
 		// Call the worker with our custom error handler function
 		if (lua_pcall(l, 0, 0, -2) != 0) {
-			fprintf(stderr, "%s\n", lua_tostring(l, -1));
+			mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
 			lua_pop(l, 1); // Pop the error
 		}
 
@@ -167,8 +168,8 @@ int mumble_thread_new(lua_State *l)
 
 	thread->event.l = l;
 
-	// ev_io_init(&thread->event.io, mumble_thread_event, thread->pipe[0], EV_READ);
-	// ev_io_start(EV_DEFAULT, &thread->event.io);
+	ev_io_init(&thread->event.io, mumble_thread_event, thread->pipe[0], EV_READ);
+	ev_io_start(EV_DEFAULT, &thread->event.io);
 
 	pthread_create(&thread->pthread, NULL, mumble_thread_worker, thread);
 
@@ -194,8 +195,17 @@ static int thread_server_tostring(lua_State *l)
 	return 1;
 }
 
+static int thread_server_gc(lua_State *l)
+{
+	MumbleThread *thread = luaL_checkudata(l, 1, METATABLE_THREAD_SERVER);
+	ev_io_stop(EV_DEFAULT, &thread->event.io);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_THREAD_SERVER, thread);
+	return 0;
+}
+
 const luaL_Reg mumble_thread_server[] = {
 	{"__tostring", thread_server_tostring},
+	{"__gc", thread_server_gc},
 	{NULL, NULL}
 };
 

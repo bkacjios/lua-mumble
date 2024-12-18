@@ -230,23 +230,27 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 			}
 		}
 
-		// Very very awful resampling, but at least it's something..
+		// Resampling with linear interpolation
 		if (source_rate != AUDIO_SAMPLE_RATE) {
 			// Clear the rebuffer so we can use it again
 			memset(client->audio_rebuffer, 0, sizeof(client->audio_rebuffer));
 
-			// Resample the audio
-			float scale = (float) read / (float) sample_size;
+			// Calculate the resample ratio and modify sample_size accordingly
+			float resample_ratio = (float) AUDIO_SAMPLE_RATE / source_rate;
+			sample_size = (uint32_t) (sample_size * resample_ratio);
+			read = (long)(read * resample_ratio);
 
-			// Adjust these values
-			sample_size = sample_size * (float) AUDIO_SAMPLE_RATE / (float) source_rate;
-			read = ceil(sample_size * scale);
+			// Perform the resampling with linear interpolation
+			for (int t = 0; t < read; t++) {
+				// Calculate the index in the source buffer
+				float source_idx = (float) t * source_rate / AUDIO_SAMPLE_RATE;
+				int idx1 = (int)source_idx;  // Floor of source_idx
+				int idx2 = (idx1 + 1 < sample_size) ? (idx1 + 1) : idx1;  // Ensure idx2 is within bounds
 
-			for (int t=0; t < read; t++) {
-				// Resample the audio to fit within the requested sample_rate
-				int idx = (int) floor((float) t / AUDIO_SAMPLE_RATE * source_rate) * 2;
-				client->audio_rebuffer[t*2].l = sound->buffer[idx].l * 2;
-				client->audio_rebuffer[t*2].r = sound->buffer[idx].r * 2;
+				// Linear interpolation between idx1 and idx2
+				float alpha = source_idx - idx1;
+				client->audio_rebuffer[t * 2].l = sound->buffer[idx1 * 2].l * (1.0f - alpha) + sound->buffer[idx2 * 2].l * alpha;
+				client->audio_rebuffer[t * 2].r = sound->buffer[idx1 * 2].r * (1.0f - alpha) + sound->buffer[idx2 * 2].r * alpha;
 			}
 
 			// Copy resampled audio back into the main buffer
@@ -344,7 +348,7 @@ void audio_transmission_event(lua_State* l, MumbleClient *client)
 		audio.n_positional_data = 0;
 
 		uint8_t packet_buffer[UDP_BUFFER_MAX];
-		packet_buffer[0] = UDP_AUDIO;
+		packet_buffer[0] = PROTO_UDP_AUDIO;
 
 		mumble_handle_speaking_hooks_protobuf(l, client, &audio, client->session);
 
@@ -540,6 +544,10 @@ static int audiostream_setLooping(lua_State *l)
 			sound->looping = luaL_checkboolean(l, 2);
 			sound->loop_count = 0;
 			break;
+		default:
+			const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
+				lua_typename(l, LUA_TNUMBER), lua_typename(l, LUA_TBOOLEAN), luaL_typename(l, 2));
+			return luaL_argerror(l, 2, msg);
 	}
 
 	return 0;
@@ -555,7 +563,12 @@ static int audiostream_isLooping(lua_State *l)
 static int audiostream_getLoopCount(lua_State *l)
 {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
-	lua_pushinteger(l, sound->loop_count);
+	if (sound->looping) {
+		// push math.huge (inf)
+		lua_pushnumber(l, HUGE_VAL);
+	} else {
+		lua_pushinteger(l, sound->loop_count);
+	}
 	return 1;
 }
 
@@ -585,6 +598,7 @@ const luaL_Reg mumble_audiostream[] = {
 	{"getLength", audiostream_getLength},
 	{"getDuration", audiostream_getLength},
 	{"getInfo", audiostream_getInfo},
+	{"getComment", audiostream_getComment},
 	{"setLooping", audiostream_setLooping},
 	{"isLooping", audiostream_isLooping},
 	{"getLoopCount", audiostream_getLoopCount},

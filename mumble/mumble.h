@@ -54,10 +54,10 @@
 // You can change this to simulate older clients.
 // If you change the MINOR version to be less than 5,
 // we will fallback into a legacy messaging mode.
-// In legacy mode, pings are handled differently.
+// In legacy mode, UDP pings and audio data are handled differently.
 #define MUMBLE_VERSION_MAJOR	(uint64_t) 1
 #define MUMBLE_VERSION_MINOR	(uint64_t) 5
-#define MUMBLE_VERSION_PATCH 	(uint64_t) 643
+#define MUMBLE_VERSION_PATCH 	(uint64_t) 735
 
 #define MUMBLE_VERSION_V1 MUMBLE_VERSION_MAJOR << 16 | MUMBLE_VERSION_MINOR << 8 | MUMBLE_VERSION_PATCH
 #define MUMBLE_VERSION_V2 MUMBLE_VERSION_MAJOR << 48 | MUMBLE_VERSION_MINOR << 32 | MUMBLE_VERSION_PATCH << 16
@@ -78,7 +78,7 @@
 #define AUDIO_FRAME_SIZE_LARGE	60
 
 // 10 = Lower latency, 60 = Better quality
-#define AUDIO_DEFAULT_FRAMES AUDIO_FRAME_SIZE_TINY
+#define AUDIO_DEFAULT_FRAMES AUDIO_FRAME_SIZE_SMALL
 
 // How many channels the ogg file playback should handle
 #define AUDIO_PLAYBACK_CHANNELS 2
@@ -92,20 +92,20 @@
 
 #define PAYLOAD_SIZE_MAX (1024 * 8 - 1)
 
-#define PING_TIMEOUT 5
+#define PING_TIME 30
 // How many dropped UDP pings will result in falling back to TCP tunnel
 #define UDP_TCP_FALLBACK 2
 
 #define UDP_BUFFER_MAX 1024
 
 #define LEGACY_UDP_CELT_ALPHA 0
-#define LEGACY_UDP_PING 1
+#define LEGACY_PROTO_UDP_PING 1
 #define LEGACY_UDP_SPEEX 2
 #define LEGACY_UDP_CELT_BETA 3
 #define LEGACY_UDP_OPUS 4
 
-#define UDP_AUDIO 0
-#define UDP_PING 1
+#define PROTO_UDP_AUDIO 0
+#define PROTO_UDP_PING 1
 
 #define LOG_INFO 1
 #define LOG_WARN 2
@@ -114,7 +114,7 @@
 #define LOG_TRACE 5
 
 #ifdef DEBUG
-#define LOG_LEVEL LOG_TRACE
+#define LOG_LEVEL LOG_DEBUG
 #else
 #define LOG_LEVEL LOG_ERROR
 #endif
@@ -205,7 +205,7 @@ struct MumbleClient {
 	struct addrinfo*	server_host_tcp;
 	SSL_CTX				*ssl_context;
 	SSL					*ssl;
-	bool				closed;
+	bool				connecting;
 	bool				connected;
 	bool				synced;
 	bool				legacy;
@@ -314,7 +314,7 @@ struct MumbleUser
 typedef struct {
 	uint16_t type;
 	uint32_t length;
-	uint8_t buffer[PAYLOAD_SIZE_MAX + 6];
+	uint8_t *buffer;
 } Packet;
 
 typedef struct {
@@ -351,6 +351,11 @@ extern double gettime(clockid_t mode);
 
 extern void bin_to_strhex(char *bin, size_t binsz, char **result);
 
+#if (defined(LUA_VERSION_NUM) && LUA_VERSION_NUM < 502) && !defined(LUAJIT)
+extern void* luaL_testudata(lua_State* L, int index, const char* tname);
+extern void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level);
+#endif
+
 extern void luaL_debugstack(lua_State *l, const char* text);
 extern int luaL_typerror(lua_State *L, int narg, const char *tname);
 extern int luaL_checkboolean(lua_State *L, int i);
@@ -365,7 +370,9 @@ extern uint64_t mumble_ping_udp_protobuf(lua_State* l, MumbleClient* client);
 extern void mumble_ping_tcp(lua_State* l, MumbleClient* client);
 
 extern float mumble_adjust_audio_bandwidth(MumbleClient *client);
+extern float mumble_adjust_audio_bandwidth_2(MumbleClient *client);
 extern void mumble_create_audio_timer(MumbleClient *client);
+extern int mumble_client_connect(lua_State *l);
 extern void mumble_disconnect(lua_State* l, MumbleClient *client, const char* reason, bool garbagecollected);
 
 extern void mumble_client_raw_get(lua_State* l, MumbleClient* client);

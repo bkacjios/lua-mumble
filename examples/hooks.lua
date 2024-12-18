@@ -1,6 +1,8 @@
 local mumble = require("mumble")
 
-local client = assert(mumble.connect("raspberrypi.lan", 64738, "bot.pem", "bot.key"))
+local client = mumble.client()
+
+assert(client:connect("raspberrypi.lan", 64738, "bot.pem", "bot.key"))
 
 client:hook("OnConnect", function(client)
 	print("OnConnect", client)

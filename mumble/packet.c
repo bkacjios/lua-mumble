@@ -18,7 +18,7 @@ int packet_sendudp(MumbleClient* client, const void *message, const int length)
 	}
 }
 
-int packet_sendex(MumbleClient* client, const int type, const void *message, const ProtobufCMessage* base, const int length)
+int packet_sendex(MumbleClient* client, int type, const void *message, const ProtobufCMessage* base, const int length)
 {
 	static Packet packet_out;
 	size_t payload_size;
@@ -88,10 +88,15 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 			mumble_log(LOG_WARN, "unable to get payload size for packet #%i\n", type);
 			return 1;
 	}
-	if (payload_size >= PAYLOAD_SIZE_MAX) {
+	total_size = sizeof(uint16_t) + sizeof(uint32_t) + payload_size;
+
+	packet_out.buffer = malloc(sizeof(uint8_t) * total_size);
+
+	if (packet_out.buffer == NULL) {
+		mumble_log(LOG_ERROR, "failed to malloc packet buffer: %s", strerror(errno));
 		return 2;
 	}
-	total_size = sizeof(uint16_t) + sizeof(uint32_t) + payload_size;
+
 	if (payload_size > 0) {
 		switch (type) {
 			case PACKET_VERSION:
@@ -164,7 +169,11 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 
 	mumble_log(LOG_TRACE, "[TCP] Sending %s: %p\n", base != NULL ? base->descriptor->name : "MumbleProto.UDPTunnel", message);
 
-	return SSL_write(client->ssl, packet_out.buffer, total_size) == total_size ? 0 : -1;
+	int written = SSL_write(client->ssl, packet_out.buffer, total_size);
+
+	free(packet_out.buffer);
+
+	return written == total_size ? 0 : -1;
 }
 
 void packet_server_version(lua_State *l, MumbleClient *client, Packet *packet)

@@ -61,8 +61,6 @@ static int decoder_getSampleRate(lua_State *l)
 
 /* DECODER CTLS */
 
-
-
 static int decoder_decode(lua_State *l)
 {
 	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);

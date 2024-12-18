@@ -17,7 +17,7 @@ static MumbleClient* mumble_checkclient(lua_State *l, int index)
 {
 	MumbleClient *client = luaL_checkudata(l, index, METATABLE_CLIENT);
 
-	if (!client->connected) {
+	if (!client->connecting) {
 		lua_Debug ar;
 
 		if (!lua_getstack(l, 0, &ar))
@@ -257,7 +257,7 @@ static int client_transmit(lua_State *l) {
 		audio.n_positional_data = 0;
 
 		uint8_t packet_buffer[PAYLOAD_SIZE_MAX];
-		packet_buffer[0] = UDP_AUDIO;
+		packet_buffer[0] = PROTO_UDP_AUDIO;
 
 		int len = 1 + mumble_udp__audio__pack(&audio, packet_buffer + 1);
 
@@ -350,7 +350,7 @@ static int client_play(lua_State *l)
 	sound->info = stb_vorbis_get_info(sound->ogg);
 
 	// Insert this new audio stream metatable into our registry.
-	// This allows us to hold the reference until the auduio is finished playing.
+	// This allows us to hold the reference until the audio is finished playing.
 	lua_pushvalue(l, -1);
 	audio_transmission_reference(l, sound);
 	return 1;
@@ -398,9 +398,7 @@ static int client_setAudioPacketSize(lua_State *l) {
 	}
 
 	client->audio_frames = frames;
-
-	float time = mumble_adjust_audio_bandwidth(client);
-	client->audio_timer.timer.repeat = time;
+	client->audio_timer.timer.repeat = (float) frames / 1000;
 	ev_timer_again(EV_DEFAULT, &client->audio_timer.timer);
 	return 0;
 }
@@ -450,23 +448,29 @@ static int client_hook(lua_State *l)
 	int funcIndex = 3;
 
 	if (lua_isfunction(l, 3) == 0) {
+		// If the callback isn't in argument #3, assume that this is the custom hook name instead
 		hook = luaL_checkstring(l,2);
 		name = lua_tostring(l,3);
 		funcIndex = 4;
 	}
 
+	// Check our callback argument is a function
 	luaL_checktype(l, funcIndex, LUA_TFUNCTION);
 
+	// Push our reference for our hooks table
 	mumble_pushref(l, client->hooks);
+	// Get our callback table for this hook
 	lua_getfield(l, -1, hook);
 
 	if (lua_istable(l, -1) == 0) {
+		// We don't have a callback table for this hook yet, so create one
 		lua_pop(l, 1);
 		lua_newtable(l);
 		lua_setfield(l, -2, hook);
 		lua_getfield(l, -1, hook);
 	}
 
+	// Push our callback value and add it to our callback table
 	lua_pushvalue(l, funcIndex);
 	lua_setfield(l, -2, name);
 
@@ -612,6 +616,36 @@ static int client_getUpTime(lua_State *l)
 	return 1;
 }
 
+static int client_getHost(lua_State *l)
+{
+	MumbleClient *client = mumble_checkclient(l, 1);
+	lua_pushstring(l, client->host);
+	return 1;
+}
+
+static int client_getPort(lua_State *l)
+{
+	MumbleClient *client = mumble_checkclient(l, 1);
+	lua_pushinteger(l, client->port);
+	return 1;
+}
+
+static int client_getAddress(lua_State *l)
+{
+	MumbleClient *client = mumble_checkclient(l, 1);
+
+	char address[INET6_ADDRSTRLEN];
+
+	if (client->server_host_tcp->ai_family == AF_INET) {
+		inet_ntop(AF_INET, &(((struct sockaddr_in*)(client->server_host_tcp->ai_addr))->sin_addr), address, INET_ADDRSTRLEN);
+	} else {
+		inet_ntop(AF_INET6, &(((struct sockaddr_in6*)(client->server_host_tcp->ai_addr))->sin6_addr), address, INET6_ADDRSTRLEN);
+	}
+
+	lua_pushstring(l, address);
+	return 1;
+}
+
 static int client_requestTextureBlob(lua_State *l)
 {
 	MumbleClient *client = mumble_checkclient(l, 1);
@@ -746,6 +780,13 @@ static int client_gc(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	mumble_disconnect(l, client, "garbage collected", true);
+
+	mumble_unref(l, client->hooks);
+	mumble_unref(l, client->users);
+	mumble_unref(l, client->channels);
+	mumble_unref(l, client->audio_streams);
+	mumble_unref(l, client->encoder_ref);
+	
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_CLIENT, client);
 	return 0;
 }
@@ -753,7 +794,11 @@ static int client_gc(lua_State *l)
 static int client_tostring(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_pushfstring(l, "%s [%d][\"%s:%d\"] %p", METATABLE_CLIENT, client->self, client->host, client->port, client);
+	if (client->connecting) {
+		lua_pushfstring(l, "%s [%d][\"%s:%d\"] %p", METATABLE_CLIENT, client->self, client->host, client->port, client);
+	} else {
+		lua_pushfstring(l, "%s: %p", METATABLE_CLIENT, client);
+	}
 	return 1;
 }
 
@@ -781,6 +826,7 @@ static int client_index(lua_State *l)
 const luaL_Reg mumble_client[] = {
 	{"auth", client_auth},
 	{"setTokens", client_setTokens},
+	{"connect", mumble_client_connect},
 	{"disconnect", client_disconnect},
 	{"isConnected", client_isConnected},
 	{"isSynced", client_isSynced},
@@ -809,6 +855,9 @@ const luaL_Reg mumble_client[] = {
 	{"getEncoder", client_getEncoder},
 	{"getPing", client_getPing},
 	{"getUpTime", client_getUpTime},
+	{"getHost", client_getHost},
+	{"getAddress", client_getAddress},
+	{"getPort", client_getPort},
 	{"requestTextureBlob", client_requestTextureBlob},
 	{"requestCommentBlob", client_requestCommentBlob},
 	{"requestDescriptionBlob", client_requestDescriptionBlob},

@@ -40,10 +40,8 @@ make uninstall
 -- The mumble library is returned by a require call
 local mumble = require("mumble")
 
--- Connect to a mumble server
--- Returns client metatable object
--- Can return nil and an error string if something went wrong
-mumble.client, [ String error ] = mumble.connect(String host, Number port, String certificate file path, String key file path)
+-- Create a new mumble client
+mumble.client = mumble.client()
 
 -- Main event loop that handles all events, ping, and audio processing
 -- This will block the script until SIGINT or mumble.stop(), so call this *after* you create your hooks
@@ -95,8 +93,14 @@ Table clients = {
 ### mumble.client
 
 ``` lua
+-- Begins to connect to a mumble server.
+-- Returns true or false depending if we could start connecting or not.
+-- If connected is false, an error string will also be returned.
+-- Since this method is non-blocking, you can use the "OnConnect" hook to determine when the client has fully connected.
+Boolean connecting, [ String error ] = mumble.client:connect(String host, Number port, String certificate file path, String key file path)
+
 -- Authenticate as a user.
--- Should be called as soon as a connection to the server is established.
+-- Should be called inside an "OnConnect" hook.
 mumble.client:auth(String username, [ String password, Table tokens ])
 
 -- Manually call a custom hook.
@@ -120,7 +124,7 @@ mumble.client:requestBanList()
 -- When server responds, it will call the 'OnUserList' hook
 mumble.client:requestUserList()
 
--- Disconnect from a mumble server
+-- Disconnect from the connected server
 mumble.client:disconnect()
 
 -- Transmit a plugin data packet to a table of users
@@ -317,6 +321,9 @@ mumble.channel channel = mumble.user:getChannel()
 -- Gets the registered ID of the user
 -- Is 0 for unregistered users
 Number userid = mumble.user:getId()
+
+-- Returns if the user is registered or not
+Boolean registered = mumble.user:isRegistered()
 
 -- Returns if the user is muted or not
 Boolean muted = mumble.user:isMuted()
@@ -642,7 +649,8 @@ mumble.audiostream:pause()
 -- Resume playing the audio
 mumble.audiostream:play()
 
--- Pauses the audio AND resets playback from the beginning
+-- Pauses the audio AND resets playback to the beginning
+-- Will remove the stream from the mumble.client:getAudioStreams() table
 mumble.audiostream:stop()
 
 -- Will attempt to seek to a given position via sample numbers
@@ -652,14 +660,35 @@ Number samples = mumble.audiostream:seek(String whence ["start", "cur", "end"], 
 -- Returns the duration of the stream given the unit type
 Number samples/seconds = mumble.audiostream:getLength(String units ["seconds", "samples"])
 
+-- Returns a table of information about the audio file.
 Table info = mumble.audiostream:getInfo()
+
+-- Structure
+-- Key:		String
+-- Value:	Number
+Table info = {
+	["channels"] = Number channels,
+	["sample_rate"] = Number sample_rate,
+	["setup_memory_required"] = Number setup_memory_required,
+	["setup_temp_memory_required"] = Number setup_temp_memory_required,
+	["temp_memory_required"] = Number temp_memory_required,
+	["max_frame_size"] = Number max_frame_size
+}
 
 Table comments = mumble.audiostream:getComment()
 
--- Stops the audio stream from playing.
--- Calls "OnAudioFinished" hook
--- Is lastly removed from the mumble.client:getAudioStreams() table
-mumble.audiostream:close()
+-- Enables the audio stream to loop to the beginning when reaching the end.
+-- Accepts a Boolean value or a Number value.
+-- Boolean = true will cause it to loop forever.
+-- Number = Will loop X amount of times before eventually stopping.
+mumble.audiostream:setLooping([Boolean loop, Number loop_count])
+
+-- Returns if the stream is looping or not
+Boolean looping = mumble.audiostream:isLooping()
+
+-- Retuns how many more times the stream will loop before stopping.
+-- If you used setLooping(true), this will return math.huge (inf)
+Number count = mumble.audiostream:getLoopCount()
 ```
 
 ### mumble.acl
@@ -941,7 +970,7 @@ Table event = {
 	["target"]			= Number target,
 	["sequence"]		= Number sequence,
 	["data"]			= String encoded_opus_packet,
-	["frame_header"]	= Number frame_header, // The frame header usually contains a length and terminator bit
+	["frame_header"]	= Number frame_header, -- The frame header usually contains a length and terminator bit
 	["speaking"]		= Boolean speaking,
 }
 ```

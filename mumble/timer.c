@@ -43,7 +43,7 @@ static void mumble_lua_timer(EV_P_ ev_timer *w_, int revents)
 
 	// Call the callback with our custom error handler function
 	if (lua_pcall(l, 1, 0, -3) != 0) {
-		fprintf(stderr, "%s\n", lua_tostring(l, -1));
+		mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
 		lua_pop(l, 1); // Pop the error
 	}
 
@@ -84,7 +84,7 @@ static int timer_start(lua_State *l)
 
 	ltimer->started = true;
 
-	lua_pushvalue(l, 1); // Push a copy of the timers userdata
+	lua_pushvalue(l, 1); // Push a copy of the userdata to prevent garabage collection
 	ltimer->self = mumble_registry_ref(l, MUMBLE_TIMER_REG); // Pop it off as a reference
 
 	lua_pushvalue(l, 2); // Push a copy of our callback function

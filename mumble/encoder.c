@@ -22,6 +22,7 @@ int mumble_encoder_new(lua_State *l)
 
 	opus_encoder_ctl(encoder, OPUS_SET_VBR(0));
 	opus_encoder_ctl(encoder, OPUS_SET_BITRATE(AUDIO_DEFAULT_BITRATE));
+	opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_MUSIC));
 	return 1;
 }
 

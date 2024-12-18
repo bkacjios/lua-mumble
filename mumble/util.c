@@ -26,10 +26,13 @@ void bin_to_strhex(char *bin, size_t binsz, char **result)
 	}
 }
 
-static void mumble_print(int level, const char* msg)
+static void mumble_print(int level, const char* fmt, va_list va)
 {
 	char* lcolor;
 	char* llevel;
+	FILE *out = stdout;
+
+	// Determine log level and associated color
 	switch (level) {
 		case LOG_INFO:
 			llevel = " INFO";
@@ -42,6 +45,7 @@ static void mumble_print(int level, const char* msg)
 		case LOG_ERROR:
 			llevel = "ERROR";
 			lcolor = "\x1b[31;1m";
+			out = stderr;
 			break;
 		case LOG_DEBUG:
 			llevel = "DEBUG";
@@ -56,18 +60,18 @@ static void mumble_print(int level, const char* msg)
 			lcolor = "\x1b[0m";
 			break;
 	}
-	printf("[\x1b[34;1mMUMBLE\x1b[0m - %s%s\x1b[0m] %s", lcolor, llevel, msg);
+	// Print the log type and color information
+	fprintf(out, "[\x1b[34;1mMUMBLE\x1b[0m - %s%s\x1b[0m] ", lcolor, llevel);
+	// Print our formatted message
+	vfprintf(out, fmt, va);
 }
 
 void mumble_log(int level, const char* fmt, ...)
 {
 	if (level > LOG_LEVEL) return;
-	
 	va_list va;
 	va_start(va,fmt);
-	char buff[2048];
-	vsprintf(buff,fmt,va);
-	mumble_print(level, buff);
+	mumble_print(level, fmt, va);
 	va_end(va);
 }
 
@@ -101,27 +105,98 @@ static void iterate_and_print(lua_State *L, int index)
 }
 
 void print_unescaped(const char* ptr, int len) {
-    if (!ptr) return;
-    for (int i = 0; i < len; i++, ptr++) {
-        switch (*ptr) {
-            case '\0': printf("\\0");  break;
-            case '\a': printf("\\a");  break;
-            case '\b': printf("\\b");  break;
-            case '\f': printf("\\f");  break;
-            case '\n': printf("\\n");  break;
-            case '\r': printf("\\r");  break;
-            case '\t': printf("\\t");  break;
-            case '\v': printf("\\v");  break;
-            case '\\': printf("\\\\"); break;
-            case '\?': printf("\\\?"); break;
-            case '\'': printf("\\\'"); break;
-            case '\"': printf("\\\""); break;
-            default:
-                if (isprint(*ptr)) printf("%c",     *ptr);
-                else               printf("\\%03o", *ptr);
-        }
-    }
+	if (!ptr) return;
+	for (int i = 0; i < len; i++, ptr++) {
+		switch (*ptr) {
+			case '\0': printf("\\0");  break;
+			case '\a': printf("\\a");  break;
+			case '\b': printf("\\b");  break;
+			case '\f': printf("\\f");  break;
+			case '\n': printf("\\n");  break;
+			case '\r': printf("\\r");  break;
+			case '\t': printf("\\t");  break;
+			case '\v': printf("\\v");  break;
+			case '\\': printf("\\\\"); break;
+			case '\?': printf("\\\?"); break;
+			case '\'': printf("\\\'"); break;
+			case '\"': printf("\\\""); break;
+			default:
+				if (isprint(*ptr)) printf("%c",     *ptr);
+				else               printf("\\%03o", *ptr);
+		}
+	}
 }
+
+#if (defined(LUA_VERSION_NUM) && LUA_VERSION_NUM < 502) && !defined(LUAJIT)
+
+// luaL_testudata and luaL_traceback were introduced in Lua 5.2
+// LuaJit also has their own implementations
+
+void* luaL_testudata(lua_State* L, int index, const char* tname) {
+	if (!lua_isuserdata(L, index)) {
+		return NULL; // Not userdata
+	}
+
+	if (!lua_getmetatable(L, index)) {
+		return NULL; // No metatable
+	}
+
+	luaL_getmetatable(L, tname); // Push the expected metatable
+
+	if (!lua_rawequal(L, -1, -2)) {
+		lua_pop(L, 2); // Pop both metatables
+		return NULL;   // Metatables do not match
+	}
+
+	lua_pop(L, 2); // Pop both metatables
+	return lua_touserdata(L, index); // Return the userdata
+}
+
+void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level) {
+	lua_Debug ar;
+	luaL_Buffer b;
+	luaL_buffinit(L, &b);
+
+	if (msg) {
+		luaL_addstring(&b, msg);
+		luaL_addstring(&b, "\n");
+	}
+
+	luaL_addstring(&b, "stack traceback:\n");
+
+	// Start traversing the call stack from the specified level
+	while (lua_getstack(L1, level++, &ar)) {
+		if (lua_getinfo(L1, "Sln", &ar)) {
+			luaL_addstring(&b, "  ");
+			if (ar.short_src) {
+				luaL_addstring(&b, ar.short_src);
+			}
+			luaL_addstring(&b, ":");
+			luaL_addstring(&b, (ar.currentline > 0 ? lua_pushfstring(L, "%d", ar.currentline) : "unknown"));
+			lua_pop(L, 1); // Pop the formatted string
+
+			luaL_addstring(&b, ": in ");
+
+			if (*ar.namewhat != '\0') {
+				luaL_addstring(&b, ar.namewhat);
+				luaL_addstring(&b, " '");
+				luaL_addstring(&b, (ar.name ? ar.name : "?"));
+				luaL_addstring(&b, "'");
+			} else if (*ar.what == 'm') {
+				luaL_addstring(&b, "main chunk");
+			} else if (*ar.what == 'C') {
+				luaL_addstring(&b, "C function");
+			} else {
+				luaL_addstring(&b, "function ?");
+			}
+
+			luaL_addstring(&b, "\n");
+		}
+	}
+
+	luaL_pushresult(&b); // Push the accumulated buffer as a string
+}
+#endif
 
 void luaL_debugstack(lua_State *l, const char* text)
 {
