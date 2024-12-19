@@ -17,6 +17,8 @@ struct ClientThread
 
 static ThreadNode* mumble_threads;
 
+enum { READ = 0, WRITE = 1 };
+
 void thread_add(ThreadNode** head_ref, pthread_t thread)
 {
 	ThreadNode* new_node = malloc(sizeof(ThreadNode));
@@ -60,8 +62,6 @@ static void *mumble_thread_worker(void *arg)
 {
 	MumbleThread *thread = arg;
 
-	int finished = thread->finished;
-
 	// Create state and load libs
 	lua_State *l = luaL_newstate();
 
@@ -101,7 +101,7 @@ static void *mumble_thread_worker(void *arg)
 	lua_close(l);
 
 	// Signal the main Lua stack that our thread has completed
-	write(thread->pipe[1], &finished, sizeof(int));
+	write(thread->pipe[WRITE], &thread->finished, sizeof(thread->finished));
 
 	return NULL;
 }
@@ -173,7 +173,7 @@ int mumble_thread_new(lua_State *l)
 	thread->event.l = l;
 	thread->event.pthread = thread->pthread;
 
-	ev_io_init(&thread->event.io, mumble_thread_event, thread->pipe[0], EV_READ);
+	ev_io_init(&thread->event.io, mumble_thread_event, thread->pipe[READ], EV_READ);
 	ev_io_start(EV_DEFAULT, &thread->event.io);
 
 	thread_add(&mumble_threads, thread->pthread);
@@ -202,6 +202,8 @@ static int thread_server_gc(lua_State *l)
 {
 	MumbleThread *thread = luaL_checkudata(l, 1, METATABLE_THREAD_SERVER);
 	ev_io_stop(EV_DEFAULT, &thread->event.io);
+	close(thread->pipe[READ]);
+	close(thread->pipe[WRITE]);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_THREAD_SERVER, thread);
 	return 0;
 }
