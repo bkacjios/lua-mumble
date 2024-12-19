@@ -63,7 +63,7 @@ mumble.thread = mumble.thread("filename.lua")
 -- The timer itself will do a best-effort at avoiding drift, that is, if you configure a timer to trigger every 10 seconds, then it will normally trigger at exactly 10 second intervals. If, however, your program cannot keep up with the timer (because it takes longer than those 10 seconds to do stuff) the timer will not fire more than once per event loop iteration.
 -- Timers will keep the reference active until mumble.timer:close() is called.
 -- Timers will dereference themselves if the timer is stopped after the callback funciton call.
-mumble.timer = mumble.timer(Function callback(mumble.timer), Number after = 0, Number repeat = 0)
+mumble.timer = mumble.timer()
 
 -- A new voicetarget object
 mumble.voicetarget = mumble.voicetarget()
@@ -497,7 +497,7 @@ mumble.channel:create(String name, String description = "", Number position = 0,
 
 ``` lua
 -- Run the timer
-mumble.timer = mumble.timer:start()
+mumble.timer = mumble.timer:start(Function callback(mumble.timer), Number after = 0, Number repeat = 0)
 
 -- Retruns if the timer is currently running
 Boolean running = mumble.timer:isActive()
@@ -518,9 +518,6 @@ mumble.timer:again()
 
 -- Stops the timer
 mumble.timer:stop()
-
--- Closes the timer and marks it for garbage collection
-mumble.timer:close()
 ```
 
 ### mumble.voicetarget

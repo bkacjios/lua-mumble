@@ -82,22 +82,27 @@ static int timer_start(lua_State *l)
 	double after = luaL_optnumber(l, 3, 0);
 	double repeat = luaL_optnumber(l, 4, 0);
 
-	ltimer->started = true;
+	if (!ltimer->started) {
+		ltimer->started = true;
 
-	lua_pushvalue(l, 1); // Push a copy of the userdata to prevent garabage collection
-	ltimer->self = mumble_registry_ref(l, MUMBLE_TIMER_REG); // Pop it off as a reference
+		lua_pushvalue(l, 1); // Push a copy of the userdata to prevent garabage collection
+		ltimer->self = mumble_registry_ref(l, MUMBLE_TIMER_REG); // Pop it off as a reference
 
-	lua_pushvalue(l, 2); // Push a copy of our callback function
-	ltimer->callback = mumble_registry_ref(l, MUMBLE_TIMER_REG); // Pop it off as a reference
+		lua_pushvalue(l, 2); // Push a copy of our callback function
+		ltimer->callback = mumble_registry_ref(l, MUMBLE_TIMER_REG); // Pop it off as a reference
 
-	// Initialize our timer object
-	ev_timer_init(&ltimer->timer, mumble_lua_timer, after, repeat);
-	ev_set_priority(&ltimer->timer, EV_MINPRI);
+		// Initialize our timer object
+		ev_timer_init(&ltimer->timer, mumble_lua_timer, after, repeat);
+		ev_set_priority(&ltimer->timer, EV_MINPRI);
 
-	ev_timer_start(EV_DEFAULT, &ltimer->timer);
+		ev_timer_start(EV_DEFAULT, &ltimer->timer);
 
-	// Return ourself
-	lua_settop(l, 1);
+		// Return ourself
+		lua_settop(l, 1);
+	} else {
+		// Timer is already running, so go again
+		ev_timer_again(EV_DEFAULT, &ltimer->timer);
+	}
 	return 1;
 }
 

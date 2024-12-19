@@ -110,27 +110,29 @@ void mumble_thread_event(struct ev_loop *loop, ev_io *w_, int revents)
 {
 	thread_io *w = (thread_io *) w_;
 
+	// TODO: Allow sending and receiving of data between threads using this pipe
 	int finished;
+	int n = read(w_->fd, &finished, sizeof(int));
 
-	if (read(w_->fd, &finished, sizeof(int)) != sizeof(int)) {
-		mumble_log(LOG_DEBUG, "thread received unexpected data size from pipe\n");
-		return;
+	if (n > 0) {
+		mumble_log(LOG_DEBUG, "thread event data received\n");
+		mumble_thread_exit(w->l, w->thread);
+	} else {
+		mumble_log(LOG_ERROR, "thread pipe error\n");
 	}
-
-	mumble_thread_exit(w->l, w->pthread, finished);
 }
 
-int mumble_thread_exit(lua_State *l, pthread_t thread, int finished)
+int mumble_thread_exit(lua_State *l, MumbleThread *thread)
 {
 	lua_stackguard_entry(l);
 
 	// Check if we have a finished callback reference
-	if (finished > 0) {
+	if (thread->finished > 0) {
 		// Push our error handler
 		lua_pushcfunction(l, mumble_traceback);
 
 		// Push the worker function from the registry
-		mumble_registry_pushref(l, MUMBLE_THREAD_REG, finished);
+		mumble_registry_pushref(l, MUMBLE_THREAD_REG, thread->finished);
 
 		// Call the worker with our custom error handler function
 		if (lua_pcall(l, 0, 0, -2) != 0) {
@@ -141,10 +143,11 @@ int mumble_thread_exit(lua_State *l, pthread_t thread, int finished)
 		// Pop the error handler
 		lua_pop(l, 1);
 
-		mumble_registry_unref(l, MUMBLE_THREAD_REG, finished);
+		mumble_registry_unref(l, MUMBLE_THREAD_REG, thread->finished);
 	}
 
-	thread_remove(&mumble_threads, thread);
+	mumble_registry_unref(l, MUMBLE_TIMER_REG, thread->self);
+	thread_remove(&mumble_threads, thread->pthread);
 
 	lua_stackguard_exit(l);
 }
@@ -160,6 +163,9 @@ int mumble_thread_new(lua_State *l)
 		return luaL_error(l, "could not create thread pipe");
 	}
 
+	lua_pushvalue(l, 1); // Push a copy of the userdata to prevent garabage collection
+	thread->self = mumble_registry_ref(l, MUMBLE_THREAD_REG); // Pop it off as a reference
+
 	if (lua_isfunction(l, 3)) {
 		lua_pushvalue(l, 3); // Push a copy of our callback function
 		thread->finished = mumble_registry_ref(l, MUMBLE_THREAD_REG); // Pop it off as a reference
@@ -168,13 +174,13 @@ int mumble_thread_new(lua_State *l)
 	luaL_getmetatable(l, METATABLE_THREAD_SERVER);
 	lua_setmetatable(l, -2);
 
-	pthread_create(&thread->pthread, NULL, mumble_thread_worker, thread);
-
 	thread->event.l = l;
-	thread->event.pthread = thread->pthread;
+	thread->event.thread = thread;
 
 	ev_io_init(&thread->event.io, mumble_thread_event, thread->pipe[READ], EV_READ);
 	ev_io_start(EV_DEFAULT, &thread->event.io);
+
+	pthread_create(&thread->pthread, NULL, mumble_thread_worker, thread);
 
 	thread_add(&mumble_threads, thread->pthread);
 	

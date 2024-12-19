@@ -28,14 +28,20 @@ static void mumble_client_free(MumbleClient *client);
 static void mumble_signal_event(struct ev_loop *loop, ev_signal *w, int revents)
 {
 	printf("\n");
+	
+	/*
 	// join any threads
 	mumble_log(LOG_DEBUG, "joining threads\n");
 	mumble_thread_join_all();
-	// process all remaining events
-	// ev_run(EV_DEFAULT, EVRUN_NOWAIT);
-	// break
+
+	// Wait for remaining events to finish
+	while (ev_pending_count(loop) > 0) {
+		ev_run(loop, EVRUN_NOWAIT);
+	}
+	*/
+
 	mumble_log(LOG_WARN, "exiting loop\n");
-	ev_break(EV_DEFAULT, EVBREAK_ALL);
+	ev_break(loop, EVBREAK_ALL);
 }
 
 static void mumble_ping_timer(EV_P_ ev_timer *w_, int revents)
@@ -642,9 +648,6 @@ int mumble_client_connect(lua_State *l) {
 		lua_pushfstring(l, "could not set SSL file descriptor: %s", mumble_ssl_error(ERR_get_error()));
 		return 2;
 	}
-
-	client->signal.l = l;
-	client->signal.client = client;
 
 	client->socket_tcp_io.l = l;
 	client->socket_tcp_io.client = client;

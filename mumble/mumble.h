@@ -132,7 +132,6 @@ typedef struct LinkNode LinkNode;
 typedef struct my_io my_io;
 typedef struct my_timer my_timer;
 typedef struct lua_timer lua_timer;
-typedef struct my_signal my_signal;
 typedef struct mumble_crypt mumble_crypt;
 typedef struct thread_io thread_io;
 typedef struct MumbleThread MumbleThread;
@@ -158,12 +157,6 @@ struct lua_timer {
 	int callback;
 };
 
-struct my_signal {
-	ev_signal signal;
-	MumbleClient* client;
-	lua_State* l;
-};
-
 struct AudioFrame {
 	float l;
 	float r;
@@ -186,12 +179,13 @@ struct AudioStream {
 struct thread_io {
 	ev_io io;
 	lua_State* l;
-	pthread_t pthread;
+	MumbleThread* thread;
 };
 
 struct MumbleThread {
     pthread_t pthread;
 	const char *filename;
+	int self;
 	int finished;
 	pthread_mutex_t lock;
 	int pipe[2];
@@ -225,7 +219,6 @@ struct MumbleClient {
 	my_io				socket_tcp_connect;
 	my_timer			audio_timer;
 	my_timer			ping_timer;
-	my_signal			signal;
 	AudioFrame			audio_buffer[PCM_BUFFER];
 	AudioFrame			audio_rebuffer[PCM_BUFFER];
 	uint32_t			audio_sequence;
