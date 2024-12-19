@@ -117,10 +117,10 @@ void mumble_thread_event(struct ev_loop *loop, ev_io *w_, int revents)
 		return;
 	}
 
-	mumble_thread_exit(w->l, finished);
+	mumble_thread_exit(w->l, w->pthread, finished);
 }
 
-int mumble_thread_exit(lua_State *l, int finished)
+int mumble_thread_exit(lua_State *l, pthread_t thread, int finished)
 {
 	lua_stackguard_entry(l);
 
@@ -134,7 +134,7 @@ int mumble_thread_exit(lua_State *l, int finished)
 
 		// Call the worker with our custom error handler function
 		if (lua_pcall(l, 0, 0, -2) != 0) {
-			mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
+			mumble_log(LOG_ERROR, "%s: %s\n", METATABLE_THREAD_SERVER, lua_tostring(l, -1));
 			lua_pop(l, 1); // Pop the error
 		}
 
@@ -143,6 +143,8 @@ int mumble_thread_exit(lua_State *l, int finished)
 
 		mumble_registry_unref(l, MUMBLE_THREAD_REG, finished);
 	}
+
+	thread_remove(&mumble_threads, thread);
 
 	lua_stackguard_exit(l);
 }
@@ -166,12 +168,13 @@ int mumble_thread_new(lua_State *l)
 	luaL_getmetatable(l, METATABLE_THREAD_SERVER);
 	lua_setmetatable(l, -2);
 
+	pthread_create(&thread->pthread, NULL, mumble_thread_worker, thread);
+
 	thread->event.l = l;
+	thread->event.pthread = thread->pthread;
 
 	ev_io_init(&thread->event.io, mumble_thread_event, thread->pipe[0], EV_READ);
 	ev_io_start(EV_DEFAULT, &thread->event.io);
-
-	pthread_create(&thread->pthread, NULL, mumble_thread_worker, thread);
 
 	thread_add(&mumble_threads, thread->pthread);
 	

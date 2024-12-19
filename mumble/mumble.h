@@ -186,6 +186,7 @@ struct AudioStream {
 struct thread_io {
 	ev_io io;
 	lua_State* l;
+	pthread_t pthread;
 };
 
 struct MumbleThread {
