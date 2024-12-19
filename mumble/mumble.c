@@ -209,9 +209,12 @@ static void socket_connect_event_tcp(struct ev_loop *loop, ev_io *w_, int revent
 		int err = SSL_get_error(client->ssl, ret);
 		if (err == SSL_ERROR_SSL) {
 			unsigned long err_code;
+			char *message = "unknown error";
 			while ((err_code = ERR_get_error()) != 0) {
-				mumble_log(LOG_WARN, "ssl connect error: %s\n", err, mumble_ssl_error(err_code));
+				message = (char*) mumble_ssl_error(err_code);
+				mumble_log(LOG_WARN, "ssl connect error: %s\n", message);
 			}
+			mumble_disconnect(l, client, message, false);
 		} else if (err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE) {
 			mumble_disconnect(l, client, "could not create secure connection", false);
 			ev_io_stop(loop, w_);
@@ -256,9 +259,12 @@ static void socket_read_event_tcp(struct ev_loop *loop, ev_io *w_, int revents)
 
 		if (err == SSL_ERROR_SSL) {
 			unsigned long err_code;
+			char *message = "unknown error";
 			while ((err_code = ERR_get_error()) != 0) {
-				mumble_log(LOG_WARN, "ssl read error: %s\n", err, mumble_ssl_error(err_code));
+				message = (char*) mumble_ssl_error(err_code);
+				mumble_log(LOG_WARN, "ssl read error: %s\n", message);
 			}
+			mumble_disconnect(l, client, message, false);
 		} else if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL) {
 			mumble_disconnect(l, client, "connection closed by server", false);
 		}
@@ -684,9 +690,22 @@ int mumble_client_connect(lua_State *l) {
 }
 
 static int getNetworkBandwidth(int bitrate, int frames) {
-	int overhead = 20 + 8 + 4 + 1 + 2 + 12 + 12 + 8;
-	overhead *= (frames * 48 * AUDIO_PLAYBACK_CHANNELS);
-    return overhead + bitrate;
+	// 8  - UDP overhead
+	// 8  - ProtobufCMessage header
+	// 4  - (uint32_t) sender_session 
+	// 8  - (uint64_t) frame_number
+	// 24 - (uint64_t) positional_data (assuming * 3)
+	// 4  - volume_adjustment
+	// 1  - is_terminator
+	// 4  - target
+	// 4  - context
+	// OPUS DATA
+	int overhead = 8 + 8 + 4 + 8 + 24 + 4 + 1 + 4 + 4;
+
+	// Calculate the size of the Opus data
+	int opus_data_size = frames * (bitrate / 8) / frames * AUDIO_PLAYBACK_CHANNELS;
+	
+	return bitrate + overhead + opus_data_size;
 }
 
 float mumble_adjust_audio_bandwidth(MumbleClient *client) {

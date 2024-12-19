@@ -333,28 +333,20 @@ static const char *verrtbl[] = {
 	"ogg: skeleton not supported"
 };
 
-static int client_play(lua_State *l)
+static int client_openOgg(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	const char* filepath	= luaL_checkstring(l, 2);
 	float volume			= (float) luaL_optnumber(l, 3, 1);
-	uint32_t stream			= luaL_optinteger(l, 4, 1);
 
-	AudioStream *sound = list_get(client->stream_list, stream);
-	if (sound) {
-		// If we are already playing something on this stream, stop & unreference it
-		audio_transmission_unreference(l, sound);
-	}
-
-	sound = lua_newuserdata(l, sizeof(AudioStream));
+	AudioStream *sound = lua_newuserdata(l, sizeof(AudioStream));
 	luaL_getmetatable(l, METATABLE_AUDIOSTREAM);
 	lua_setmetatable(l, -2);
 
 	int error = VORBIS__no_error;
 	sound->ogg = stb_vorbis_open_filename(filepath, &error, NULL);
 	sound->client = client;
-	sound->stream = stream;
-	sound->playing = true;
+	sound->playing = false;
 	sound->looping = false;
 	sound->loop_count = 0;
 	sound->volume = volume;
@@ -366,21 +358,6 @@ static int client_play(lua_State *l)
 	}
 
 	sound->info = stb_vorbis_get_info(sound->ogg);
-
-	// Insert this new audio stream metatable into our registry.
-	// This allows us to hold the reference until the audio is finished playing.
-	lua_pushvalue(l, -1);
-	audio_transmission_reference(l, sound);
-	return 1;
-}
-
-static int client_getAudioStream(lua_State *l)
-{
-	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	uint32_t stream = luaL_optinteger(l, 2, 1);
-	mumble_pushref(l, client->audio_streams);
-	lua_pushinteger(l, stream);
-	lua_gettable(l, -2);
 	return 1;
 }
 
@@ -477,13 +454,14 @@ static int client_hook(lua_State *l)
 	// Check our callback argument is a function
 	luaL_checktype(l, funcIndex, LUA_TFUNCTION);
 
-	// Push our reference for our hooks table
+	// Push our reference for the hooks table
 	mumble_pushref(l, client->hooks);
-	// Get our callback table for this hook
+
+	// Get the callback table for this hook
 	lua_getfield(l, -1, hook);
 
-	if (lua_istable(l, -1) == 0) {
-		// We don't have a callback table for this hook yet, so create one
+	if (!lua_istable(l, -1)) {
+		// No callback table exists, create one
 		lua_pop(l, 1);
 		lua_newtable(l);
 		lua_setfield(l, -2, hook);
@@ -493,6 +471,42 @@ static int client_hook(lua_State *l)
 	// Push our callback value and add it to our callback table
 	lua_pushvalue(l, funcIndex);
 	lua_setfield(l, -2, name);
+
+	return 0;
+}
+
+static int client_unhook(lua_State *l)
+{
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+
+	const char *hook = luaL_checkstring(l, 2);
+	const char *name = "hook";
+
+	int index = 3;
+
+	if (!lua_isnoneornil(l, 3) && lua_isstring(l, 3)) {
+		// If a custom name for the hook is provided, adjust
+		name = lua_tostring(l, 3);
+		index = 4;
+	}
+
+	// Push our reference for the hooks table
+	mumble_pushref(l, client->hooks);
+
+	// Get the callback table for this hook
+	lua_getfield(l, -1, hook);
+
+	if (!lua_istable(l, -1)) {
+		// No callback table exists, nothing to remove
+		lua_pop(l, 2); // Remove callback table and nil
+		return 0;
+	}
+
+	// Remove the field from the hook table by pushing a nil to it
+	lua_pushnil(l);
+	lua_setfield(l, -2, name);
+
+	lua_pop(l, 2); // Pop callback table and hook table
 
 	return 0;
 }
@@ -855,8 +869,7 @@ const luaL_Reg mumble_client[] = {
 	{"requestUserList", client_requestUserList},
 	{"sendPluginData", client_sendPluginData},
 	{"transmit", client_transmit},
-	{"play", client_play},
-	{"getAudioStream", client_getAudioStream},
+	{"openOgg", client_openOgg},
 	{"getAudioStreams", client_getAudioStreams},
 	{"setAudioPacketSize", client_setAudioPacketSize},
 	{"getAudioPacketSize", client_getAudioPacketSize},
@@ -864,6 +877,7 @@ const luaL_Reg mumble_client[] = {
 	{"setVolume", client_setVolume},
 	{"getVolume", client_getVolume},
 	{"hook", client_hook},
+	{"unhook", client_unhook},
 	{"call", client_call},
 	{"getHooks", client_getHooks},
 	{"getUsers", client_getUsers},

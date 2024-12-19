@@ -134,15 +134,11 @@ mumble.client:sendPluginData(String dataID, String plugindata, Table {mumble.use
 -- Set speaking to false at the end of a stream
 mumble.client:transmit(Number codec, String encoded_audio_packet, Boolean speaking = true)
 
--- Play an ogg audio file
--- Changing the stream value will allow you to play multiple audio files at once
+-- Open an ogg audio file as an audio stream
 -- If audiostream = nil, it will pass along an error string as to why it couldn't play the file
-mumble.audiostream audiostream, [ String error ] = mumble.client:play(String ogg file path, Number stream = 1, Number volume = 1.0)
+mumble.audiostream audiostream, [ String error ] = mumble.client:openOgg(String ogg file path, Number volume = 1.0)
 
--- Gets the audio stream object given the stream ID
-mumble.audiostream audiostream = mumble.client:getAudioStream(Number stream = 1)
-
--- Gets a table of all currently active audio streams
+-- Gets a table of all currently playing audio streams
 Table audiostreams = mumble.client:getAudioStreams()
 
 -- Structure
@@ -170,12 +166,6 @@ mumble.client:setAudioPacketSize(Number size = [TINY = 1, SMALL = 2, MEDIUM = 3,
 -- Default: mumble.audio.TINY = 1
 Number size = mumble.client:getAudioPacketSize()
 
--- Checks if the client is currently playing an audio file on the specified audio stream
-Boolean playing = mumble.client:isPlaying(Number stream = 1)
-
--- Stops playing the current audio on the specified audio stream
-mumble.client:stopPlaying(Number stream = 1)
-
 -- Sets the global volume level
 -- Consider this the master volume level
 mumble.client:setVolume(Number volume)
@@ -193,6 +183,10 @@ mumble.client:setComment(String comment)
 -- Adds a callback for a specific event
 -- If no unique name is passed, it will default to "hook"
 mumble.client:hook(String hook, [ String unique name = "hook" ], Function callback(mumble.client))
+
+-- Remove a callback for a specific event
+-- If no unique name is passed, it will default to "hook"
+mumble.client:unhook(String hook, [ String unique name = "hook" ])
 
 -- Gets all registered callbacks
 Table hooks = mumble.client:getHooks()
@@ -640,9 +634,6 @@ mumble.audiostream:setVolume(Number volume)
 -- Gets the volume of the audio stream
 Number volume = mumble.audiostream:getVolume()
 
--- Gets the stream number of this audio stream
-Number stream = mumble.audiostream:getVolume()
-
 -- Pause the audio
 mumble.audiostream:pause()
 
@@ -675,7 +666,16 @@ Table info = {
 	["max_frame_size"] = Number max_frame_size
 }
 
-Table comments = mumble.audiostream:getComment()
+Table comments = mumble.audiostream:getComments()
+
+-- Structure
+-- Contains a list of comments embedded in the file.
+-- This structure is only an example, it's possible for some files to have no comments at all.
+Table comments = {
+        [1] = "TRACKNUMBER=4/11",
+        [2] = "TXXX=iso6mp41",
+        ...
+}
 
 -- Enables the audio stream to loop to the beginning when reaching the end.
 -- Accepts a Boolean value or a Number value.

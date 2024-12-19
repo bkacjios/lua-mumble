@@ -178,7 +178,7 @@ struct AudioStream {
 	float volume;
 	AudioFrame buffer[PCM_BUFFER];
 	stb_vorbis_info info;
-	int stream;
+	int refrence;
 	int loop_count;
 	bool looping;
 };

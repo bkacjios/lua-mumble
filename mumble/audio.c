@@ -153,24 +153,14 @@ int voicepacket_getlength(const VoicePacket *packet)
 }
 
 void audio_transmission_reference(lua_State *l, AudioStream *sound) {
-	mumble_pushref(l, sound->client->audio_streams);
-		lua_pushinteger(l, sound->stream);
-		lua_pushvalue(l, -3);
-		lua_settable(l, -3);
-	lua_pop(l, 1);
-
-	list_add(&sound->client->stream_list, sound->stream, sound);
+	sound->refrence = mumble_registry_ref(l, sound->client->audio_streams);
+	list_add(&sound->client->stream_list, sound->refrence, sound);
 }
 
 void audio_transmission_unreference(lua_State*l, AudioStream *sound)
 {
-	mumble_pushref(l, sound->client->audio_streams);
-		lua_pushinteger(l, sound->stream);
-		lua_pushnil(l); // Set the stream index to nil
-		lua_settable(l, -3);
-	lua_pop(l, 1);
-
-	list_remove(&sound->client->stream_list, sound->stream);
+	mumble_registry_unref(l, sound->client->audio_streams, sound->refrence);
+	list_remove(&sound->client->stream_list, sound->refrence);
 }
 
 void mumble_audio_timer(EV_P_ ev_timer *w_, int revents)
@@ -183,190 +173,167 @@ void mumble_audio_timer(EV_P_ ev_timer *w_, int revents)
 	}
 }
 
-void audio_transmission_event(lua_State* l, MumbleClient *client)
-{
-	lua_stackguard_entry(l);
+void handle_audio_stream_end(lua_State *l, MumbleClient *client, AudioStream *sound, bool *didLoop) {
+	if (sound->looping) {
+		*didLoop = true;
+		stb_vorbis_seek_start(sound->ogg);
+	} else if (sound->loop_count > 0) {
+		*didLoop = true;
+		sound->loop_count--;
+		stb_vorbis_seek_start(sound->ogg);
+	} else {
+		sound->playing = false;
+		mumble_registry_pushref(l, client->audio_streams, sound->refrence);
+		mumble_hook_call(l, client, "OnAudioStreamEnd", 1);
+		audio_transmission_unreference(l, sound);
+	}
+}
 
-	long read;
-	long biggest_read = 0;
+void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream *sound, uint32_t frame_size, long *biggest_read, bool *didLoop) {
+	if (sound == NULL || !sound->playing) return;
 
-	// How many packets we should send in one go
-	int num_packets = client->audio_frames / 10;
+	const int channels = sound->info.channels;
+	const uint32_t source_rate = sound->info.sample_rate;
+	uint32_t sample_size = client->audio_frames * source_rate / 1000;
 
-	//for (int i=0; i<num_packets; i++) {
-	// How big each frame of audio data should be
-	const uint32_t frame_size = client->audio_frames * AUDIO_SAMPLE_RATE / 1000;
-	//const uint32_t frame_size = AUDIO_SAMPLE_RATE / 100;
+	if (sample_size > PCM_BUFFER) {
+		return;
+	}
 
-	memset(client->audio_buffer, 0, sizeof(client->audio_buffer));
+	memset(sound->buffer, 0, sizeof(sound->buffer));
 
-	bool didLoop = false;
+	long read = stb_vorbis_get_samples_float_interleaved(
+		sound->ogg, AUDIO_PLAYBACK_CHANNELS, (float *)sound->buffer, sample_size * AUDIO_PLAYBACK_CHANNELS
+	);
 
-	LinkNode* current = client->stream_list;
-
-	// Loop through all available audio channels
-	while (current != NULL) {
-		AudioStream *sound = current->data;
-		current = current->next;
-
-		// No sound playing = skip
-		if (sound == NULL || !sound->playing) continue;
-
-		// How many channels the audio file has
-		const int channels = sound->info.channels;
-		const uint32_t source_rate = sound->info.sample_rate;
-
-		uint32_t sample_size = client->audio_frames * source_rate / 1000;
-		//uint32_t sample_size = source_rate / 100;
-
-		memset(sound->buffer, 0, sizeof(sound->buffer));
-
-		read = stb_vorbis_get_samples_float_interleaved(sound->ogg, AUDIO_PLAYBACK_CHANNELS, (float*) sound->buffer, sample_size * AUDIO_PLAYBACK_CHANNELS);
-
-		if (channels == 1 && read > 0) {
-			//mix mono to stereo
-			for (int i = 0; i < read; i++) {
-				sound->buffer[i].r = sound->buffer[i].l;
-			}
-		}
-
-		// Resampling with linear interpolation
-		if (source_rate != AUDIO_SAMPLE_RATE) {
-			// Clear the rebuffer so we can use it again
-			memset(client->audio_rebuffer, 0, sizeof(client->audio_rebuffer));
-
-			// Calculate the resample ratio and modify sample_size accordingly
-			float resample_ratio = (float) AUDIO_SAMPLE_RATE / source_rate;
-			sample_size = (uint32_t) (sample_size * resample_ratio);
-			read = (long)(read * resample_ratio);
-
-			// Perform the resampling with linear interpolation
-			for (int t = 0; t < read; t++) {
-				// Calculate the index in the source buffer
-				float source_idx = (float) t * source_rate / AUDIO_SAMPLE_RATE;
-				int idx1 = (int)source_idx;  // Floor of source_idx
-				int idx2 = (idx1 + 1 < sample_size) ? (idx1 + 1) : idx1;  // Ensure idx2 is within bounds
-
-				// Linear interpolation between idx1 and idx2
-				float alpha = source_idx - idx1;
-				client->audio_rebuffer[t * 2].l = sound->buffer[idx1 * 2].l * (1.0f - alpha) + sound->buffer[idx2 * 2].l * alpha;
-				client->audio_rebuffer[t * 2].r = sound->buffer[idx1 * 2].r * (1.0f - alpha) + sound->buffer[idx2 * 2].r * alpha;
-			}
-
-			// Copy resampled audio back into the main buffer
-			memcpy(sound->buffer, client->audio_rebuffer, sizeof(client->audio_rebuffer));
-		}
-
+	if (channels == 1 && read > 0) {
 		for (int i = 0; i < read; i++) {
-			// Mix all streams together in the output buffer
-			client->audio_buffer[i].l += sound->buffer[i].l * sound->volume * client->volume;
-			client->audio_buffer[i].r += sound->buffer[i].r * sound->volume * client->volume;
-		}
-
-		// If the number of samples we read from the OGG file are less than the request sample size, it must be the last bit of audio
-		if (read < sample_size) {
-			if (sound->looping) {
-				didLoop = true;
-				stb_vorbis_seek_start(sound->ogg);
-			} else if (sound->loop_count > 0) {
-				didLoop = true;
-				sound->loop_count--;
-				stb_vorbis_seek_start(sound->ogg);
-			} else {
-				sound->playing = false;
-				mumble_registry_pushref(l, client->audio_streams, sound->stream);
-				mumble_hook_call(l, client, "OnAudioStreamEnd", 1);
-				audio_transmission_unreference(l, sound);
-			}
-		}
-
-		if (read > biggest_read) {
-			// We need to save the biggest PCM length for later.
-			// If we didn't do this, we could be cutting off some audio if one
-			// stream ends while another is still playing.
-			biggest_read = read;
+			sound->buffer[i].r = sound->buffer[i].l;
 		}
 	}
 
-	// Nothing to do..
-	if (biggest_read <= 0) {
-		// Not streaming any audio, reset sequence back to 0
-		client->audio_sequence = 0;
-		return;
+	if (source_rate != AUDIO_SAMPLE_RATE) {
+		float resample_ratio = (float)AUDIO_SAMPLE_RATE / source_rate;
+		sample_size = (uint32_t)(sample_size * resample_ratio);
+		read = (long)(read * resample_ratio);
+
+		for (int t = 0; t < read; t++) {
+			float source_idx = (float)t * source_rate / AUDIO_SAMPLE_RATE;
+			int idx1 = (int)source_idx;
+			int idx2 = (idx1 + 1 < sample_size) ? (idx1 + 1) : idx1;
+
+			float alpha = source_idx - idx1;
+			client->audio_rebuffer[t * 2].l = sound->buffer[idx1 * 2].l * (1.0f - alpha) + sound->buffer[idx2 * 2].l * alpha;
+			client->audio_rebuffer[t * 2].r = sound->buffer[idx1 * 2].r * (1.0f - alpha) + sound->buffer[idx2 * 2].r * alpha;
+		}
+
+		memcpy(sound->buffer, client->audio_rebuffer, sizeof(client->audio_rebuffer));
 	}
 
+	for (int i = 0; i < read; i++) {
+		client->audio_buffer[i].l += sound->buffer[i].l * sound->volume * client->volume;
+		client->audio_buffer[i].r += sound->buffer[i].r * sound->volume * client->volume;
+	}
+
+	if (read < sample_size) {
+		handle_audio_stream_end(l, client, sound, didLoop);
+	}
+
+	if (read > *biggest_read) {
+		*biggest_read = read;
+	}
+}
+
+void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
+	uint32_t frame_header = encoded_len;
+	if (end_frame) {
+		frame_header |= (1 << 13);
+	}
+
+	VoicePacket packet;
+	uint8_t packet_buffer[UDP_BUFFER_MAX];
+	voicepacket_init(&packet, packet_buffer);
+	voicepacket_setheader(&packet, LEGACY_UDP_OPUS, client->audio_target, client->audio_sequence);
+	voicepacket_setframe(&packet, LEGACY_UDP_OPUS, frame_header, encoded, encoded_len);
+
+	mumble_handle_speaking_hooks_legacy(l, client, packet_buffer + 1, LEGACY_UDP_OPUS, client->audio_target, client->session);
+
+	int len = voicepacket_getlength(&packet);
+	if (client->tcp_udp_tunnel) {
+		mumble_log(LOG_TRACE, "[TCP] Sending legacy audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)\n",
+			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
+		packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, NULL, len);
+	} else {
+		mumble_log(LOG_TRACE, "[UDP] Sending legacy audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)\n",
+			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
+		packet_sendudp(client, packet_buffer, len);
+	}
+}
+
+void send_protobuf_audio(lua_State *l, MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
+	MumbleUDP__Audio audio = MUMBLE_UDP__AUDIO__INIT;
+	ProtobufCBinaryData audio_data = { .data = encoded, .len = (size_t)encoded_len };
+
+	audio.frame_number = client->audio_sequence;
+	audio.opus_data = audio_data;
+	audio.is_terminator = end_frame;
+	audio.target = client->audio_target;
+	audio.n_positional_data = 0;
+
+	uint8_t packet_buffer[UDP_BUFFER_MAX];
+	packet_buffer[0] = PROTO_UDP_AUDIO;
+
+	mumble_handle_speaking_hooks_protobuf(l, client, &audio, client->session);
+	int len = 1 + mumble_udp__audio__pack(&audio, packet_buffer + 1);
+
+	if (client->tcp_udp_tunnel) {
+		mumble_log(LOG_TRACE, "[TCP] Sending protobuf TCP audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)\n",
+			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
+		packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, NULL, len);
+	} else {
+		mumble_log(LOG_TRACE, "[UDP] Sending protobuf UDP audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)\n",
+			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
+		packet_sendudp(client, packet_buffer, len);
+	}
+}
+
+void encode_and_send_audio(lua_State *l, MumbleClient *client, uint32_t frame_size, bool end_frame) {
 	uint8_t encoded[PAYLOAD_SIZE_MAX];
-	opus_int32 encoded_len = opus_encode_float(client->encoder, (float*) client->audio_buffer, frame_size, encoded, PAYLOAD_SIZE_MAX);
+	opus_int32 encoded_len = opus_encode_float(client->encoder, (float *)client->audio_buffer, frame_size, encoded, PAYLOAD_SIZE_MAX);
 
-	if (encoded_len <= 0) {
-		return;
-	}
-
-	bool end_frame = !didLoop && biggest_read < frame_size;
+	if (encoded_len <= 0) return;
 
 	if (client->legacy) {
-		uint32_t frame_header = encoded_len;
-		// If the largest PCM buffer is smaller than our frame size, it has to be the last frame available
-		if (end_frame) {
-			// Set 14th bit to 1 to signal end of stream.
-			frame_header = ((1 << 13) | frame_header);
-		}
-
-		VoicePacket packet;
-		uint8_t packet_buffer[UDP_BUFFER_MAX];
-		voicepacket_init(&packet, packet_buffer);
-		voicepacket_setheader(&packet, LEGACY_UDP_OPUS, client->audio_target, client->audio_sequence);
-		voicepacket_setframe(&packet, LEGACY_UDP_OPUS, frame_header, encoded, encoded_len);
-
-		mumble_handle_speaking_hooks_legacy(l, client, packet_buffer + 1, LEGACY_UDP_OPUS, client->audio_target, client->session);
-
-		int len = voicepacket_getlength(&packet);
-
-		if (client->tcp_udp_tunnel) {
-			mumble_log(LOG_TRACE, "[TCP] Sending legacy audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)\n",
-				len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
-			packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, NULL, len);
-		} else {
-			mumble_log(LOG_TRACE, "[UDP] Sending legacy audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)\n",
-				len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
-			packet_sendudp(client, packet_buffer, len);
-		}
+		send_legacy_audio(l, client, encoded, encoded_len, end_frame);
 	} else {
-		MumbleUDP__Audio audio = MUMBLE_UDP__AUDIO__INIT;
-
-		ProtobufCBinaryData audio_data;
-		audio_data.data = encoded;
-		audio_data.len = encoded_len;
-
-		audio.frame_number = client->audio_sequence;
-		audio.opus_data = audio_data;
-
-		audio.is_terminator = end_frame;
-
-		audio.target = client->audio_target;
-
-		audio.n_positional_data = 0;
-
-		uint8_t packet_buffer[UDP_BUFFER_MAX];
-		packet_buffer[0] = PROTO_UDP_AUDIO;
-
-		mumble_handle_speaking_hooks_protobuf(l, client, &audio, client->session);
-
-		int len = 1 + mumble_udp__audio__pack(&audio, packet_buffer + 1);
-
-		if (client->tcp_udp_tunnel) {
-			mumble_log(LOG_TRACE, "[TCP] Sending protobuf TCP audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)\n",
-				len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
-			packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, NULL, len);
-		} else {
-			mumble_log(LOG_TRACE, "[UDP] Sending protobuf UDP audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)\n",
-				len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
-			packet_sendudp(client, packet_buffer, len);
-		}
+		send_protobuf_audio(l, client, encoded, encoded_len, end_frame);
 	}
 
 	client->audio_sequence++;
-	//}
+}
+
+void audio_transmission_event(lua_State *l, MumbleClient *client) {
+	lua_stackguard_entry(l);
+
+	long biggest_read = 0;
+	const uint32_t frame_size = client->audio_frames * AUDIO_SAMPLE_RATE / 1000;
+	memset(client->audio_buffer, 0, sizeof(client->audio_buffer));
+
+	bool didLoop = false;
+	LinkNode *current = client->stream_list;
+
+	while (current != NULL) {
+		AudioStream *sound = current->data;
+		current = current->next;
+		process_audio_stream(l, client, sound, frame_size, &biggest_read, &didLoop);
+	}
+
+	if (biggest_read > 0) {
+		bool end_frame = !didLoop && biggest_read < frame_size;
+		encode_and_send_audio(l, client, frame_size, end_frame);
+	} else {
+		client->audio_sequence = 0;
+	}
 
 	lua_stackguard_exit(l);
 }
@@ -392,13 +359,6 @@ static int audiostream_getVolume(lua_State *l)
 	return 1;
 }
 
-static int audiostream_getStream(lua_State *l)
-{
-	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
-	lua_pushnumber(l, sound->stream);
-	return 1;
-}
-
 static int audiostream_pause(lua_State *l)
 {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
@@ -411,7 +371,13 @@ static int audiostream_play(lua_State *l)
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	if (!sound->playing) {
 		sound->playing = true;
-		audio_transmission_reference(l, sound);
+
+		// Push a copy of the audio stream and save a reference
+		lua_pushvalue(l, 1);
+		sound->refrence = mumble_registry_ref(l, sound->client->audio_streams);
+
+		// Add to our stream list
+		list_add(&sound->client->stream_list, sound->refrence, sound);
 	}
 	return 0;
 }
@@ -508,7 +474,7 @@ static int audiostream_getInfo(lua_State *l)
 	return 1;
 }
 
-static int audiostream_getComment(lua_State *l)
+static int audiostream_getComments(lua_State *l)
 {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 
@@ -516,17 +482,11 @@ static int audiostream_getComment(lua_State *l)
 
 	lua_newtable(l);
 	{
-		lua_pushstring(l, cmnt.vendor);
-		lua_setfield(l, -2, "vendor");
-		lua_newtable(l);
-		{
-			for (int i=0; i < cmnt.comment_list_length; i++) {
-				lua_pushinteger(l, i+1);
-				lua_pushstring(l, cmnt.comment_list[i]);
-				lua_settable(l, -3);
-			}
+		for (int i=0; i < cmnt.comment_list_length; i++) {
+			lua_pushinteger(l, i+1);
+			lua_pushstring(l, cmnt.comment_list[i]);
+			lua_settable(l, -3);
 		}
-		lua_setfield(l, -2, "comment_list");
 	}
 	return 1;
 }
@@ -590,7 +550,6 @@ const luaL_Reg mumble_audiostream[] = {
 	{"isPlaying", audiostream_isPlaying},
 	{"setVolume", audiostream_setVolume},
 	{"getVolume", audiostream_getVolume},
-	{"getStream", audiostream_getStream},
 	{"pause", audiostream_pause},
 	{"play", audiostream_play},
 	{"stop", audiostream_stop},
@@ -598,7 +557,7 @@ const luaL_Reg mumble_audiostream[] = {
 	{"getLength", audiostream_getLength},
 	{"getDuration", audiostream_getLength},
 	{"getInfo", audiostream_getInfo},
-	{"getComment", audiostream_getComment},
+	{"getComments", audiostream_getComments},
 	{"setLooping", audiostream_setLooping},
 	{"isLooping", audiostream_isLooping},
 	{"getLoopCount", audiostream_getLoopCount},
