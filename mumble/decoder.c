@@ -61,8 +61,6 @@ static int decoder_getSampleRate(lua_State *l)
 
 /* DECODER CTLS */
 
-
-
 static int decoder_decode(lua_State *l)
 {
 	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);
@@ -97,8 +95,7 @@ static int decoder_decode_float(lua_State *l)
 
 static int decoder_tostring(lua_State *l)
 {
-	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);
-	lua_pushfstring(l, "%s: %p", METATABLE_DECODER, decoder);
+	lua_pushfstring(l, "%s: %p", METATABLE_DECODER, lua_topointer(l, 1));
 	return 1;
 }
 
@@ -106,6 +103,7 @@ static int decoder_gc(lua_State *l)
 {
 	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);
 	// no need to destroy since we allocated ourselves via lua_newuserdata and used opus_decoder_init
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_DECODER, decoder);
 	return 0;
 }
 

@@ -1,7 +1,12 @@
 local mumble = require("mumble")
 
-local client = assert(mumble.connect("raspberrypi.lan", 64738, "bot.pem", "bot.key"))
-client:auth("Mumble-Bot")
+local client = mumble.client()
+
+assert(client:connect("raspberrypi.lan", 64738, "bot.pem", "bot.key"))
+
+client:hook("OnConnect", function(client)
+	client:auth("Mumble-Bot")
+end)
 
 local afk = {
 	channel = "AFK",	-- The name of the channel to move the user to
@@ -45,6 +50,6 @@ function afk.queryUsers(client)
 end
 
 client:hook("OnUserStats", "AFK Check", afk.checkStats)
-client:hook("OnServerPing", "AFK Query Users", afk.queryUsers)
+client:hook("OnPingTCP", "AFK Query Users", afk.queryUsers)
 
 mumble.loop()

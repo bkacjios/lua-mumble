@@ -22,6 +22,7 @@ int mumble_encoder_new(lua_State *l)
 
 	opus_encoder_ctl(encoder, OPUS_SET_VBR(0));
 	opus_encoder_ctl(encoder, OPUS_SET_BITRATE(AUDIO_DEFAULT_BITRATE));
+	opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_MUSIC));
 	return 1;
 }
 
@@ -115,8 +116,7 @@ static int encoder_encode_float(lua_State *l)
 
 static int encoder_tostring(lua_State *l)
 {
-	OpusEncoder *encoder = luaL_checkudata(l, 1, METATABLE_ENCODER);
-	lua_pushfstring(l, "%s: %p", METATABLE_ENCODER, encoder);
+	lua_pushfstring(l, "%s: %p", METATABLE_ENCODER, lua_topointer(l, 1));
 	return 1;
 }
 
@@ -124,6 +124,7 @@ static int encoder_gc(lua_State *l)
 {
 	OpusEncoder *encoder = luaL_checkudata(l, 1, METATABLE_ENCODER);
 	// no need to destroy since we allocated ourselves via lua_newuserdata and used opus_encoder_init
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_ENCODER, encoder);
 	return 0;
 }
 

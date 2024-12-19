@@ -67,7 +67,7 @@ static int channel_getName(lua_State *l)
 	return 1;
 }
 
-static int channel_getID(lua_State *l)
+static int channel_getId(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 	lua_pushinteger(l, channel->channel_id);
@@ -94,7 +94,7 @@ static int channel_getChildren(lua_State *l)
 
 	lua_newtable(l);
 
-	lua_rawgeti(l, LUA_REGISTRYINDEX, channel->client->channels);
+	mumble_pushref(l, channel->client->channels);
 	lua_pushnil(l);
 
 	while (lua_next(l, -2)) {
@@ -117,17 +117,16 @@ static int channel_getUsers(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
-	LinkNode* current = channel->client->session_list;
+	LinkNode* current = channel->client->user_list;
 
 	lua_newtable(l);
 	int i = 1;
 
 	while (current != NULL)
 	{
-		MumbleUser* user = mumble_user_get(l, channel->client, current->data);
-		if (user->channel_id == channel->channel_id) {
+		if (current->index == channel->channel_id) {
 			lua_pushnumber(l, i++);
-			mumble_user_raw_get(l, channel->client, current->data);
+			mumble_user_raw_get(l, channel->client, current->index);
 			lua_settable(l, -3);
 		}
 		current = current->next;
@@ -236,8 +235,8 @@ static int channel_getLinks(lua_State *l)
 
 	// Add all linked channels to the table
     while (current != NULL) {
-		lua_pushinteger(l, current->data);
-		mumble_channel_raw_get(l, channel->client, current->data);
+		lua_pushinteger(l, current->index);
+		mumble_channel_raw_get(l, channel->client, current->index);
 		lua_settable(l, -3);
 
         current = current->next;
@@ -299,6 +298,28 @@ static int channel_hasPermission(lua_State *l)
 	return 1;
 }
 
+static int channel_setVolumeAdjustment(lua_State *l)
+{
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+
+	MumbleProto__UserState__VolumeAdjustment adjustment = MUMBLE_PROTO__USER_STATE__VOLUME_ADJUSTMENT__INIT;
+
+	adjustment.has_listening_channel = true;
+	adjustment.listening_channel = channel->channel_id;
+	adjustment.has_volume_adjustment = true;
+	adjustment.volume_adjustment = luaL_checknumber(l, 2);
+
+	packet_send(channel->client, PACKET_USERSTATE, &adjustment);
+	return 0;
+}
+
+static int channel_getVolumeAdjustment(lua_State *l)
+{
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+	lua_pushnumber(l, channel->volume_adjustment);
+	return 1;
+}
+
 int channel_call(lua_State *l)
 {
 	MumbleChannel *self = luaL_checkudata(l, 1, METATABLE_CHAN);
@@ -314,9 +335,11 @@ int channel_call(lua_State *l)
 		if (strcmp(pch, ".") == 0) {
 			current = channel;
 		} else if(strcmp(pch, "..") == 0) {
-			current = mumble_channel_raw_get(l, channel->client, channel->parent);
+			mumble_channel_raw_get(l, channel->client, channel->parent);
+			current = lua_touserdata(l, -1);
+			lua_remove(l, -2);
 		} else {
-			lua_rawgeti(l, LUA_REGISTRYINDEX, self->client->channels);
+			mumble_pushref(l, self->client->channels);
 			lua_pushnil(l);
 
 			while (lua_next(l, -2)) {
@@ -359,7 +382,7 @@ static int channel_requestDescriptionBlob(lua_State *l)
 	
 	msg.channel_description[0] = channel->channel_id;
 
-	packet_send(channel->client, PACKET_USERSTATE, &msg);
+	packet_send(channel->client, PACKET_REQUESTBLOB, &msg);
 	free(msg.channel_description);
 	return 0;
 }
@@ -384,14 +407,15 @@ static int channel_create(lua_State *l)
 static int channel_gc(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
-	luaL_unref(l, LUA_REGISTRYINDEX, channel->data);
+	mumble_unref(l, channel->data);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_CHAN, channel);
 	return 0;
 }
 
 static int channel_tostring(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
-	lua_pushfstring(l, "%s [%d][%s]", METATABLE_CHAN, channel->channel_id, channel->name);
+	lua_pushfstring(l, "%s [%d][\"%s\"] %p", METATABLE_CHAN, channel->channel_id, channel->name, channel);
 	return 1;
 }
 
@@ -399,7 +423,7 @@ static int channel_newindex(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
-	lua_rawgeti(l, LUA_REGISTRYINDEX, channel->data);
+	mumble_pushref(l, channel->data);
 	lua_pushvalue(l, 2);
 	lua_pushvalue(l, 3);
 	lua_settable(l, -3);
@@ -410,7 +434,7 @@ static int channel_index(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
-	lua_rawgeti(l, LUA_REGISTRYINDEX, channel->data);
+	mumble_pushref(l, channel->data);
 	lua_pushvalue(l, 2);
 	lua_gettable(l, -2);
 
@@ -428,7 +452,8 @@ const luaL_Reg mumble_channel[] = {
 	{"remove", channel_remove},
 	{"getClient", channel_getClient},
 	{"getName", channel_getName},
-	{"getID", channel_getID},
+	{"getId", channel_getId},
+	{"getID", channel_getId},
 	{"getParent", channel_getParent},
 	{"getChildren", channel_getChildren},
 	{"getUsers", channel_getUsers},
@@ -447,6 +472,8 @@ const luaL_Reg mumble_channel[] = {
 	{"getPermissions", channel_getPermissions},
 	{"hasPermission", channel_hasPermission},
 	{"hasPermissions", channel_hasPermission},
+	{"setVolumeAdjustment", channel_setVolumeAdjustment},
+	{"getVolumeAdjustment", channel_getVolumeAdjustment},
 	{"requestDescriptionBlob", channel_requestDescriptionBlob},
 	{"create", channel_create},
 

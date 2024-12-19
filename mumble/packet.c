@@ -3,20 +3,26 @@
 #include "packet.h"
 #include "ocb.h"
 
+#include "user.h"
+#include "client.h"
+
 int packet_sendudp(MumbleClient* client, const void *message, const int length)
 {
-	unsigned char encrypted[length + 4];
+	uint8_t encrypted[length + 4];
 	if (crypt_isValid(client->crypt) && crypt_encrypt(client->crypt, message, encrypted, length))
 	{
+		//mumble_log(LOG_TRACE, "SENDING %s: %p\n", "UDP", message);
 		sendto(client->socket_udp, encrypted, sizeof(encrypted), 0, client->server_host_udp->ai_addr, client->server_host_udp->ai_addrlen);
+	} else {
+		mumble_log(LOG_ERROR, "[UDP] Unable to encrypt UDP packet\n");
 	}
 }
 
-int packet_sendex(MumbleClient* client, const int type, const void *message, const int length)
+int packet_sendex(MumbleClient* client, int type, const void *message, const ProtobufCMessage* base, const int length)
 {
 	static Packet packet_out;
-	int payload_size;
-	int total_size;
+	size_t payload_size;
+	size_t total_size;
 	switch (type) {
 		case PACKET_VERSION:
 			payload_size = mumble_proto__version__get_packed_size(message);
@@ -79,13 +85,18 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 			payload_size = mumble_proto__plugin_data_transmission__get_packed_size(message);
 			break;
 		default:
-			printf("WARNING: unable to get payload size for packet #%i\n", type);
+			mumble_log(LOG_WARN, "unable to get payload size for packet #%i\n", type);
 			return 1;
 	}
-	if (payload_size >= PAYLOAD_SIZE_MAX) {
+	total_size = sizeof(uint16_t) + sizeof(uint32_t) + payload_size;
+
+	packet_out.buffer = malloc(sizeof(uint8_t) * total_size);
+
+	if (packet_out.buffer == NULL) {
+		mumble_log(LOG_ERROR, "failed to malloc packet buffer: %s", strerror(errno));
 		return 2;
 	}
-	total_size = sizeof(uint16_t) + sizeof(uint32_t) + payload_size;
+
 	if (payload_size > 0) {
 		switch (type) {
 			case PACKET_VERSION:
@@ -149,14 +160,20 @@ int packet_sendex(MumbleClient* client, const int type, const void *message, con
 				mumble_proto__plugin_data_transmission__pack(message, packet_out.buffer + 6);
 				break;
 			default:
-				printf("WARNING: attempted to pack unspported packet #%i\n", type);
+				mumble_log(LOG_WARN, "attempted to pack unspported packet #%i\n", type);
 				break;
 		}
 	}
 	*(uint16_t *)packet_out.buffer = htons(type);
 	*(uint32_t *)(packet_out.buffer + 2) = htonl(payload_size);
 
-	return SSL_write(client->ssl, packet_out.buffer, total_size) == total_size ? 0 : 3;
+	mumble_log(LOG_TRACE, "[TCP] Sending %s: %p\n", base != NULL ? base->descriptor->name : "MumbleProto.UDPTunnel", message);
+
+	int written = SSL_write(client->ssl, packet_out.buffer, total_size);
+
+	free(packet_out.buffer);
+
+	return written == total_size ? 0 : -1;
 }
 
 void packet_server_version(lua_State *l, MumbleClient *client, Packet *packet)
@@ -166,10 +183,16 @@ void packet_server_version(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", version->base.descriptor->name, version);
+
 	lua_newtable(l);
-		if (version->has_version) {
-			lua_pushinteger(l, version->version);
-			lua_setfield(l, -2, "version");
+		if (version->has_version_v1) {
+			lua_pushinteger(l, version->version_v1);
+			lua_setfield(l, -2, "version_v1");
+		}
+		if (version->has_version_v2) {
+			lua_pushinteger(l, version->version_v2);
+			lua_setfield(l, -2, "version_v2");
 		}
 		lua_pushstring(l, version->release);
 		lua_setfield(l, -2, "release");
@@ -179,10 +202,13 @@ void packet_server_version(lua_State *l, MumbleClient *client, Packet *packet)
 		lua_setfield(l, -2, "os_version");
 	mumble_hook_call(l, client, "OnServerVersion", 1);
 
+	mumble_log(LOG_INFO, "%s[%d] server version: %s\n", METATABLE_CLIENT, client->self, version->release);
+	mumble_log(LOG_INFO, "%s[%d] server system : %s - %s\n", METATABLE_CLIENT, client->self, version->os, version->os_version);
+
 	mumble_proto__version__free_unpacked(version, NULL);
 }
 
-void packet_udp_tunnel(lua_State *l, MumbleClient *client, Packet *packet)
+void packet_tcp_udp_tunnel(lua_State *l, MumbleClient *client, Packet *packet)
 {
 	unsigned char codec		= packet->buffer[0] >> 5;
 	unsigned char target	= packet->buffer[0] >> 0x1F;
@@ -190,7 +216,7 @@ void packet_udp_tunnel(lua_State *l, MumbleClient *client, Packet *packet)
 	int read = 1;
 	int session = util_get_varint(packet->buffer + read, &read);
 
-	mumble_handle_speaking_hooks(l, client, packet->buffer + read, codec, target, session);
+	mumble_handle_speaking_hooks_legacy(l, client, packet->buffer + read, codec, target, session);
 }
 
 void packet_server_ping(lua_State *l, MumbleClient *client, Packet *packet)
@@ -199,6 +225,8 @@ void packet_server_ping(lua_State *l, MumbleClient *client, Packet *packet)
 	if (ping == NULL) {
 		return;
 	}
+
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", ping->base.descriptor->name, ping);
 
 	lua_newtable(l);
 		if (ping->has_timestamp) {
@@ -271,6 +299,10 @@ void packet_server_reject(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", reject->base.descriptor->name, reject);
+
+	mumble_log(LOG_WARN, "%s[%d] server rejected connection: %s\n", METATABLE_CLIENT, client->self, reject->reason);
+
 	lua_newtable(l);
 		if (reject->has_type) {
 			lua_pushinteger(l, reject->type);
@@ -290,8 +322,9 @@ void packet_server_sync(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", sync->base.descriptor->name, sync);
+
 	client->synced = true;
-	
 	ev_timer_start(EV_DEFAULT, &client->ping_timer.timer);
 
 	lua_newtable(l);
@@ -304,7 +337,10 @@ void packet_server_sync(lua_State *l, MumbleClient *client, Packet *packet)
 			lua_pushinteger(l, sync->max_bandwidth);
 			lua_setfield(l, -2, "max_bandwidth");
 
-			mumble_create_audio_timer(client, sync->max_bandwidth);
+			mumble_log(LOG_DEBUG, "Max server bandwidth: %u\n", sync->max_bandwidth);
+			client->max_bandwidth = sync->max_bandwidth;
+
+			mumble_create_audio_timer(client);
 		}
 		if (sync->welcome_text != NULL) {
 			lua_pushstring(l, sync->welcome_text);
@@ -329,9 +365,12 @@ void packet_channel_remove(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", channel->base.descriptor->name, channel);
+
 	mumble_channel_raw_get(l, client, channel->channel_id);
 	mumble_hook_call(l, client, "OnChannelRemove", 1);
 	mumble_channel_remove(l, client, channel->channel_id);
+	list_remove(&client->channel_list, channel->channel_id);
 
 	mumble_proto__channel_remove__free_unpacked(channel, NULL);
 }
@@ -342,6 +381,9 @@ void packet_channel_state(lua_State *l, MumbleClient *client, Packet *packet)
 	if (state == NULL) {
 		return;
 	}
+
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", state->base.descriptor->name, state);
+
 	if (!state->has_channel_id) {
 		mumble_proto__channel_state__free_unpacked(state, NULL);
 		return;
@@ -400,7 +442,7 @@ void packet_channel_state(lua_State *l, MumbleClient *client, Packet *packet)
 		// Add the new entries to the head of the list
 		lua_newtable(l);
 		for (uint32_t i = 0; i < state->n_links_add; i++) {
-			list_add(&channel->links, state->links_add[i]);
+			list_add(&channel->links, state->links_add[i], NULL);
 			lua_pushinteger(l, i+1);
 			mumble_channel_raw_get(l, client, state->links_add[i]);
 			lua_settable(l, -3);
@@ -423,7 +465,7 @@ void packet_channel_state(lua_State *l, MumbleClient *client, Packet *packet)
 		lua_newtable(l);
 		// Store links in new list
 		for (uint32_t i = 0; i < state->n_links; i++) {
-			list_add(&channel->links, state->links[i]);
+			list_add(&channel->links, state->links[i], NULL);
 			lua_pushinteger(l, i+1);
 			mumble_channel_raw_get(l, client, state->links[i]);
 			lua_settable(l, -3);
@@ -453,6 +495,8 @@ void packet_user_remove(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", user->base.descriptor->name, user);
+
 	lua_newtable(l);
 		mumble_user_raw_get(l, client, user->session);
 		lua_setfield(l, -2, "user");
@@ -470,8 +514,20 @@ void packet_user_remove(lua_State *l, MumbleClient *client, Packet *packet)
 		}
 	mumble_hook_call(l, client, "OnUserRemove", 1);
 	mumble_user_remove(l, client, user->session);
+	list_remove(&client->user_list, user->session);
+	
+	if (client->session == user->session) {
+		char* type = (user->has_ban && user->ban) ? "banned" : "kicked";
+		char* reason = (user->reason != NULL && strcmp(user->reason,"") != 0) ? user->reason : "No reason given";
 
-	list_remove(&client->session_list, user->session);
+		if (user->has_actor && user->has_ban) {
+			MumbleUser* actor = mumble_user_get(l, client, user->actor);
+			mumble_log(LOG_INFO, "%s[%d] %s from server by %s [%d][\"%s\"] (Reason \"%s\")\n", METATABLE_CLIENT, client->self, type, METATABLE_USER, actor->session, actor->name, reason);
+		} else {
+			mumble_log(LOG_INFO, "%s[%d] %s from server (Reason \"%s\")\n", METATABLE_CLIENT, client->self, type, reason);
+		}
+		mumble_disconnect(l, client, user->reason, false);
+	}
 
 	mumble_proto__user_remove__free_unpacked(user, NULL);
 }
@@ -482,6 +538,9 @@ void packet_user_state(lua_State *l, MumbleClient *client, Packet *packet)
 	if (state == NULL) {
 		return;
 	}
+
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", state->base.descriptor->name, state);
+
 	if (!state->has_session) {
 		mumble_proto__user_state__free_unpacked(state, NULL);
 		return;
@@ -602,7 +661,7 @@ void packet_user_state(lua_State *l, MumbleClient *client, Packet *packet)
 			// Add the new entries to the head of the list
 			lua_newtable(l);
 			for (uint32_t i = 0; i < state->n_listening_channel_add; i++) {
-				list_add(&user->listens, state->listening_channel_add[i]);
+				list_add(&user->listens, state->listening_channel_add[i], NULL);
 				lua_pushinteger(l, i+1);
 				mumble_channel_raw_get(l, client, state->listening_channel_add[i]);
 				lua_settable(l, -3);
@@ -619,14 +678,27 @@ void packet_user_state(lua_State *l, MumbleClient *client, Packet *packet)
 			}
 			lua_setfield(l , -2, "listening_channel_remove");
 		}
+		if (state->n_listening_volume_adjustment > 0) {
+			lua_newtable(l);
+			for (uint32_t i = 0; i < state->n_listening_volume_adjustment; i++) {
+				uint32_t channel_id = state->listening_volume_adjustment[i]->listening_channel;
+				float volume_adjustment = state->listening_volume_adjustment[i]->volume_adjustment;
+
+				lua_pushinteger(l, channel_id);
+				lua_pushnumber(l, volume_adjustment);
+				lua_settable(l, -3);
+
+				MumbleChannel* chan = mumble_channel_get(l, client, channel_id);
+				chan->volume_adjustment = volume_adjustment;
+			}
+			lua_setfield(l , -2, "listening_volume_adjustment");
+		}
 
 		mumble_user_raw_get(l, client, state->session);
 		lua_setfield(l, -2, "user");
 
 		if (user->connected == false) {
 			user->connected = true;
-
-			list_add(&client->session_list, state->session);
 
 			if (client->synced == true) {
 				lua_pushvalue(l, -1); // Push a copy of the event table we will send to the 'OnUserState' hook
@@ -644,6 +716,8 @@ void packet_ban_list(lua_State *l, MumbleClient *client, Packet *packet)
 	if (list == NULL) {
 		return;
 	}
+
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", list->base.descriptor->name, list);
 
 	lua_newtable(l);
 	if (list->n_bans > 0) {
@@ -692,6 +766,8 @@ void packet_text_message(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", msg->base.descriptor->name, msg);
+
 	lua_newtable(l);
 		if (msg->has_actor) {
 			mumble_user_raw_get(l, client, msg->actor);
@@ -731,6 +807,8 @@ void packet_permission_denied(lua_State *l, MumbleClient *client, Packet *packet
 		return;
 	}
 
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", proto->base.descriptor->name, proto);
+
 	lua_newtable(l);
 		if (proto->has_type) {
 			lua_pushinteger(l, proto->type);
@@ -767,6 +845,8 @@ void packet_acl(lua_State *l, MumbleClient *client, Packet *packet)
 	if (acl == NULL) {
 		return;
 	}
+
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", acl->base.descriptor->name, acl);
 
 	lua_newtable(l);
 		mumble_channel_raw_get(l, client, acl->channel_id);
@@ -878,6 +958,8 @@ void packet_query_users(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", users->base.descriptor->name, users);
+
 	lua_newtable(l);
 	if(users->n_ids > 0 && users->n_ids == users->n_names)
 	{
@@ -903,16 +985,17 @@ void packet_crypt_setup(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", crypt->base.descriptor->name, crypt);
+
 	lua_newtable(l);
-#ifdef ENABLE_UDP
 	if (crypt->has_key && crypt->has_client_nonce && crypt->has_server_nonce) {
 		if (!crypt_setKey(client->crypt, crypt->key, crypt->client_nonce, crypt->server_nonce)) {
-			printf("CryptState: Cipher resync failed: Invalid key/nonce from the server\n");
+			mumble_log(LOG_ERROR, "\x1b[35;1mCryptState\x1b[0m: cipher resync failed (Invalid key/nonce from the server)\n");
 		}
 	} else if (crypt->has_server_nonce) {
 		client->resync++;
 		if (!crypt_setDecryptIV(client->crypt, crypt->server_nonce)) {
-			printf("CryptState: Cipher resync failed: Invalid nonce from the server\n");
+			mumble_log(LOG_ERROR, "\x1b[35;1mCryptState\x1b[0m: cipher resync failed (Invalid nonce from the server)\n");
 		}
 	} else {
 		MumbleProto__CryptSetup msg = MUMBLE_PROTO__CRYPT_SETUP__INIT;
@@ -920,19 +1003,18 @@ void packet_crypt_setup(lua_State *l, MumbleClient *client, Packet *packet)
 		msg.client_nonce.len = AES_BLOCK_SIZE;
 		msg.client_nonce.data = (uint8_t*) crypt_getEncryptIV(client->crypt);
 		packet_send(client, PACKET_CRYPTSETUP, &msg);
+		mumble_log(LOG_WARN, "\x1b[35;1mCryptState\x1b[0m: cipher disagreement, renegotiating with server\n");
 	}
 
 	bool validCrypt = crypt_isValid(client->crypt);
 
 	if (validCrypt) {
-		mumble_ping_udp(l, client);
-		mumble_ping_tcp(l, client);
+		mumble_log(LOG_INFO, "\x1b[35;1mCryptState\x1b[0m: handshake complete\n");
+		mumble_ping(l, client);
 	}
 
 	lua_pushboolean(l, validCrypt);
 	lua_setfield(l, -2, "valid");
-
-#endif
 
 	if(crypt->has_key) {
 		char* result;
@@ -966,6 +1048,8 @@ void packet_user_list(lua_State *l, MumbleClient *client, Packet *packet)
 	if (list == NULL) {
 		return;
 	}
+
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", list->base.descriptor->name, list);
 
 	lua_newtable(l);
 	if (list->n_users > 0) {
@@ -1002,12 +1086,14 @@ void packet_permission_query(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", query->base.descriptor->name, query);
+
 	if (query->has_channel_id && query->has_permissions) {
 		MumbleChannel* chan = mumble_channel_get(l, client, query->channel_id);
 		chan->permissions = query->permissions;
 	} else if (query->has_flush && query->flush) {
 		// Loop through all channels and set permissions to 0
-		lua_rawgeti(l, LUA_REGISTRYINDEX, client->channels);
+		mumble_pushref(l, client->channels);
 		lua_pushnil(l);
 		while (lua_next(l, -2)) {
 			if (lua_isuserdata(l, -1) == 1) {
@@ -1044,6 +1130,8 @@ void packet_codec_version(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", codec->base.descriptor->name, codec);
+
 	lua_newtable(l);
 		lua_pushinteger(l, codec->alpha);
 		lua_setfield(l, -2, "alpha");
@@ -1066,6 +1154,8 @@ void packet_user_stats(lua_State *l, MumbleClient *client, Packet *packet)
 	if (stats == NULL) {
 		return;
 	}
+
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", stats->base.descriptor->name, stats);
 
 	lua_newtable(l);
 		if (stats->has_session) {
@@ -1158,8 +1248,11 @@ void packet_user_stats(lua_State *l, MumbleClient *client, Packet *packet)
 
 		if (stats->version != NULL) {
 			lua_newtable(l);
-				if (stats->version->has_version) {
-					lua_pushinteger(l, stats->version->version);
+				if (stats->version->has_version_v1) {
+					lua_pushinteger(l, stats->version->version_v1);
+					lua_setfield(l, -2, "version");
+				} else if (stats->version->has_version_v2) {
+					lua_pushinteger(l, stats->version->version_v2);
 					lua_setfield(l, -2, "version");
 				}
 				lua_pushstring(l, stats->version->release);
@@ -1220,6 +1313,8 @@ void packet_server_config(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", config->base.descriptor->name, config);
+
 	lua_newtable(l);
 		if (config->has_max_bandwidth) {
 			lua_pushinteger(l, config->max_bandwidth);
@@ -1243,6 +1338,10 @@ void packet_server_config(lua_State *l, MumbleClient *client, Packet *packet)
 			lua_pushinteger(l, config->max_users);
 			lua_setfield(l, -2, "max_users");
 		}
+		if (config->has_recording_allowed) {
+			lua_pushinteger(l, config->recording_allowed);
+			lua_setfield(l , -2, "recording_allowed");
+		}
 	mumble_hook_call(l, client, "OnServerConfig", 1);
 
 	mumble_proto__server_config__free_unpacked(config, NULL);
@@ -1255,16 +1354,23 @@ void packet_suggest_config(lua_State *l, MumbleClient *client, Packet *packet)
 		return;
 	}
 
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", config->base.descriptor->name, config);
+
 	lua_newtable(l);
-		if (config->has_version) {
-			lua_pushinteger(l, config->version);
+		if (config->has_version_v1) {
+			lua_pushinteger(l, config->version_v1);
+			lua_setfield(l, -2, "version");
+		} else if (config->has_version_v2) {
+			lua_pushinteger(l, config->version_v2);
 			lua_setfield(l, -2, "version");
 		}
 		if (config->has_positional) {
+			mumble_log(LOG_WARN, "%s[%d] server recommends posisional audio\n", METATABLE_CLIENT, client->self);
 			lua_pushboolean(l, config->positional);
 			lua_setfield(l, -2, "positional");
 		}
 		if (config->has_push_to_talk) {
+			mumble_log(LOG_WARN, "%s[%d] server recommends push-to-talk\n", METATABLE_CLIENT, client->self);
 			lua_pushboolean(l, config->push_to_talk);
 			lua_setfield(l, -2, "push_to_talk");
 		}
@@ -1279,6 +1385,8 @@ void packet_plugin_data(lua_State *l, MumbleClient *client, Packet *packet)
 	if (transmission == NULL) {
 		return;
 	}
+
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", transmission->base.descriptor->name, transmission);
 
 	lua_newtable(l);
 		if (transmission->has_sendersession) {
@@ -1311,7 +1419,7 @@ void packet_plugin_data(lua_State *l, MumbleClient *client, Packet *packet)
 
 const Packet_Handler_Func packet_handler[NUM_PACKETS] = {
 	/*  0 */ packet_server_version, // Version
-	/*  1 */ packet_udp_tunnel, // UDPTunnel
+	/*  1 */ packet_tcp_udp_tunnel, // UDPTunnel
 	/*  2 */ NULL, // Authenticate
 	/*  3 */ packet_server_ping, // Ping
 	/*  4 */ packet_server_reject, // Reject

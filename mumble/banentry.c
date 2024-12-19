@@ -118,10 +118,8 @@ static int banentry_getDuration(lua_State *l)
 }
 
 static int banentry_tostring(lua_State *l)
-{	
-	MumbleProto__BanList__BanEntry *entry = luaL_checkudata(l, 1, METATABLE_BANENTRY);
-
-	lua_pushfstring(l, "%s: %p", METATABLE_BANENTRY, entry);
+{
+	lua_pushfstring(l, "%s: %p", METATABLE_BANENTRY, lua_topointer(l, 1));
 	return 1;
 }
 

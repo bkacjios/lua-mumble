@@ -1,7 +1,17 @@
 local mumble = require("mumble")
 
-local client = assert(mumble.connect("raspberrypi.lan", 64738, "bot.pem", "bot.key"))
-client:auth("Mumble-Bot")
+local client = mumble.client()
+
+assert(client:connect("raspberrypi.lan", 64738, "bot.pem", "bot.key"))
+
+client:hook("OnConnect", function(client)
+	print("OnConnect", client)
+	client:auth("Mumble-Bot")
+end)
+
+client:hook("OnDisconnect", function(client, reason)
+	print("OnDisconnect", reason)
+end)
 
 client:hook("OnServerVersion", function(client, event)
 	print("OnServerVersion", event)
@@ -109,10 +119,6 @@ end)
 
 client:hook("OnAudioStreamEnd", function(client, stream)
 	print("OnAudioStreamEnd", stream)
-end)
-
-client:hook("OnDisconnect", function(client, reason)
-	print("OnDisconnect", reason)
 end)
 
 mumble.loop()

@@ -40,14 +40,15 @@ make uninstall
 -- The mumble library is returned by a require call
 local mumble = require("mumble")
 
--- Connect to a mumble server
--- Returns client metatable object
--- Can return nil and an error string if something went wrong
-mumble.client, [ String error ] = mumble.connect(String host, Number port, String certificate file path, String key file path)
+-- Create a new mumble client
+mumble.client = mumble.client()
 
 -- Main event loop that handles all events, ping, and audio processing
--- This will block the script until disconnect or SIGINT, so call this *after* you create your hooks
+-- This will block the script until SIGINT or mumble.stop(), so call this *after* you create your hooks
 mumble.loop()
+
+-- Break out of the mumble.loop() call
+mumble.stop()
 
 -- The client's user
 -- Is only available *after* "OnServerSync" is called
@@ -55,9 +56,14 @@ mumble.user = mumble.client.me
 mumble.user = mumble.client:getMe()
 mumble.user = mumble.client:getSelf()
 
+-- Run a script in a thread with its own separate Lua environment
+mumble.thread = mumble.thread("filename.lua")
+
 -- A new timer object
 -- The timer itself will do a best-effort at avoiding drift, that is, if you configure a timer to trigger every 10 seconds, then it will normally trigger at exactly 10 second intervals. If, however, your program cannot keep up with the timer (because it takes longer than those 10 seconds to do stuff) the timer will not fire more than once per event loop iteration.
-mumble.timer = mumble.timer()
+-- Timers will keep the reference active until mumble.timer:close() is called.
+-- Timers will dereference themselves if the timer is stopped after the callback funciton call.
+mumble.timer = mumble.timer(Function callback(mumble.timer), Number after = 0, Number repeat = 0)
 
 -- A new voicetarget object
 mumble.voicetarget = mumble.voicetarget()
@@ -87,8 +93,19 @@ Table clients = {
 ### mumble.client
 
 ``` lua
--- Authenticate as a user
-mumble.client:auth(String username, String password, Table tokens)
+-- Begins to connect to a mumble server.
+-- Returns true or false depending if we could start connecting or not.
+-- If connected is false, an error string will also be returned.
+-- Since this method is non-blocking, you can use the "OnConnect" hook to determine when the client has fully connected.
+Boolean connecting, [ String error ] = mumble.client:connect(String host, Number port, String certificate file path, String key file path)
+
+-- Authenticate as a user.
+-- Should be called inside an "OnConnect" hook.
+mumble.client:auth(String username, [ String password, Table tokens ])
+
+-- Manually call a custom hook.
+-- Returns whatever the first hook that responded returned.
+Varargs ... = mumble.client:call(String hook, ...)
 
 -- Set the bots access tokens
 mumble.client:setTokens(Table tokens)
@@ -107,7 +124,7 @@ mumble.client:requestBanList()
 -- When server responds, it will call the 'OnUserList' hook
 mumble.client:requestUserList()
 
--- Disconnect from a mumble server
+-- Disconnect from the connected server
 mumble.client:disconnect()
 
 -- Transmit a plugin data packet to a table of users
@@ -117,15 +134,11 @@ mumble.client:sendPluginData(String dataID, String plugindata, Table {mumble.use
 -- Set speaking to false at the end of a stream
 mumble.client:transmit(Number codec, String encoded_audio_packet, Boolean speaking = true)
 
--- Play an ogg audio file
--- Changing the stream value will allow you to play multiple audio files at once
+-- Open an ogg audio file as an audio stream
 -- If audiostream = nil, it will pass along an error string as to why it couldn't play the file
-mumble.audiostream audiostream, [ String error ] = mumble.client:play(String ogg file path, Number stream = 1, Number volume = 1.0)
+mumble.audiostream audiostream, [ String error ] = mumble.client:openOgg(String ogg file path, Number volume = 1.0)
 
--- Gets the audio stream object given the stream ID
-mumble.audiostream audiostream = mumble.client:getAudioStream(Number stream = 1)
-
--- Gets a table of all currently active audio streams
+-- Gets a table of all currently playing audio streams
 Table audiostreams = mumble.client:getAudioStreams()
 
 -- Structure
@@ -135,27 +148,23 @@ Table audiostreams = {
 	...
 }
 
--- Sets the duration of each audio packet played.
--- Higher quality = higher audio latency
--- Lower quality  = lower audio latency
+-- Sets the size of each audio packet played.
+-- The larger the packet size, the less chance of static.
+-- Larger  = higher audio latency.
+-- Smaller = lower audio latency.
 
-Table mumble.quality = {
-	["LOW"]		= 1,
-	["MEDIUM"]	= 2,
-	["HIGH"]	= 3,
+Table mumble.audio = {
+	["TINY"]	= 1,
+	["SMALL"]	= 2,
+	["MEDIUM"]	= 3,
+	["LARGE"]	= 4,
 }
 
-mumble.client:setAudioQuality(Number quality = [LOW = 1, MEDIUM = 2, HIGH = 3])
+mumble.client:setAudioPacketSize(Number size = [TINY = 1, SMALL = 2, MEDIUM = 3, LARGE = 4])
 
 -- Returns the current duration of each audio packet
--- Default: mumble.quality.HIGH = 3
-Number size = mumble.client:getAudioQuality()
-
--- Checks if the client is currently playing an audio file on the specified audio stream
-Boolean playing = mumble.client:isPlaying(Number stream = 1)
-
--- Stops playing the current audio on the specified audio stream
-mumble.client:stopPlaying(Number stream = 1)
+-- Default: mumble.audio.TINY = 1
+Number size = mumble.client:getAudioPacketSize()
 
 -- Sets the global volume level
 -- Consider this the master volume level
@@ -173,7 +182,11 @@ mumble.client:setComment(String comment)
 
 -- Adds a callback for a specific event
 -- If no unique name is passed, it will default to "hook"
-mumble.client:hook(String hook, [ String unique name = "hook"], Function callback)
+mumble.client:hook(String hook, [ String unique name = "hook" ], Function callback(mumble.client))
+
+-- Remove a callback for a specific event
+-- If no unique name is passed, it will default to "hook"
+mumble.client:unhook(String hook, [ String unique name = "hook" ])
 
 -- Gets all registered callbacks
 Table hooks = mumble.client:getHooks()
@@ -301,7 +314,10 @@ mumble.channel channel = mumble.user:getChannel()
 
 -- Gets the registered ID of the user
 -- Is 0 for unregistered users
-Number userid = mumble.user:getID()
+Number userid = mumble.user:getId()
+
+-- Returns if the user is registered or not
+Boolean registered = mumble.user:isRegistered()
 
 -- Returns if the user is muted or not
 Boolean muted = mumble.user:isMuted()
@@ -399,7 +415,7 @@ mumble.client client = mumble.channel:getClient()
 String name = mumble.channel:getName()
 
 -- Gets the channel ID
-Number id = mumble.channel:getID()
+Number id = mumble.channel:getId()
 
 -- Gets the parent channel
 -- Returns nil on root channel
@@ -480,15 +496,18 @@ mumble.channel:create(String name, String description = "", Number position = 0,
 ### mumble.timer
 
 ``` lua
--- Configure the timer to trigger after after seconds (fractional and negative values are supported).
--- If repeat is 0, then it will automatically be stopped once the timeout is reached.
--- If it is positive, then the timer will automatically be configured to trigger again repeat seconds later, again, and again, until stopped manually.
-mumble.timer:start(Function callback, Number after, Number repeat = 0)
+-- Run the timer
+mumble.timer = mumble.timer:start()
+
+-- Retruns if the timer is currently running
+Boolean running = mumble.timer:isActive()
 
 -- Configure the timer to trigger after after seconds (fractional and negative values are supported).
 -- If repeat is 0., then it will automatically be stopped once the timeout is reached.
 -- If it is positive, then the timer will automatically be configured to trigger again repeat seconds later, again, and again, until stopped manually.
-mumble.timer:set(Number after, Number repeat = 0)
+mumble.timer = mumble.timer:set(Number after, Number repeat = 0)
+
+Number after, repeat = mumble.timer:get()
 
 -- This will act as if the timer timed out, and restarts it again if it is repeating. It basically works like calling mumble.timer.stop, updating the timeout to the repeat value and calling mumble.timer.start.
 -- The exact semantics are as in the following rules, all of which will be applied to the watcher:
@@ -499,6 +518,9 @@ mumble.timer:again()
 
 -- Stops the timer
 mumble.timer:stop()
+
+-- Closes the timer and marks it for garbage collection
+mumble.timer:close()
 ```
 
 ### mumble.voicetarget
@@ -612,16 +634,14 @@ mumble.audiostream:setVolume(Number volume)
 -- Gets the volume of the audio stream
 Number volume = mumble.audiostream:getVolume()
 
--- Gets the stream number of this audio stream
-Number stream = mumble.audiostream:getVolume()
-
 -- Pause the audio
 mumble.audiostream:pause()
 
 -- Resume playing the audio
 mumble.audiostream:play()
 
--- Pauses the audio AND resets playback from the beginning
+-- Pauses the audio AND resets playback to the beginning
+-- Will remove the stream from the mumble.client:getAudioStreams() table
 mumble.audiostream:stop()
 
 -- Will attempt to seek to a given position via sample numbers
@@ -631,14 +651,44 @@ Number samples = mumble.audiostream:seek(String whence ["start", "cur", "end"], 
 -- Returns the duration of the stream given the unit type
 Number samples/seconds = mumble.audiostream:getLength(String units ["seconds", "samples"])
 
+-- Returns a table of information about the audio file.
 Table info = mumble.audiostream:getInfo()
 
-Table comments = mumble.audiostream:getComment()
+-- Structure
+-- Key:		String
+-- Value:	Number
+Table info = {
+	["channels"] = Number channels,
+	["sample_rate"] = Number sample_rate,
+	["setup_memory_required"] = Number setup_memory_required,
+	["setup_temp_memory_required"] = Number setup_temp_memory_required,
+	["temp_memory_required"] = Number temp_memory_required,
+	["max_frame_size"] = Number max_frame_size
+}
 
--- Stops the audio stream from playing.
--- Calls "OnAudioFinished" hook
--- Is lastly removed from the mumble.client:getAudioStreams() table
-mumble.audiostream:close()
+Table comments = mumble.audiostream:getComments()
+
+-- Structure
+-- Contains a list of comments embedded in the file.
+-- This structure is only an example, it's possible for some files to have no comments at all.
+Table comments = {
+        [1] = "TRACKNUMBER=4/11",
+        [2] = "TXXX=iso6mp41",
+        ...
+}
+
+-- Enables the audio stream to loop to the beginning when reaching the end.
+-- Accepts a Boolean value or a Number value.
+-- Boolean = true will cause it to loop forever.
+-- Number = Will loop X amount of times before eventually stopping.
+mumble.audiostream:setLooping([Boolean loop, Number loop_count])
+
+-- Returns if the stream is looping or not
+Boolean looping = mumble.audiostream:isLooping()
+
+-- Retuns how many more times the stream will loop before stopping.
+-- If you used setLooping(true), this will return math.huge (inf)
+Number count = mumble.audiostream:getLoopCount()
 ```
 
 ### mumble.acl
@@ -709,6 +759,14 @@ Table mumble.deny = {
 ```
 
 ## hooks
+
+### `OnConnect (mumble.client client)`
+
+Called when the connection to the server is fully established.
+
+### `OnDisconnect (mumble.client client, String reason)`
+
+Called when the connection to the server is disconnected for any reason.
 
 ### `OnServerVersion (mumble.client client, Table event)`
 
@@ -912,7 +970,7 @@ Table event = {
 	["target"]			= Number target,
 	["sequence"]		= Number sequence,
 	["data"]			= String encoded_opus_packet,
-	["frame_header"]	= Number frame_header, // The frame header usually contains a length and terminator bit
+	["frame_header"]	= Number frame_header, -- The frame header usually contains a length and terminator bit
 	["speaking"]		= Boolean speaking,
 }
 ```

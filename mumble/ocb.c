@@ -1,15 +1,13 @@
-// Copyright 2020-2021 The Mumble Developers. All rights reserved.
+// Copyright 2020-2023 The Mumble Developers. All rights reserved.
 // Use of this source code is governed by a BSD-style license
 // that can be found in the LICENSE file at the root of the
 // Mumble source tree or at <https://www.mumble.info/LICENSE>.
 
 /*
  * This code implements OCB-AES128.
- * In the US, OCB is covered by patents. The inventor has given a license
- * to all programs distributed under the GPL.
- * Mumble is BSD (revised) licensed, meaning you can use the code in a
- * closed-source program. If you do, you'll have to either replace
- * OCB with something else or get yourself a license.
+ * The algorithm design was dedicated to the public domain.
+ * https://www.cs.ucdavis.edu/~rogaway/ocb/license.htm
+ * https://www.cs.ucdavis.edu/~rogaway/ocb/ocb-faq.htm
  */
 
 #include "ocb.h"
@@ -33,7 +31,20 @@ mumble_crypt* crypt_new() {
 	memset(crypt->decrypt_iv, 0, AES_BLOCK_SIZE);
 	crypt->uiGood=crypt->uiLate=crypt->uiLost=crypt->uiResync=0;
 
+	crypt->enc_ctx_ocb_enc = EVP_CIPHER_CTX_new();
+	crypt->dec_ctx_ocb_enc = EVP_CIPHER_CTX_new();
+	crypt->enc_ctx_ocb_dec = EVP_CIPHER_CTX_new();
+	crypt->dec_ctx_ocb_dec = EVP_CIPHER_CTX_new();
+
 	return crypt;
+}
+
+void crypt_free(mumble_crypt *crypt) {
+	EVP_CIPHER_CTX_free(crypt->enc_ctx_ocb_enc);
+	EVP_CIPHER_CTX_free(crypt->dec_ctx_ocb_enc);
+	EVP_CIPHER_CTX_free(crypt->enc_ctx_ocb_dec);
+	EVP_CIPHER_CTX_free(crypt->dec_ctx_ocb_dec);
+	free(crypt);
 }
 
 bool crypt_isValid(mumble_crypt *crypt) {
@@ -44,8 +55,6 @@ void crypt_genKey(mumble_crypt *crypt) {
 	RAND_bytes(crypt->raw_key, AES_KEY_SIZE_BYTES);
 	RAND_bytes(crypt->encrypt_iv, AES_BLOCK_SIZE);
 	RAND_bytes(crypt->decrypt_iv, AES_BLOCK_SIZE);
-	AES_set_encrypt_key(crypt->raw_key, AES_KEY_SIZE_BITS, &crypt->encrypt_key);
-	AES_set_decrypt_key(crypt->raw_key, AES_KEY_SIZE_BITS, &crypt->decrypt_key);
 	crypt->bInit = true;
 }
 
@@ -54,8 +63,6 @@ bool crypt_setKey(mumble_crypt *crypt, ProtobufCBinaryData rkey, ProtobufCBinary
 		memcpy(crypt->raw_key, rkey.data, AES_KEY_SIZE_BYTES);
 		memcpy(crypt->encrypt_iv, eiv.data, AES_BLOCK_SIZE);
 		memcpy(crypt->decrypt_iv, div.data, AES_BLOCK_SIZE);
-		AES_set_encrypt_key(crypt->raw_key, AES_KEY_SIZE_BITS, &crypt->encrypt_key);
-		AES_set_decrypt_key(crypt->raw_key, AES_KEY_SIZE_BITS, &crypt->decrypt_key);
 		crypt->bInit = true;
 		return true;
 	}
@@ -118,7 +125,7 @@ bool crypt_encrypt(mumble_crypt *crypt, const unsigned char *source, unsigned ch
 		if (++crypt->encrypt_iv[i])
 			break;
 
-	if (!crypt_ocb_encrypt(crypt, source, dst + 4, plain_length, crypt->encrypt_iv, tag)) {
+	if (!crypt_ocb_encrypt(crypt, source, dst + 4, plain_length, crypt->encrypt_iv, tag, true)) {
 		return false;
 	}
 
@@ -214,8 +221,18 @@ bool crypt_decrypt(mumble_crypt *crypt, const unsigned char *source, unsigned ch
 		memcpy(crypt->decrypt_iv, saveiv, AES_BLOCK_SIZE);
 
 	crypt->uiGood++;
-	crypt->uiLate += late;
-	crypt->uiLost += lost;
+	// crypt->uiLate += late, but we have to make sure we don't cause wrap-arounds on the unsigned lhs
+	if (late > 0) {
+		crypt->uiLate += late;
+	} else if (crypt->uiLate > abs(late)) {
+		crypt->uiLate -= abs(late);
+	}
+	// crypt->uiLost += lost, but we have to make sure we don't cause wrap-arounds on the unsigned lhs
+	if (lost > 0) {
+		crypt->uiLost += lost;
+	} else if (crypt->uiLost > abs(lost)) {
+		crypt->uiLost -= abs(lost);
+	}
 	return true;
 }
 
@@ -264,17 +281,34 @@ static void inline ZERO(keyblock *block) {
 	memset(block, 0, BLOCKSIZE * sizeof(block));
 }
 
-#define AESencrypt(src, dst, key) \
-	AES_encrypt((const unsigned char*)src, (unsigned char*)dst, key);
-#define AESdecrypt(src, dst, key) \
-	AES_decrypt((const unsigned char*)src, (unsigned char*)dst, key);
+#define AESencrypt_ctx(src, dst, key, enc_ctx)                                                      \
+	{                                                                                               \
+		int outlen = 0;                                                                             \
+		EVP_EncryptInit_ex(enc_ctx, EVP_aes_128_ecb(), NULL, key, NULL);                            \
+		EVP_CIPHER_CTX_set_padding(enc_ctx, 0);                                                     \
+		EVP_EncryptUpdate(enc_ctx, (unsigned char*)dst, &outlen,               \
+						  (const unsigned char*)src, AES_BLOCK_SIZE);          \
+		EVP_EncryptFinal_ex(enc_ctx, ((unsigned char*)dst + outlen), &outlen); \
+	}
+#define AESdecrypt_ctx(src, dst, key, dec_ctx)                                                      \
+	{                                                                                               \
+		int outlen = 0;                                                                             \
+		EVP_DecryptInit_ex(dec_ctx, EVP_aes_128_ecb(), NULL, key, NULL);                            \
+		EVP_CIPHER_CTX_set_padding(dec_ctx, 0);                                                     \
+		EVP_DecryptUpdate(dec_ctx, (unsigned char*)dst, &outlen,               \
+						  (const unsigned char*)src, AES_BLOCK_SIZE);          \
+		EVP_DecryptFinal_ex(dec_ctx, ((unsigned char*)dst + outlen), &outlen); \
+	}
 
-bool crypt_ocb_encrypt(mumble_crypt *crypt, const unsigned char *plain, unsigned char *encrypted, unsigned int len, const unsigned char *nonce, unsigned char *tag) {
+#define AESencrypt(src, dst, key) AESencrypt_ctx(src, dst, key, crypt->enc_ctx_ocb_enc)
+#define AESdecrypt(src, dst, key) AESdecrypt_ctx(src, dst, key, crypt->dec_ctx_ocb_enc)
+
+bool crypt_ocb_encrypt(mumble_crypt *crypt, const unsigned char *plain, unsigned char *encrypted, unsigned int len, const unsigned char *nonce, unsigned char *tag, bool modifyPlainOnXEXStarAttack) {
 	keyblock checksum, delta, tmp, pad;
 	bool success = true;
 
 	// Initialize
-	AESencrypt(nonce, delta, &crypt->encrypt_key);
+	AESencrypt(nonce, delta, crypt->raw_key);
 	ZERO(&checksum);
 
 	while (len > AES_BLOCK_SIZE) {
@@ -288,16 +322,16 @@ bool crypt_ocb_encrypt(mumble_crypt *crypt, const unsigned char *plain, unsigned
 				sum |= plain[i];
 			}
 			if (sum == 0) {
-				//if (modifyPlainOnXEXStarAttack) {
+				if (modifyPlainOnXEXStarAttack) {
 					// The assumption that critical packets do not turn up by pure chance turned out to be incorrect
 					// since digital silence appears to produce them in mass.
 					// So instead we now modify the packet in a way which should not affect the audio but will
 					// prevent the attack.
 					flipABit = true;
-				//} else {
+				} else {
 					// This option still exists but only to allow us to test ocb_decrypt's detection.
-					// success = false;
-				//}
+					success = false;
+				}
 			}
 		}
 
@@ -306,7 +340,7 @@ bool crypt_ocb_encrypt(mumble_crypt *crypt, const unsigned char *plain, unsigned
 		if (flipABit) {
 			*(subblock*)tmp ^= 1;
 		}
-		AESencrypt(tmp, tmp, &crypt->encrypt_key);
+		AESencrypt(tmp, tmp, crypt->raw_key);
 		XOR((subblock*)encrypted, delta, tmp);
 		XOR(checksum, checksum, (const subblock*)plain);
 		if (flipABit) {
@@ -322,7 +356,7 @@ bool crypt_ocb_encrypt(mumble_crypt *crypt, const unsigned char *plain, unsigned
 	ZERO(&tmp);
 	tmp[BLOCKSIZE - 1] = SWAPPED(len * 8);
 	XOR(tmp, tmp, delta);
-	AESencrypt(tmp, pad, &crypt->encrypt_key);
+	AESencrypt(tmp, pad, crypt->raw_key);
 	memcpy(tmp, plain, len);
 	memcpy((unsigned char *)tmp + len, (const unsigned char *)pad + len,
 		   AES_BLOCK_SIZE - len);
@@ -332,23 +366,29 @@ bool crypt_ocb_encrypt(mumble_crypt *crypt, const unsigned char *plain, unsigned
 
 	S3(delta);
 	XOR(tmp, delta, checksum);
-	AESencrypt(tmp, tag, &crypt->encrypt_key);
+	AESencrypt(tmp, tag, crypt->raw_key);
 
 	return success;
 }
+
+#undef AESencrypt
+#undef AESdecrypt
+
+#define AESencrypt(src, dst, key) AESencrypt_ctx(src, dst, key, crypt->enc_ctx_ocb_dec)
+#define AESdecrypt(src, dst, key) AESdecrypt_ctx(src, dst, key, crypt->dec_ctx_ocb_dec)
 
 bool crypt_ocb_decrypt(mumble_crypt *crypt, const unsigned char *encrypted, unsigned char *plain, unsigned int len, const unsigned char *nonce, unsigned char *tag) {
 	keyblock checksum, delta, tmp, pad;
 	bool success = true;
 
 	// Initialize
-	AESencrypt(nonce, delta, &crypt->encrypt_key);
+	AESencrypt(nonce, delta, crypt->raw_key);
 	ZERO(&checksum);
 
 	while (len > AES_BLOCK_SIZE) {
 		S2(delta);
 		XOR(tmp, delta, (const subblock*)encrypted);
-		AESdecrypt(tmp, tmp, &crypt->decrypt_key);
+		AESdecrypt(tmp, tmp, crypt->raw_key);
 		XOR((subblock*)plain, delta, tmp);
 		XOR(checksum, checksum, (const subblock*)plain);
 		len -= AES_BLOCK_SIZE;
@@ -360,7 +400,7 @@ bool crypt_ocb_decrypt(mumble_crypt *crypt, const unsigned char *encrypted, unsi
 	ZERO(&tmp);
 	tmp[BLOCKSIZE - 1] = SWAPPED(len * 8);
 	XOR(tmp, tmp, delta);
-	AESencrypt(tmp, pad, &crypt->encrypt_key);
+	AESencrypt(tmp, pad, crypt->raw_key);
 	memset(tmp, 0, AES_BLOCK_SIZE);
 	memcpy(tmp, encrypted, len);
 	XOR(tmp, tmp, pad);
@@ -378,9 +418,14 @@ bool crypt_ocb_decrypt(mumble_crypt *crypt, const unsigned char *encrypted, unsi
 
 	S3(delta);
 	XOR(tmp, delta, checksum);
-	AESencrypt(tmp, tag, &crypt->encrypt_key);
+	AESencrypt(tmp, tag, crypt->raw_key);
 
 	return success;
 }
 
-
+#undef AESencrypt
+#undef AESdecrypt
+#undef BLOCKSIZE
+#undef SHIFTBITS
+#undef SWAPPED
+#undef HIGHBIT
