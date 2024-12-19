@@ -378,6 +378,8 @@ static int audiostream_play(lua_State *l)
 
 		// Add to our stream list
 		list_add(&sound->client->stream_list, sound->refrence, sound);
+	} else {
+		stb_vorbis_seek_start(sound->ogg);
 	}
 	return 0;
 }
