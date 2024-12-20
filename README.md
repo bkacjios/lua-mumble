@@ -626,7 +626,9 @@ String decoded = mumble.decoder:decode_float(String encoded)
 Boolean isplaying = mumble.audiostream:isPlaying()
 
 -- Sets the volume of the audio stream
-mumble.audiostream:setVolume(Number volume)
+-- Returns itself so you can stack calls
+-- example: client:openOgg("file.ogg"):setVolume(0.5):setLooping(true):play()
+mumble.audiostream = mumble.audiostream:setVolume(Number volume)
 
 -- Gets the volume of the audio stream
 Number volume = mumble.audiostream:getVolume()
@@ -675,10 +677,11 @@ Table comments = {
 }
 
 -- Enables the audio stream to loop to the beginning when reaching the end.
--- Accepts a Boolean value or a Number value.
 -- Boolean = true will cause it to loop forever.
 -- Number = Will loop X amount of times before eventually stopping.
-mumble.audiostream:setLooping([Boolean loop, Number loop_count])
+-- Returns itself so you can stack calls.
+-- example: client:openOgg("file.ogg"):setVolume(0.5):setLooping(true):play()
+mumble.audiostream = mumble.audiostream:setLooping([Boolean loop, Number loop_count])
 
 -- Returns if the stream is looping or not
 Boolean looping = mumble.audiostream:isLooping()

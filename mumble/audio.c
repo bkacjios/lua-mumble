@@ -207,12 +207,14 @@ void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream *sound
 	);
 
 	if (channels == 1 && read > 0) {
+		// The audio is mono, so make both channels the same
 		for (int i = 0; i < read; i++) {
 			sound->buffer[i].r = sound->buffer[i].l;
 		}
 	}
 
 	if (source_rate != AUDIO_SAMPLE_RATE) {
+		// Resample using linear interpolation
 		float resample_ratio = (float)AUDIO_SAMPLE_RATE / source_rate;
 		sample_size = (uint32_t)(sample_size * resample_ratio);
 		read = (long)(read * resample_ratio);
@@ -236,6 +238,7 @@ void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream *sound
 	}
 
 	if (read < sample_size) {
+		// We reached the end of the stream
 		handle_audio_stream_end(l, client, sound, didLoop);
 	}
 
@@ -349,7 +352,8 @@ static int audiostream_setVolume(lua_State *l)
 {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	sound->volume = luaL_checknumber(l, 2);
-	return 0;
+	lua_pushvalue(l, 1);
+	return 1;
 }
 
 static int audiostream_getVolume(lua_State *l)
@@ -512,7 +516,8 @@ static int audiostream_setLooping(lua_State *l)
 			return luaL_argerror(l, 2, msg);
 	}
 
-	return 0;
+	lua_pushvalue(l, 1);
+	return 1;
 }
 
 static int audiostream_isLooping(lua_State *l)
