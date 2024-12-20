@@ -8,7 +8,7 @@ A lua module to connect to a mumble server and interact with it
 sudo apt-get install libluajit-5.1-dev protobuf-c libprotobuf-c-dev libssl-dev libopus-dev libev-dev
 ```
 
-Note: `libluajit-5.1-dev` can be substituted with `liblua5.1-0-dev`, `liblua5.2-dev`, or `liblua5.3-dev` depending on your needs.
+Note: `liblua5.1-0-dev` can be substituted with `libluajit-5.1-dev`, `liblua5.2-dev`, or `liblua5.3-dev` depending on your needs.
 
 ## Make usage
 
@@ -16,9 +16,9 @@ Note: `libluajit-5.1-dev` can be substituted with `liblua5.1-0-dev`, `liblua5.2-
 # Removes all object files, generated protobuf c/h files, dependency files, and mumble.so
 make clean
 
-# Makes everything for luajit
-# Replace LUAVER and LUALIB depending on what version of Lua you want to compile for
-make all LUAVER=luajit LUALIB=/usr/local/lib/lua/5.1/
+# Makes everything for the provided LUAVER (luajit, lua5.1, lua5.2, lua5.3)
+# Defaults to lua5.1
+make all LUAVER=lua5.1
 
 # Make everything with debug flags for use with a debugger
 # Example: gdb --args luajit script.lua
@@ -27,8 +27,9 @@ make debug
 # Makes only the protobuf c files in the ./proto folder
 make proto
 
-# Copies mumble.so in /usr/local/lib/lua/5.1/
-make install
+# Copies mumble.so to the provided LUALIB path
+# Defaults to /usr/local/lib/lua/5.1/ if not provided
+make install LUALIB=/usr/local/lib/lua/5.1/
 
 # Removes mumble.so in /usr/local/lib/lua/5.1/
 make uninstall
