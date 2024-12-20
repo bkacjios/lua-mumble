@@ -16,10 +16,12 @@ Note: `libluajit-5.1-dev` can be substituted with `liblua5.1-0-dev`, `liblua5.2-
 # Removes all object files, generated protobuf c/h files, dependency files, and mumble.so
 make clean
 
-# Makes everything
-make all
+# Makes everything for luajit
+# Replace LUAVER and LUALIB depending on what version of Lua you want to compile for
+make all LUAVER=luajit LUALIB=/usr/local/lib/lua/5.1/
 
 # Make everything with debug flags for use with a debugger
+# Example: gdb --args luajit script.lua
 make debug
 
 # Makes only the protobuf c files in the ./proto folder
