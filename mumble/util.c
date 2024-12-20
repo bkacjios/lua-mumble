@@ -166,31 +166,42 @@ void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level) {
 
 	// Start traversing the call stack from the specified level
 	while (lua_getstack(L1, level++, &ar)) {
-		if (lua_getinfo(L1, "Sln", &ar)) {
-			luaL_addstring(&b, "  ");
-			if (ar.short_src) {
+		if (lua_getinfo(L1, "Slnf", &ar)) {
+			luaL_addstring(&b, "\t"); // Indent for stack trace entries
+
+			// Add source and line number
+			if (ar.currentline > 0) {
 				luaL_addstring(&b, ar.short_src);
+				luaL_addstring(&b, ":");
+				luaL_addstring(&b, lua_pushfstring(L, "%d", ar.currentline));
+				lua_pop(L, 1); // Pop the formatted string
+			} else {
+				luaL_addstring(&b, "[C]");
 			}
-			luaL_addstring(&b, ":");
-			luaL_addstring(&b, (ar.currentline > 0 ? lua_pushfstring(L, "%d", ar.currentline) : "unknown"));
-			lua_pop(L, 1); // Pop the formatted string
 
-			luaL_addstring(&b, ": in ");
-
+			// Add function information
 			if (*ar.namewhat != '\0') {
-				luaL_addstring(&b, ar.namewhat);
-				luaL_addstring(&b, " '");
+				luaL_addstring(&b, ": in function '");
 				luaL_addstring(&b, (ar.name ? ar.name : "?"));
 				luaL_addstring(&b, "'");
 			} else if (*ar.what == 'm') {
-				luaL_addstring(&b, "main chunk");
+				luaL_addstring(&b, ": in main chunk");
 			} else if (*ar.what == 'C') {
-				luaL_addstring(&b, "C function");
+				const void* func_ptr = lua_topointer(L1, -1); // Function is already on the stack
+				luaL_addstring(&b, ": at ");
+				luaL_addstring(&b, lua_pushfstring(L, "%p", func_ptr));
+				lua_pop(L, 1); // Pop the formatted string
 			} else {
-				luaL_addstring(&b, "function ?");
+				luaL_addstring(&b, ": in function <");
+				luaL_addstring(&b, ar.short_src);
+				luaL_addstring(&b, ":");
+				luaL_addstring(&b, lua_pushfstring(L, "%d", ar.linedefined));
+				lua_pop(L, 1); // Pop the formatted string
+				luaL_addstring(&b, ">");
 			}
 
 			luaL_addstring(&b, "\n");
+			lua_pop(L1, 1); // Pop the function pushed by "f" from the stack
 		}
 	}
 

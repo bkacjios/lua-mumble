@@ -2,7 +2,7 @@
 # lua5.1, lua5.2, lua5.3, luajit
 
 ifndef LUAVER
-LUAVER = luajit
+LUAVER = lua5.1
 endif
 
 # Directory to install our module
