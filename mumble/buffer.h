@@ -11,8 +11,7 @@ typedef struct
 } ByteBuffer;
 
 #define buffer_available(buffer, size) \
-	if(buffer == NULL) return 0; \
-	if(buffer->position + size > buffer->limit) return 0; \
+	if(buffer == NULL || buffer->position + size > buffer->limit) return 0; \
 
 #define buffer_rwh(name,type) \
 	uint8_t buffer_read##name(ByteBuffer* buffer, type* output); \

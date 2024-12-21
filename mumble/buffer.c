@@ -16,23 +16,35 @@ ByteBuffer* buffer_new(uint64_t size)
 ByteBuffer* buffer_init(ByteBuffer* buffer, uint64_t size)
 {
 	buffer->capacity = size;
+	buffer->limit = 0;
+	buffer->position = 0;
 	buffer->data = malloc(sizeof(uint8_t) * size);
 	if(buffer->data == NULL) return NULL;
-	buffer_clear(buffer);
+	return buffer;
+}
+
+ByteBuffer* buffer_init_data(ByteBuffer* buffer, const char* data, uint64_t size) {
+	buffer = buffer_init(buffer, size);
+	if (buffer != NULL) {
+		buffer_write(buffer, data, size);
+	}
 	return buffer;
 }
 
 static void buffer_adjust(ByteBuffer* buffer, uint64_t size)
 {
-	if(buffer->position + size > buffer->capacity) {
-		// The write will cause us to go beyond our buffers capacity.
-		// Resize by adding double of what we are about to write, to give us some headroom.
-		uint64_t resize = buffer->capacity * ceil((buffer->position + size) / buffer->capacity) * 2;
-		buffer->data = realloc(buffer->data, resize);
+	uint64_t new_position = buffer->position + size;
+	if (new_position > buffer->capacity) {
+		uint64_t new_capacity = buffer->capacity + (buffer->capacity / 2);
+		while (new_position > new_capacity) {
+			new_capacity += (new_capacity / 2);
+		}
+		buffer->data = realloc(buffer->data, new_capacity);
 		if (buffer->data != NULL) {
-			mumble_log(LOG_DEBUG, "%s: %p resizing from %d to %d bytes\n", METATABLE_BUFFER, buffer, buffer->capacity, resize);
-			buffer->capacity = resize;
-			buffer->limit = resize;
+			mumble_log(LOG_DEBUG, "%s: %p resizing from %llu to %llu bytes\n", METATABLE_BUFFER, buffer, buffer->capacity, new_capacity);
+			buffer->capacity = new_capacity;
+		} else {
+			mumble_log(LOG_ERROR, "%s: %p failed to resize buffer\n", METATABLE_BUFFER, buffer);
 		}
 	}
 }
@@ -46,15 +58,18 @@ void buffer_free(ByteBuffer* buffer)
 void buffer_clear(ByteBuffer* buffer)
 {
 	memset(buffer->data, 0, buffer->capacity);
-	buffer_reset(buffer);
+	buffer->position = 0;
+	buffer->limit = 0;
 }
 
 void buffer_compact(ByteBuffer* buffer)
 {
-	uint64_t numberOfBytes = buffer->limit - buffer->position;
-	memmove(buffer->data, &(buffer->data[buffer->position]), numberOfBytes);
+	uint64_t remaining = buffer->limit - buffer->position;
+	if (remaining > 0) {
+		memmove(buffer->data, buffer->data + buffer->position, remaining);
+		buffer->position = remaining;
+	}
 	buffer->limit = buffer->capacity;
-	buffer->position = numberOfBytes;
 }
 
 void buffer_reset(ByteBuffer* buffer)
@@ -74,6 +89,7 @@ uint64_t buffer_write(ByteBuffer* buffer, const void* data, uint64_t size)
 	buffer_adjust(buffer, size);
 	memcpy(buffer->data + buffer->position, data, size);
 	buffer->position += size;
+	buffer->limit = buffer->position;
 	return size;
 }
 
@@ -219,18 +235,46 @@ uint8_t buffer_readVarInt(ByteBuffer* buffer, uint64_t* output)
 
 int mumble_buffer_new(lua_State *l)
 {
-	int size = luaL_optinteger(l, 2, 128);
+	int type = lua_type(l, 2);
 
 	ByteBuffer *buffer = lua_newuserdata(l, sizeof(ByteBuffer));
-	buffer = buffer_init(buffer, size);
-	if(buffer == NULL) return luaL_error(l, "out of memory");
 
-	buffer_clear(buffer);
+	if(buffer == NULL) return luaL_error(l, "error creating buffer (out of memory)");
+
+	switch (type) {
+		case LUA_TNUMBER:
+			// Initialize with a given allocation size
+			buffer = buffer_init(buffer, luaL_checkinteger(l, 2));
+			break;
+		case LUA_TSTRING:
+			// Initialize with raw data
+			size_t size;
+			const char* data = luaL_checklstring(l, 2, &size);
+			buffer = buffer_init_data(buffer, data, size);
+			break;
+		case LUA_TNONE:
+			// No argument given, allocate 1K by default
+			buffer = buffer_init(buffer, 1024);
+			break;
+		default:
+			const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
+				lua_typename(l, LUA_TNUMBER), lua_typename(l, LUA_TSTRING), luaL_typename(l, 2));
+			return luaL_argerror(l, 1, msg);
+	}
+
+	if(buffer == NULL) return luaL_error(l, "error initializing buffer (out of memory)");
 
 	luaL_getmetatable(l, METATABLE_BUFFER);
 	lua_setmetatable(l, -2);
 
 	// Return the buffer metatable
+	return 1;
+}
+
+int luabuffer_data(lua_State *l)
+{
+	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
+	lua_pushlstring(l, buffer->data, buffer->limit);
 	return 1;
 }
 
@@ -262,21 +306,21 @@ int luabuffer_flip(lua_State *l)
 	return 0;
 }
 
-int luabuffer_getCapacity(lua_State *l)
+int luabuffer_capacity(lua_State *l)
 {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
 	lua_pushinteger(l, buffer->capacity);
 	return 1;
 }
 
-int luabuffer_getPosition(lua_State *l)
+int luabuffer_position(lua_State *l)
 {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
 	lua_pushinteger(l, buffer->position);
 	return 1;
 }
 
-int luabuffer_getLimit(lua_State *l)
+int luabuffer_limit(lua_State *l)
 {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
 	lua_pushinteger(l, buffer->limit);
@@ -297,8 +341,11 @@ int luabuffer_read(lua_State *l)
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
 	uint64_t size = luaL_checkinteger(l, 2);
 	char read[size];
-	memset(read, 0, size);
-	buffer_read(buffer, &read, size);
+
+	if (!buffer_read(buffer, &read, size)) {
+		return luaL_error(l, "attempt to read beyond buffer limit ");
+	}
+
 	lua_pushlstring(l, read, size);
 	return 1;
 }
@@ -314,7 +361,11 @@ int luabuffer_readByte(lua_State *l)
 {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
 	uint8_t value;
-	buffer_readByte(buffer, &value);
+
+	if (!buffer_readByte(buffer, &value)) {
+		return luaL_error(l, "attempt to read beyond buffer limit ");
+	}
+
 	lua_pushinteger(l, value);
 	return 1;
 }
@@ -330,7 +381,11 @@ int luabuffer_readShort(lua_State *l)
 {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
 	uint16_t value;
-	buffer_readShort(buffer, &value);
+
+	if (!buffer_readShort(buffer, &value)) {
+		return luaL_error(l, "attempt to read beyond buffer limit ");
+	}
+
 	lua_pushinteger(l, value);
 	return 1;
 }
@@ -346,7 +401,11 @@ int luabuffer_readInt(lua_State *l)
 {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
 	int32_t value;
-	buffer_readInt(buffer, &value);
+
+	if (!buffer_readInt(buffer, &value)) {
+		return luaL_error(l, "attempt to read beyond buffer limit ");
+	}
+
 	lua_pushinteger(l, value);
 	return 1;
 }
@@ -362,7 +421,11 @@ int luabuffer_readVarInt(lua_State *l)
 {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
 	uint64_t value;
-	buffer_readVarInt(buffer, &value);
+
+	if (!buffer_readVarInt(buffer, &value)) {
+		return luaL_error(l, "attempt to read beyond buffer limit ");
+	}
+
 	lua_pushinteger(l, value);
 	return 1;
 }
@@ -378,7 +441,11 @@ int luabuffer_readFloat(lua_State *l)
 {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
 	float value;
-	buffer_readFloat(buffer, &value);
+
+	if (!buffer_readFloat(buffer, &value)) {
+		return luaL_error(l, "attempt to read beyond buffer limit ");
+	}
+
 	lua_pushnumber(l, value);
 	return 1;
 }
@@ -394,7 +461,11 @@ int luabuffer_readDouble(lua_State *l)
 {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
 	double value;
-	buffer_readDouble(buffer, &value);
+
+	if (!buffer_readDouble(buffer, &value)) {
+		return luaL_error(l, "attempt to read beyond buffer limit ");
+	}
+
 	lua_pushnumber(l, value);
 	return 1;
 }
@@ -415,11 +486,12 @@ int luabuffer_readString(lua_State *l)
 	uint64_t size;
 	uint8_t read = buffer_readVarInt(buffer, &size);
 	char string[size+1];
-	if (read > 0 && buffer_read(buffer, string, size) > 0) {
-		lua_pushlstring(l, string, size);
-	} else {
-		lua_pushstring(l, "");
+
+	if (!buffer_read(buffer, string, size)) {
+		return luaL_error(l, "attempt to read beyond buffer limit ");
 	}
+
+	lua_pushlstring(l, string, size);
 	return 1;
 }
 
@@ -434,7 +506,11 @@ int luabuffer_readBool(lua_State *l)
 {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
 	uint8_t value;
-	buffer_readByte(buffer, &value);
+
+	if (!buffer_readByte(buffer, &value)) {
+		return luaL_error(l, "attempt to read beyond buffer limit ");
+	}
+
 	lua_pushboolean(l, value);
 	return 1;
 }
@@ -454,13 +530,18 @@ int buffer_gc(lua_State *l)
 }
 
 const luaL_Reg mumble_buffer[] = {
+	{"data", luabuffer_data},
+	{"getData", luabuffer_data},
 	{"clear", luabuffer_clear},
 	{"compact", luabuffer_compact},
 	{"reset", luabuffer_reset},
 	{"flip", luabuffer_flip},
-	{"getCapacity", luabuffer_getCapacity},
-	{"getPosition", luabuffer_getPosition},
-	{"getLimit", luabuffer_getLimit},
+	{"capacity", luabuffer_capacity},
+	{"getCapacity", luabuffer_capacity},
+	{"position", luabuffer_position},
+	{"getPosition", luabuffer_position},
+	{"limit", luabuffer_limit},
+	{"getLimit", luabuffer_limit},
 	{"write", luabuffer_write},
 	{"read", luabuffer_read},
 	{"writeByte", luabuffer_writeByte},

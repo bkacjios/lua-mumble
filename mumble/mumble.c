@@ -387,71 +387,86 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 		uint8_t unencrypted[size];
 		memset(unencrypted, 0, sizeof(unencrypted));
 
-		if (crypt_isValid(client->crypt) && crypt_decrypt(client->crypt, encrypted, unencrypted, size))
-		{
-			size -= 4; // Decryption got rid of 4 bytes
-			uint8_t header = unencrypted[0];
+		if (!crypt_isValid(client->crypt)) {
+			mumble_log(LOG_ERROR, "[UDP] Unable to decrypt UDP packet, cryptstate invalid: %x\n", encrypted);
+			return;
+		}
 
-			if (client->legacy) {
-				uint8_t id = (header >> 5) & 0x7;
+		if (!crypt_decrypt(client->crypt, encrypted, unencrypted, size)) {
+			mumble_log(LOG_ERROR, "[UDP] Unable to decrypt UDP packet: %x\n", encrypted);
+			return;
+		}
 
-				switch (id) {
-					case LEGACY_PROTO_UDP_PING:
-					{
-						int read = 1;
-						uint64_t timestamp = util_get_varint(unencrypted + read, &read);
+		size -= 4; // Decryption got rid of 4 bytes
+		uint8_t header = unencrypted[0];
 
-						mumble_log(LOG_TRACE, "[UDP] Received legacy ping packet (size=%u, id=%u, timestamp=%lu)\n", size, id, timestamp);
+		if (client->legacy) {
+			uint8_t id = (header >> 5) & 0x7;
 
-						mumble_update_ping(l, client, timestamp);
-						return;
-					}
-					case LEGACY_UDP_OPUS:
-					case LEGACY_UDP_SPEEX:
-					case LEGACY_UDP_CELT_ALPHA:
-					case LEGACY_UDP_CELT_BETA:
-					{
-						uint8_t target = header >> 0x1F;
+			switch (id) {
+				case LEGACY_PROTO_UDP_PING:
+				{
+					int read = 1;
+					uint64_t timestamp = util_get_varint(unencrypted + read, &read);
 
-						int read = 1;
-						int session = util_get_varint(unencrypted + read, &read);
+					mumble_log(LOG_TRACE, "[UDP] Received legacy ping packet (size=%u, id=%u, timestamp=%lu)\n", size, id, timestamp);
 
-						mumble_log(LOG_TRACE, "[UDP] Received legacy audio packet (size=%u, id=%u, target=%u, session=%u)\n", size, id, target, session);
-						mumble_handle_speaking_hooks_legacy(l, client, unencrypted + read, id, target, session);
-						return;
-					}
+					mumble_update_ping(l, client, timestamp);
+					return;
 				}
-			} else {
-				switch (header) {
-					case PROTO_UDP_AUDIO:
-					{
-						MumbleUDP__Audio *audio = mumble_udp__audio__unpack(NULL, size - 1, unencrypted + 1);
-						if (audio != NULL) {
-							mumble_log(LOG_TRACE, "[UDP] Received %s: %p\n", audio->base.descriptor->name, audio);
-							mumble_handle_speaking_hooks_protobuf(l, client, audio, audio->sender_session);
-							mumble_udp__audio__free_unpacked(audio, NULL);
-						} else {
-							mumble_log(LOG_ERROR, "[UDP] Error unpacking UDP audio packet\n");
-						}
-						return;
+				case LEGACY_UDP_OPUS:
+				case LEGACY_UDP_SPEEX:
+				case LEGACY_UDP_CELT_ALPHA:
+				case LEGACY_UDP_CELT_BETA:
+				{
+					uint8_t target = header >> 0x1F;
+
+					int read = 1;
+					int session = util_get_varint(unencrypted + read, &read);
+
+					mumble_log(LOG_TRACE, "[UDP] Received legacy audio packet (size=%u, id=%u, target=%u, session=%u)\n", size, id, target, session);
+					mumble_handle_speaking_hooks_legacy(l, client, unencrypted + read, id, target, session);
+					return;
+				}
+				default:
+				{
+					mumble_log(LOG_DEBUG, "[UDP] Received unhandled legacy packet: %x\n", unencrypted);
+					break;
+				}
+			}
+		} else {
+			switch (header) {
+				case PROTO_UDP_AUDIO:
+				{
+					MumbleUDP__Audio *audio = mumble_udp__audio__unpack(NULL, size - 1, unencrypted + 1);
+					if (audio != NULL) {
+						mumble_log(LOG_TRACE, "[UDP] Received %s: %p\n", audio->base.descriptor->name, audio);
+						mumble_handle_speaking_hooks_protobuf(l, client, audio, audio->sender_session);
+						mumble_udp__audio__free_unpacked(audio, NULL);
+					} else {
+						mumble_log(LOG_ERROR, "[UDP] Error unpacking UDP audio packet\n");
 					}
-					case PROTO_UDP_PING:
-					{
-						MumbleUDP__Ping *ping = mumble_udp__ping__unpack(NULL, size - 1, unencrypted + 1);
-						if (ping != NULL) {
-							mumble_log(LOG_TRACE, "[UDP] Received %s: %p\n", ping->base.descriptor->name, ping);
-							mumble_update_ping(l, client, ping->timestamp);
-							mumble_udp__ping__free_unpacked(ping, NULL);
-						} else {
-							mumble_log(LOG_ERROR, "[UDP] Error unpacking ping packet\n");
-						}
-						return;
+					return;
+				}
+				case PROTO_UDP_PING:
+				{
+					MumbleUDP__Ping *ping = mumble_udp__ping__unpack(NULL, size - 1, unencrypted + 1);
+					if (ping != NULL) {
+						mumble_log(LOG_TRACE, "[UDP] Received %s: %p\n", ping->base.descriptor->name, ping);
+						mumble_update_ping(l, client, ping->timestamp);
+						mumble_udp__ping__free_unpacked(ping, NULL);
+					} else {
+						mumble_log(LOG_ERROR, "[UDP] Error unpacking ping packet\n");
 					}
+					return;
+				}
+				default:
+				{
+					mumble_log(LOG_DEBUG, "[UDP] Received unhandled protobuf packet: %x\n", unencrypted);
+					break;
 				}
 			}
 		}
-
-		mumble_log(LOG_WARN, "[UDP] Received unknown UDP data packet\n");
 	}
 }
 
@@ -520,25 +535,6 @@ int mumble_client_connect(lua_State *l) {
 	client->port = port;
 	client->time = gettime(CLOCK_MONOTONIC);
 
-	// Audio encoder
-
-	client->encoder = lua_newuserdata(l, opus_encoder_get_size(AUDIO_PLAYBACK_CHANNELS));
-	luaL_getmetatable(l, METATABLE_ENCODER);
-	lua_setmetatable(l, -2);
-
-	int err = opus_encoder_init(client->encoder, AUDIO_SAMPLE_RATE, AUDIO_PLAYBACK_CHANNELS, OPUS_APPLICATION_AUDIO);
-	if (err != OPUS_OK) {
-		lua_pushnil(l);
-		lua_pushfstring(l, "could not initialize opus encoder: %s", opus_strerror(err));
-		return 2;
-	}
-
-	client->encoder_ref = mumble_ref(l);
-
-	opus_encoder_ctl(client->encoder, OPUS_SET_VBR(0));
-	opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(AUDIO_DEFAULT_BITRATE));
-	opus_encoder_ctl(client->encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_MUSIC));
-
 	// TCP Connection
 
 	client->ssl_context = SSL_CTX_new(SSLv23_client_method());
@@ -564,7 +560,7 @@ int mumble_client_connect(lua_State *l) {
 	hint_tcp.ai_family = AF_UNSPEC;
 	hint_tcp.ai_socktype = SOCK_STREAM;
 
-	err = getaddrinfo(server_host_str, port_str, &hint_tcp, &client->server_host_tcp);
+	int err = getaddrinfo(server_host_str, port_str, &hint_tcp, &client->server_host_tcp);
 	
 	if(err != 0) {
 		mumble_client_free(client);
@@ -648,6 +644,26 @@ int mumble_client_connect(lua_State *l) {
 		lua_pushfstring(l, "could not set SSL file descriptor: %s", mumble_ssl_error(ERR_get_error()));
 		return 2;
 	}
+
+	// Audio encoder
+
+	client->encoder = lua_newuserdata(l, opus_encoder_get_size(AUDIO_PLAYBACK_CHANNELS));
+	luaL_getmetatable(l, METATABLE_ENCODER);
+	lua_setmetatable(l, -2);
+
+	err = opus_encoder_init(client->encoder, AUDIO_SAMPLE_RATE, AUDIO_PLAYBACK_CHANNELS, OPUS_APPLICATION_AUDIO);
+	if (err != OPUS_OK) {
+		mumble_client_free(client);
+		lua_pushboolean(l, false);
+		lua_pushfstring(l, "could not initialize opus encoder: %s", opus_strerror(err));
+		return 2;
+	}
+
+	client->encoder_ref = mumble_ref(l);
+
+	opus_encoder_ctl(client->encoder, OPUS_SET_VBR(0));
+	opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(AUDIO_DEFAULT_BITRATE));
+	opus_encoder_ctl(client->encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_MUSIC));
 
 	client->socket_tcp_io.l = l;
 	client->socket_tcp_io.client = client;
@@ -901,13 +917,19 @@ static int mumble_getTime(lua_State *l)
 
 static int mumble_getConnections(lua_State *l)
 {
-	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_CLIENTS);
+	mumble_pushref(l, MUMBLE_CLIENTS);
 	return 1;
 }
 
 static int mumble_getTimers(lua_State *l)
 {
-	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_TIMER_REG);
+	mumble_pushref(l, MUMBLE_TIMER_REG);
+	return 1;
+}
+
+static int mumble_getThreads(lua_State *l)
+{
+	mumble_pushref(l, MUMBLE_THREAD_REG);
 	return 1;
 }
 
@@ -1346,6 +1368,8 @@ const luaL_Reg mumble[] = {
 	{"getTime", mumble_getTime},
 	{"getConnections", mumble_getConnections},
 	{"getClients", mumble_getConnections},
+	{"getTimers", mumble_getTimers},
+	{"getThreads", mumble_getThreads},
 	{NULL, NULL}
 };
 

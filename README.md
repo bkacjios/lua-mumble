@@ -68,6 +68,11 @@ mumble.thread = mumble.thread("filename.lua")
 -- Timers will dereference themselves if the timer is stopped after the callback funciton call.
 mumble.timer = mumble.timer()
 
+-- A new buffer object
+-- Can be used to read/write raw binary data
+-- Can be initialized with data or a given size
+mumble.buffer = mumble.buffer([Number size, String data])
+
 -- A new voicetarget object
 mumble.voicetarget = mumble.voicetarget()
 
@@ -521,6 +526,97 @@ mumble.timer:again()
 
 -- Stops the timer
 mumble.timer:stop()
+```
+
+### mumble.buffer
+
+``` lua
+-- Get the written data, stored in the buffer, as a string
+String data = buffer:data()
+
+-- Clears the buffer, wiping all data and setting the position and limit to 0
+buffer:clear()
+
+-- Compacts the buffer, optimizing its storage by removing any unused space
+buffer:compact()
+
+-- Resets the buffer, setting the position to 0 and the limit to the capacity
+buffer:reset()
+
+-- Flips the buffer, preparing it for reading by setting the limit to the current position and the position to 0
+buffer:flip()
+
+-- Returns the capacity of the buffer, which is the total amount of space allocated
+Number capacity = buffer:capacity()
+
+-- Returns the current position of the buffer, which indicates where the next read or write operation will occur
+Number position = buffer:position()
+
+-- Returns the limit of the buffer, indicating the maximum position that can be read or written to
+Number limit = buffer:limit()
+
+-- Write the given string to the buffer
+-- Returns how many bytes were written to the buffer
+Number written = buffer:write(String data)
+
+-- Reads the specified number of bytes from the buffer and returns the data as a string
+String data = buffer:read(Number size)
+
+-- Write a single byte to the buffer
+-- Returns how many bytes were written to the buffer
+Number written = buffer:writeByte(Number value)
+
+-- Reads a single byte from the buffer and returns it
+Number value = buffer:readByte()
+
+-- Write a short integer to the buffer
+-- Returns how many bytes were written to the buffer
+Number written = buffer:writeShort(Number value)
+
+-- Reads a short integer from the buffer and returns it
+Number value = buffer:readShort()
+
+-- Write a 32-bit integer to the buffer
+-- Returns how many bytes were written to the buffer
+Number written = buffer:writeInt(Number value)
+
+-- Reads a 32-bit integer from the buffer and returns it
+Number value = buffer:readInt()
+
+-- Write a variable-length integer to the buffer
+-- Returns how many bytes were written to the buffer
+Number written = buffer:writeVarInt(Number value)
+
+-- Reads a variable-length integer from the buffer and returns it
+Number value = buffer:readVarInt()
+
+-- Write a float to the buffer
+-- Returns how many bytes were written to the buffer
+Number written = buffer:writeFloat(Number value)
+
+-- Reads a float from the buffer and returns it
+Number value = buffer:readFloat()
+
+-- Write a double to the buffer
+-- Returns how many bytes were written to the buffer
+Number written = buffer:writeDouble(Number value)
+
+-- Reads a double from the buffer and returns it
+Number value = buffer:readDouble()
+
+-- Write a string to the buffer, including its length as a variable-length integer
+-- Returns how many bytes were written to the buffer
+Number written = buffer:writeString(String value)
+
+-- Reads a string from the buffer, using a variable-length integer to determine its size
+String value = buffer:readString()
+
+-- Write a boolean value (as 0 or 1) to the buffer
+-- Returns how many bytes were written to the buffer
+Number written = buffer:writeBool(Boolean value)
+
+-- Reads a boolean value from the buffer (returns true or false)
+Boolean value = buffer:readBool()
 ```
 
 ### mumble.voicetarget
