@@ -185,43 +185,71 @@ static int client_sendPluginData(lua_State *l)
 {
 	MumbleClient *client = mumble_client_connected(l, 1);
 
+	// Initialize the data to be sent
 	MumbleProto__PluginDataTransmission data = MUMBLE_PROTO__PLUGIN_DATA_TRANSMISSION__INIT;
-
 	data.has_sendersession = true;
 	data.sendersession = client->session;
-
 	data.dataid = (char*) luaL_checkstring(l, 2);
 
 	ProtobufCBinaryData cbdata;
 	cbdata.data = (uint8_t*) luaL_checklstring(l, 3, &cbdata.len);
-
 	data.has_data = true;
 	data.data = cbdata;
 
-	luaL_checktype(l, 4, LUA_TTABLE);
+	int n_receiversessions = 0;
+	uint32_t *receiversessions = NULL;
 
-	data.n_receiversessions = lua_objlen(l, 4);
-	data.receiversessions = malloc(sizeof(uint32_t) * data.n_receiversessions);
+	// Check if the 4th argument is a table (a list of userdata)
+	if (lua_istable(l, 4)) {
+		n_receiversessions = lua_objlen(l, 4);  // Get the length of the table
+		receiversessions = malloc(sizeof(uint32_t) * n_receiversessions);
+		if (!receiversessions)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
-	if (data.receiversessions == NULL)
-		return luaL_error(l, "failed to malloc: %s", strerror(errno));
-
-	lua_pushvalue(l, 4);
-	lua_pushnil(l);
-
-	int i = 0;
-	while (lua_next(l, -2)) {
-		if (i < data.n_receiversessions && luaL_isudata(l, -1, METATABLE_USER)) {
-			// Make sure the userdata has a user metatable
-			MumbleUser *user = lua_touserdata(l, -1);
-			data.receiversessions[i++] = user->session;
+		// Iterate over the table and extract sessions
+		lua_pushvalue(l, 4); // Push the table onto the stack
+		lua_pushnil(l);
+		int i = 0;
+		while (lua_next(l, -2)) { // Start iterating over the table
+			if (luaL_isudata(l, -1, METATABLE_USER)) {
+				// If userdata is of the expected type, extract the session
+				MumbleUser *user = lua_touserdata(l, -1);
+				receiversessions[i++] = user->session;
+			} else {
+				// If not userdata of the expected type, return an error
+				free(receiversessions);
+				return luaL_typerror_table(l, 4, -2, -1, METATABLE_USER);
+			}
+			lua_pop(l, 1);  // Pop the value, keep the key
 		}
-		lua_pop(l, 1);
-	}
-	lua_pop(l, 1);
+		lua_pop(l, 1);  // Pop the table
+	} else {
+		// Otherwise, process varargs (userdata arguments)
+		int top = lua_gettop(l);
+		n_receiversessions = top - 3;  // Subtract first 3 parameters
+		receiversessions = malloc(sizeof(uint32_t) * n_receiversessions);
+		if (!receiversessions)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
+		// Extract session info from each userdata vararg
+		for (int i = 0; i < n_receiversessions; ++i) {
+			if (luaL_isudata(l, 4 + i, METATABLE_USER)) {
+				MumbleUser *user = lua_touserdata(l, 4 + i);
+				receiversessions[i] = user->session;
+			} else {
+				free(receiversessions);
+				return luaL_typerror(l, 4 + i, METATABLE_USER);
+			}
+		}
+	}
+
+	// Fill in the receiver session data
+	data.n_receiversessions = n_receiversessions;
+	data.receiversessions = receiversessions;
+
+	// Send the data packet
 	packet_send(client, PACKET_PLUGINDATA, &data);
-	free(data.receiversessions);
+	free(receiversessions);
 	return 0;
 }
 
@@ -292,48 +320,7 @@ static int client_transmit(lua_State *l) {
 	return 0;
 }
 
-static const char *verrtbl[] = {
-	"no error",
-	"need more data",
-	"invalid api mixing",
-	"out of memory",
-	"feature not supported",
-	"too many channels",
-	"file open failure",
-	"seek without length",
-	NULL,
-	NULL,
-	"unpexpected EOF",
-	"seek invalid",
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	"vorbis: invalid setup",
-	"vorbis: invalid stream",
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	"ogg: missing capture pattern",
-	"ogg: invalid stream structure version",
-	"ogg: continued packet flag invalid",
-	"ogg: invalid first page",
-	"ogg: bad packet type",
-	"ogg: cant find last page",
-	"ogg: seek failed",
-	"ogg: skeleton not supported"
-};
-
-static int client_openOgg(lua_State *l)
+static int client_openAudio(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	const char* filepath	= luaL_checkstring(l, 2);
@@ -343,21 +330,20 @@ static int client_openOgg(lua_State *l)
 	luaL_getmetatable(l, METATABLE_AUDIOSTREAM);
 	lua_setmetatable(l, -2);
 
-	int error = VORBIS__no_error;
-	sound->ogg = stb_vorbis_open_filename(filepath, &error, NULL);
+	sound->file = sf_open(filepath, SFM_READ, &sound->info);;
 	sound->client = client;
 	sound->playing = false;
 	sound->looping = false;
+	sound->refrence = -1;
 	sound->loop_count = 0;
 	sound->volume = volume;
 
-	if (error != VORBIS__no_error) {
+	if (!sound->file) {
 		lua_pushnil(l);
-		lua_pushfstring(l, "error opening file \"%s\" (%s)", filepath, verrtbl[error]);
+		lua_pushfstring(l, "error opening file \"%s\" (%s)", filepath, sf_strerror(NULL));
 		return 2;
 	}
 
-	sound->info = stb_vorbis_get_info(sound->ogg);
 	return 1;
 }
 
@@ -597,23 +583,62 @@ static int client_registerVoiceTarget(lua_State *l)
 	MumbleProto__VoiceTarget msg = MUMBLE_PROTO__VOICE_TARGET__INIT;
 
 	msg.has_id = true;
-	msg.id = luaL_optinteger(l, 2, 0);
+	msg.id = luaL_checkinteger(l, 2);
 
-	msg.n_targets = lua_gettop(l) - 2;
-	msg.targets = malloc(sizeof(MumbleProto__VoiceTarget__Target) * msg.n_targets);
+	size_t n_targets = 0;
+	MumbleProto__VoiceTarget__Target **targets = NULL;
 
-	if (msg.targets == NULL)
-		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+	// Check if the 3rd argument is a table (a list of userdata)
+	if (lua_istable(l, 3)) {
+		// If it's a table, get the length of the table
+		n_targets = lua_objlen(l, 3);
+		targets = malloc(sizeof(MumbleProto__VoiceTarget__Target) * n_targets);
+		if (!targets)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
-	for (int i=0; i < msg.n_targets; i++) {
-		msg.targets[i] = luaL_checkudata(l, i + 3, METATABLE_VOICETARGET);
+		// Iterate over the table and extract the targets
+		lua_pushvalue(l, 3); // Push the table onto the stack
+		lua_pushnil(l);
+		int i = 0;
+		while (lua_next(l, -2)) { // Iterate over the table
+			if (luaL_isudata(l, -1, METATABLE_VOICETARGET)) {
+				// If userdata is of the expected type, extract the target
+				targets[i++] = lua_touserdata(l, -1);
+			} else {
+				// If not userdata of the expected type, return an error
+				free(targets);
+				return luaL_typerror_table(l, 3, -2, -1, METATABLE_VOICETARGET);
+			}
+			lua_pop(l, 1);  // Pop the value, keep the key
+		}
+		lua_pop(l, 1);  // Pop the table
+	} else {
+		// Otherwise, process varargs (userdata arguments)
+		int top = lua_gettop(l);
+		n_targets = top - 2;  // Subtract first 2 parameters (client and id)
+		targets = malloc(sizeof(MumbleProto__VoiceTarget__Target) * n_targets);
+		if (!targets)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
+		// Extract target info from each userdata vararg
+		for (int i = 0; i < n_targets; ++i) {
+			if (luaL_isudata(l, 3 + i, METATABLE_VOICETARGET)) {
+				targets[i] = lua_touserdata(l, 3 + i);
+			} else {
+				free(targets);
+				return luaL_typerror(l, 3 + i, METATABLE_VOICETARGET);
+			}
+		}
 	}
 
-	packet_send(client, PACKET_VOICETARGET, &msg);
+	msg.targets = targets;
+	msg.n_targets = n_targets;
 
-	free(msg.targets);
+	packet_send(client, PACKET_VOICETARGET, &msg);
+	free(targets);
 	return 0;
 }
+
 
 static int client_setVoiceTarget(lua_State *l)
 {
@@ -683,33 +708,61 @@ static int client_getAddress(lua_State *l)
 static int client_requestTextureBlob(lua_State *l)
 {
 	MumbleClient *client = mumble_client_connected(l, 1);
-	luaL_checktype(l, 2, LUA_TTABLE);
 
 	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
 
-	msg.n_session_texture = lua_objlen(l, 2);
-	msg.session_texture = malloc(sizeof(uint32_t) * msg.n_session_texture);
+	int n_session_texture = 0;
+	uint32_t *session_texture = NULL;
 
-	if (msg.session_texture == NULL)
-		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+	// Check if the 2nd argument is a table (a list of userdata)
+	if (lua_istable(l, 2)) {
+		n_session_texture = lua_objlen(l, 2);  // Get the length of the table
+		session_texture = malloc(sizeof(uint32_t) * n_session_texture);
+		if (!session_texture)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
-	lua_pushvalue(l, 2);
-	lua_pushnil(l);
-
-	int i = 0;
-	while (lua_next(l, -2)) {
-		if (i < msg.n_session_texture && luaL_isudata(l, -1, METATABLE_USER)) {
-			// Make sure the userdata has a user metatable
-			MumbleUser *user = lua_touserdata(l, -1);
-			msg.session_texture[i++] = user->session;
+		// Iterate over the table and extract sessions
+		lua_pushvalue(l, 2); // Push the table onto the stack
+		lua_pushnil(l);
+		int i = 0;
+		while (lua_next(l, -2)) { // Start iterating over the table
+			if (luaL_isudata(l, -1, METATABLE_USER)) {
+				// If userdata is of the expected type, extract the session
+				MumbleUser *user = lua_touserdata(l, -1);
+				session_texture[i++] = user->session;
+			} else {
+				// If not userdata of the expected type, return an error
+				free(session_texture);
+				return luaL_typerror_table(l, 2, -2, -1, METATABLE_USER);
+			}
+			lua_pop(l, 1);  // Pop the value, keep the key
 		}
-		lua_pop(l, 1);
+		lua_pop(l, 1);  // Pop the table
+	} else {
+		// Otherwise, process varargs (userdata arguments)
+		int top = lua_gettop(l);
+		n_session_texture = top - 1;  // Subtract first parameter
+		session_texture = malloc(sizeof(uint32_t) * n_session_texture);
+		if (!session_texture)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
+		// Extract session info from each userdata vararg
+		for (int i = 0; i < n_session_texture; ++i) {
+			if (luaL_isudata(l, 2 + i, METATABLE_USER)) {
+				MumbleUser *user = lua_touserdata(l, 2 + i);
+				session_texture[i] = user->session;
+			} else {
+				free(session_texture);
+				return luaL_typerror(l, 2 + i, METATABLE_USER);
+			}
+		}
 	}
 
-	lua_pop(l, 1);
+	msg.n_session_texture = n_session_texture;
+	msg.session_texture = session_texture;
 
 	packet_send(client, PACKET_REQUESTBLOB, &msg);
-	free(msg.session_texture);
+	free(session_texture);
 	return 0;
 }
 
@@ -720,29 +773,58 @@ static int client_requestCommentBlob(lua_State *l)
 
 	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
 
-	msg.n_session_comment = lua_objlen(l, 2);
-	msg.session_comment = malloc(sizeof(uint32_t) * msg.n_session_texture);
+	int n_session_comment = 0;
+	uint32_t *session_comment = NULL;
 
-	if (msg.session_texture == NULL)
-		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+	// Check if the 2nd argument is a table (a list of userdata)
+	if (lua_istable(l, 2)) {
+		n_session_comment = lua_objlen(l, 2);  // Get the length of the table
+		session_comment = malloc(sizeof(uint32_t) * n_session_comment);
+		if (!session_comment)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
-	lua_pushvalue(l, 2);
-	lua_pushnil(l);
-
-	int i = 0;
-	while (lua_next(l, -2)) {
-		if (i < msg.n_session_comment && luaL_isudata(l, -1, METATABLE_USER)) {
-			// Make sure the userdata has a user metatable
-			MumbleUser *user = lua_touserdata(l, -1);
-			msg.session_comment[i++] = user->session;
+		// Iterate over the table and extract sessions
+		lua_pushvalue(l, 2); // Push the table onto the stack
+		lua_pushnil(l);
+		int i = 0;
+		while (lua_next(l, -2)) { // Start iterating over the table
+			if (luaL_isudata(l, -1, METATABLE_USER)) {
+				// If userdata is of the expected type, extract the session
+				MumbleUser *user = lua_touserdata(l, -1);
+				session_comment[i++] = user->session;
+			} else {
+				// If not userdata of the expected type, return an error
+				free(session_comment);
+				return luaL_typerror_table(l, 2, -2, -1, METATABLE_USER);
+			}
+			lua_pop(l, 1);  // Pop the value, keep the key
 		}
-		lua_pop(l, 1);
+		lua_pop(l, 1);  // Pop the table
+	} else {
+		// Otherwise, process varargs (userdata arguments)
+		int top = lua_gettop(l);
+		n_session_comment = top - 1;  // Subtract first parameter
+		session_comment = malloc(sizeof(uint32_t) * n_session_comment);
+		if (!session_comment)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
+		// Extract session info from each userdata vararg
+		for (int i = 0; i < n_session_comment; ++i) {
+			if (luaL_isudata(l, 2 + i, METATABLE_USER)) {
+				MumbleUser *user = lua_touserdata(l, 2 + i);
+				session_comment[i] = user->session;
+			} else {
+				free(session_comment);
+				return luaL_typerror(l, 2 + i, METATABLE_USER);
+			}
+		}
 	}
 
-	lua_pop(l, 1);
+	msg.n_session_comment = n_session_comment;
+	msg.session_comment = session_comment;
 
 	packet_send(client, PACKET_REQUESTBLOB, &msg);
-	free(msg.session_comment);
+	free(session_comment);
 	return 0;
 }
 
@@ -753,29 +835,58 @@ static int client_requestDescriptionBlob(lua_State *l)
 
 	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
 
-	msg.n_channel_description = lua_objlen(l, 2);
-	msg.channel_description = malloc(sizeof(uint32_t) * msg.n_session_texture);
+	int n_channel_description = 0;
+	uint32_t *channel_description = NULL;
 
-	if (msg.session_texture == NULL)
-		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+	// Check if the 2nd argument is a table (a list of userdata)
+	if (lua_istable(l, 2)) {
+		n_channel_description = lua_objlen(l, 2);  // Get the length of the table
+		channel_description = malloc(sizeof(uint32_t) * n_channel_description);
+		if (!channel_description)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
-	lua_pushvalue(l, 2);
-	lua_pushnil(l);
-
-	int i = 0;
-	while (lua_next(l, -2)) {
-		if (i < msg.n_channel_description && luaL_isudata(l, -1, METATABLE_CHAN)) {
-			// Make sure the userdata has a user metatable
-			MumbleUser *channel = lua_touserdata(l, -1);
-			msg.channel_description[i++] = channel->channel_id;
+		// Iterate over the table and extract sessions
+		lua_pushvalue(l, 2); // Push the table onto the stack
+		lua_pushnil(l);
+		int i = 0;
+		while (lua_next(l, -2)) { // Start iterating over the table
+			if (luaL_isudata(l, -1, METATABLE_CHAN)) {
+				// If userdata is of the expected type, extract the session
+				MumbleChannel *channel = lua_touserdata(l, -1);
+				channel_description[i++] = channel->channel_id;
+			} else {
+				// If not userdata of the expected type, return an error
+				free(channel_description);
+				return luaL_typerror_table(l, 2, -2, -1, METATABLE_CHAN);
+			}
+			lua_pop(l, 1);  // Pop the value, keep the key
 		}
-		lua_pop(l, 1);
+		lua_pop(l, 1);  // Pop the table
+	} else {
+		// Otherwise, process varargs (userdata arguments)
+		int top = lua_gettop(l);
+		n_channel_description = top - 1;  // Subtract first parameter
+		channel_description = malloc(sizeof(uint32_t) * n_channel_description);
+		if (!channel_description)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
+		// Extract session info from each userdata vararg
+		for (int i = 0; i < n_channel_description; ++i) {
+			if (luaL_isudata(l, 2 + i, METATABLE_CHAN)) {
+				MumbleChannel *channel = lua_touserdata(l, 2 + i);
+				channel_description[i] = channel->channel_id;
+			} else {
+				free(channel_description);
+				return luaL_typerror(l, 2 + i, METATABLE_CHAN);
+			}
+		}
 	}
 
-	lua_pop(l, 1);
+	msg.n_channel_description = n_channel_description;
+	msg.channel_description = channel_description;
 
 	packet_send(client, PACKET_REQUESTBLOB, &msg);
-	free(msg.channel_description);
+	free(channel_description);
 	return 0;
 }
 
@@ -869,7 +980,7 @@ const luaL_Reg mumble_client[] = {
 	{"requestUserList", client_requestUserList},
 	{"sendPluginData", client_sendPluginData},
 	{"transmit", client_transmit},
-	{"openOgg", client_openOgg},
+	{"openAudio", client_openAudio},
 	{"getAudioStreams", client_getAudioStreams},
 	{"setAudioPacketSize", client_setAudioPacketSize},
 	{"getAudioPacketSize", client_getAudioPacketSize},

@@ -2,7 +2,7 @@
 # lua5.1, lua5.2, lua5.3, luajit
 
 ifndef LUAVER
-LUAVER = lua5.1
+LUAVER = luajit
 endif
 
 # Directory to install our module
@@ -11,7 +11,7 @@ ifndef LUALIB
 LUALIB = /usr/local/lib/lua/5.1
 endif
 
-DEPENDENCIES = libssl $(LUAVER) libprotobuf-c opus
+DEPENDENCIES = libssl $(LUAVER) libprotobuf-c opus sndfile
 
 LIBRARIES = $(shell pkg-config --libs $(DEPENDENCIES)) -lev # libev doesn't have a pkg-config file..
 INCLUDES = $(shell pkg-config --cflags $(DEPENDENCIES))

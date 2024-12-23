@@ -246,6 +246,11 @@ int luaL_typerror(lua_State *L, int narg, const char *tname) {
 	return luaL_argerror(L, narg, msg);
 }
 
+int luaL_typerror_table(lua_State *L, int narg, int nkey, int nvalue, const char *tname) {
+	const char *msg = lua_pushfstring(L, "bad table entry '%s' (%s expected, got %s)", lua_tostring(L, nkey), tname, luaL_typename(L, nvalue));
+	return luaL_argerror(L, narg, msg);
+}
+
 int luaL_checkboolean(lua_State *L, int i){
 	if(!lua_isboolean(L,i))
 		luaL_typerror(L,i,"boolean");

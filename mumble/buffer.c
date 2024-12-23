@@ -239,7 +239,7 @@ int mumble_buffer_new(lua_State *l)
 
 	ByteBuffer *buffer = lua_newuserdata(l, sizeof(ByteBuffer));
 
-	if(buffer == NULL) return luaL_error(l, "error creating buffer (out of memory)");
+	if(buffer == NULL) return luaL_error(l, "error creating buffer: %s", strerror(errno));
 
 	switch (type) {
 		case LUA_TNUMBER:
@@ -262,7 +262,7 @@ int mumble_buffer_new(lua_State *l)
 			return luaL_argerror(l, 1, msg);
 	}
 
-	if(buffer == NULL) return luaL_error(l, "error initializing buffer (out of memory)");
+	if(buffer == NULL) return luaL_error(l, "error initializing buffer: %s", strerror(errno));
 
 	luaL_getmetatable(l, METATABLE_BUFFER);
 	lua_setmetatable(l, -2);

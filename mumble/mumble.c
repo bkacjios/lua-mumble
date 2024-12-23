@@ -334,7 +334,7 @@ static void socket_read_event_tcp(struct ev_loop *loop, ev_io *w_, int revents)
 	}
 }
 
-static void mumble_update_ping(lua_State* l, MumbleClient* client, uint64_t timestamp) {
+static void mumble_update_ping(lua_State* l, MumbleClient* client, uint64_t timestamp, bool udp) {
 	double response = gettime(CLOCK_MONOTONIC);
 	double delay = (response * 1000) - timestamp;
 
@@ -343,7 +343,7 @@ static void mumble_update_ping(lua_State* l, MumbleClient* client, uint64_t time
 	client->udp_ping_avg = client->udp_ping_avg * (n-1)/n + delay/n;
 	client->udp_ping_var = pow(fabs(delay - client->udp_ping_avg), 2);
 
-	if (client->tcp_udp_tunnel) {
+	if (client->tcp_udp_tunnel && udp) {
 		if (client->udp_ping_acc >= UDP_TCP_FALLBACK) {
 			// We suddenly got a response, after sending out pings with multiple missing responses
 			mumble_log(LOG_WARN, "Server is responding to UDP packets again, switching back to UDP..\n");
@@ -366,6 +366,78 @@ static void mumble_update_ping(lua_State* l, MumbleClient* client, uint64_t time
 		lua_pushnumber(l, client->udp_ping_var);
 		lua_setfield(l, -2, "deviation");
 	mumble_hook_call(l, client, "OnPongUDP", 1);
+}
+
+void mumble_handle_udp_packet(lua_State* l, MumbleClient* client, char* unencrypted, ssize_t size, bool udp) {
+	uint8_t header = unencrypted[0];
+
+	if (client->legacy) {
+		uint8_t id = (header >> 5) & 0x7;
+
+		switch (id) {
+			case LEGACY_PROTO_UDP_PING:
+			{
+				int read = 1;
+				uint64_t timestamp = util_get_varint(unencrypted + read, &read);
+
+				mumble_log(LOG_TRACE, "[UDP] Received legacy ping packet (size=%u, id=%u, timestamp=%lu)\n", size, id, timestamp);
+
+				mumble_update_ping(l, client, timestamp, udp);
+				return;
+			}
+			case LEGACY_UDP_OPUS:
+			case LEGACY_UDP_SPEEX:
+			case LEGACY_UDP_CELT_ALPHA:
+			case LEGACY_UDP_CELT_BETA:
+			{
+				uint8_t target = header >> 0x1F;
+
+				int read = 1;
+				int session = util_get_varint(unencrypted + read, &read);
+
+				mumble_log(LOG_TRACE, "[UDP] Received legacy audio packet (size=%u, id=%u, target=%u, session=%u)\n", size, id, target, session);
+				mumble_handle_speaking_hooks_legacy(l, client, unencrypted + read, id, target, session);
+				return;
+			}
+			default:
+			{
+				mumble_log(LOG_DEBUG, "[UDP] Received unhandled legacy packet: %x\n", unencrypted);
+				break;
+			}
+		}
+	} else {
+		switch (header) {
+			case PROTO_UDP_AUDIO:
+			{
+				MumbleUDP__Audio *audio = mumble_udp__audio__unpack(NULL, size - 1, unencrypted + 1);
+				if (audio != NULL) {
+					mumble_log(LOG_TRACE, "[UDP] Received %s: %p\n", audio->base.descriptor->name, audio);
+					mumble_handle_speaking_hooks_protobuf(l, client, audio, audio->sender_session);
+					mumble_udp__audio__free_unpacked(audio, NULL);
+				} else {
+					mumble_log(LOG_WARN, "[UDP] Error unpacking UDP audio packet\n");
+				}
+				return;
+			}
+			case PROTO_UDP_PING:
+			{
+				MumbleUDP__Ping *ping = mumble_udp__ping__unpack(NULL, size - 1, unencrypted + 1);
+				if (ping != NULL) {
+					mumble_log(LOG_TRACE, "[UDP] Received %s: %p\n", ping->base.descriptor->name, ping);
+					mumble_update_ping(l, client, ping->timestamp, udp);
+					mumble_udp__ping__free_unpacked(ping, NULL);
+				} else {
+					mumble_log(LOG_WARN, "[UDP] Error unpacking ping packet\n");
+				}
+				return;
+			}
+			default:
+			{
+				mumble_log(LOG_DEBUG, "[UDP] Received unhandled protobuf packet: %x\n", unencrypted);
+				break;
+			}
+		}
+	}
 }
 
 static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
@@ -398,75 +470,8 @@ static void socket_read_event_udp(struct ev_loop *loop, ev_io *w_, int revents)
 		}
 
 		size -= 4; // Decryption got rid of 4 bytes
-		uint8_t header = unencrypted[0];
-
-		if (client->legacy) {
-			uint8_t id = (header >> 5) & 0x7;
-
-			switch (id) {
-				case LEGACY_PROTO_UDP_PING:
-				{
-					int read = 1;
-					uint64_t timestamp = util_get_varint(unencrypted + read, &read);
-
-					mumble_log(LOG_TRACE, "[UDP] Received legacy ping packet (size=%u, id=%u, timestamp=%lu)\n", size, id, timestamp);
-
-					mumble_update_ping(l, client, timestamp);
-					return;
-				}
-				case LEGACY_UDP_OPUS:
-				case LEGACY_UDP_SPEEX:
-				case LEGACY_UDP_CELT_ALPHA:
-				case LEGACY_UDP_CELT_BETA:
-				{
-					uint8_t target = header >> 0x1F;
-
-					int read = 1;
-					int session = util_get_varint(unencrypted + read, &read);
-
-					mumble_log(LOG_TRACE, "[UDP] Received legacy audio packet (size=%u, id=%u, target=%u, session=%u)\n", size, id, target, session);
-					mumble_handle_speaking_hooks_legacy(l, client, unencrypted + read, id, target, session);
-					return;
-				}
-				default:
-				{
-					mumble_log(LOG_DEBUG, "[UDP] Received unhandled legacy packet: %x\n", unencrypted);
-					break;
-				}
-			}
-		} else {
-			switch (header) {
-				case PROTO_UDP_AUDIO:
-				{
-					MumbleUDP__Audio *audio = mumble_udp__audio__unpack(NULL, size - 1, unencrypted + 1);
-					if (audio != NULL) {
-						mumble_log(LOG_TRACE, "[UDP] Received %s: %p\n", audio->base.descriptor->name, audio);
-						mumble_handle_speaking_hooks_protobuf(l, client, audio, audio->sender_session);
-						mumble_udp__audio__free_unpacked(audio, NULL);
-					} else {
-						mumble_log(LOG_ERROR, "[UDP] Error unpacking UDP audio packet\n");
-					}
-					return;
-				}
-				case PROTO_UDP_PING:
-				{
-					MumbleUDP__Ping *ping = mumble_udp__ping__unpack(NULL, size - 1, unencrypted + 1);
-					if (ping != NULL) {
-						mumble_log(LOG_TRACE, "[UDP] Received %s: %p\n", ping->base.descriptor->name, ping);
-						mumble_update_ping(l, client, ping->timestamp);
-						mumble_udp__ping__free_unpacked(ping, NULL);
-					} else {
-						mumble_log(LOG_ERROR, "[UDP] Error unpacking ping packet\n");
-					}
-					return;
-				}
-				default:
-				{
-					mumble_log(LOG_DEBUG, "[UDP] Received unhandled protobuf packet: %x\n", unencrypted);
-					break;
-				}
-			}
-		}
+		
+		mumble_handle_udp_packet(l, client, unencrypted, size, true);
 	}
 }
 

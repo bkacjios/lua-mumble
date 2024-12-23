@@ -46,8 +46,7 @@
 #include "proto/Mumble.pb-c.h"
 #include "proto/MumbleUDP.pb-c.h"
 
-#define STB_VORBIS_HEADER_ONLY
-#include "stb_vorbis.c"
+#include <sndfile.h>
 
 #define MODULE_NAME "lua-mumble"
 
@@ -164,13 +163,12 @@ struct AudioFrame {
 
 struct AudioStream {
 	lua_State *lua;
-	stb_vorbis *ogg;
+	SNDFILE *file;
 	MumbleClient *client;
 	bool closed;
 	bool playing;
 	float volume;
-	AudioFrame buffer[PCM_BUFFER];
-	stb_vorbis_info info;
+	SF_INFO info;
 	int refrence;
 	int loop_count;
 	bool looping;
@@ -219,10 +217,9 @@ struct MumbleClient {
 	my_io				socket_tcp_connect;
 	my_timer			audio_timer;
 	my_timer			ping_timer;
-	AudioFrame			audio_buffer[PCM_BUFFER];
-	AudioFrame			audio_rebuffer[PCM_BUFFER];
+	AudioFrame			audio_output[PCM_BUFFER];
 	uint32_t			audio_sequence;
-	int					audio_frames;
+	uint32_t			audio_frames;
 	OpusEncoder*		encoder;
 	int					encoder_ref;
 	uint8_t				audio_target;
@@ -352,6 +349,7 @@ extern void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int lev
 
 extern void luaL_debugstack(lua_State *l, const char* text);
 extern int luaL_typerror(lua_State *L, int narg, const char *tname);
+extern int luaL_typerror_table(lua_State *L, int narg, int nkey, int nvalue, const char *tname);
 extern int luaL_checkboolean(lua_State *L, int i);
 extern int luaL_optboolean(lua_State *L, int i, int d);
 extern int luaL_isudata(lua_State *L, int ud, const char *tname);
@@ -379,6 +377,8 @@ extern void mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t 
 extern void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_id);
 
 extern int mumble_push_address(lua_State* l, ProtobufCBinaryData address);
+
+extern void mumble_handle_udp_packet(lua_State* l, MumbleClient* client, char* unencrypted, ssize_t size, bool udp);
 extern void mumble_handle_speaking_hooks_legacy(lua_State* l, MumbleClient* client, uint8_t buffer[], uint8_t codec, uint8_t target, uint32_t session);
 extern void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, MumbleUDP__Audio *audio, uint32_t session);
 

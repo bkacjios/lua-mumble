@@ -45,8 +45,8 @@ client:hook("OnChannelState", function(client, event)
 	print("OnChannelState", event)
 end)
 
-client:hook("OnUserConnected", function(client, event)
-	print("OnUserConnected", event)
+client:hook("OnUserConnect", function(client, event)
+	print("OnUserConnect", event)
 end)
 
 client:hook("OnUserRemove", function(client, event)

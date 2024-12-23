@@ -4,11 +4,19 @@ A lua module to connect to a mumble server and interact with it
 
 ## Build requirements
 
-```
+### Ubuntu
+```bash
 sudo apt-get install libluajit-5.1-dev protobuf-c libprotobuf-c-dev libssl-dev libopus-dev libev-dev
 ```
 
 Note: `liblua5.1-0-dev` can be substituted with `libluajit-5.1-dev`, `liblua5.2-dev`, or `liblua5.3-dev` depending on your needs.
+
+### Arch Linux
+```bash
+sudo pacman -S luajit protobuf-c openssl libsndfile opus ev
+```
+
+Note: `luajit` can be substituted with `lua5.1`, `lua5.2` or `lua5.3` depending on your needs.
 
 ## Make usage
 
@@ -16,8 +24,11 @@ Note: `liblua5.1-0-dev` can be substituted with `libluajit-5.1-dev`, `liblua5.2-
 # Removes all object files, generated protobuf c/h files, dependency files, and mumble.so
 make clean
 
-# Makes everything for the provided LUAVER (luajit, lua5.1, lua5.2, lua5.3)
-# Defaults to lua5.1
+# Makes everything
+make all
+
+# Use LUAVER override to change what version of lua it should be compiled for
+# luajit, lua5.1, lua5.2, lua5.3 are all acceptable options
 make all LUAVER=lua5.1
 
 # Make everything with debug flags for use with a debugger
@@ -29,10 +40,13 @@ make proto
 
 # Copies mumble.so to the provided LUALIB path
 # Defaults to /usr/local/lib/lua/5.1/ if not provided
-make install LUALIB=/usr/local/lib/lua/5.1/
+make install
 
-# Removes mumble.so in /usr/local/lib/lua/5.1/
-make uninstall
+# Use LUALIB to change where the module will be installed
+make install LUAVER=lua5.1 LUALIB=/usr/local/lib/lua/5.1/
+
+# Removes mumble.so in the provided LUALIB path
+make uninstall LUALIB=/usr/local/lib/lua/5.1/
 ```
 
 ## Scripting documentation
@@ -135,16 +149,17 @@ mumble.client:requestUserList()
 -- Disconnect from the connected server
 mumble.client:disconnect()
 
--- Transmit a plugin data packet to a table of users
-mumble.client:sendPluginData(String dataID, String plugindata, Table {mumble.user, ...})
+-- Transmit a plugin data packet
+-- User list can be a table of users or varargs
+mumble.client:sendPluginData(String dataID, String plugindata, [Table {mumble.user ..}, mumble.user ..])
 
 -- Transmit a raw, encoded, opus packet
 -- Set speaking to false at the end of a stream
 mumble.client:transmit(Number codec, String encoded_audio_packet, Boolean speaking = true)
 
--- Open an ogg audio file as an audio stream
--- If audiostream = nil, it will pass along an error string as to why it couldn't play the file
-mumble.audiostream audiostream, [ String error ] = mumble.client:openOgg(String ogg file path, Number volume = 1.0)
+-- Open an audio file as an audio stream
+-- If audiostream = nil, it will pass along an error string as to why it couldn't open the file
+mumble.audiostream audiostream, [ String error ] = mumble.client:openAudio(String audio file path, Number volume = 1.0)
 
 -- Gets a table of all currently playing audio streams
 Table audiostreams = mumble.client:getAudioStreams()
@@ -261,21 +276,21 @@ Table channels = {
 
 -- Request a users full texture data blob
 -- Server will respond with a "OnUserState" with the requested data filled out
-mumble.client:requestTextureBlob(Table {mumble.user, ...})
+mumble.client:requestTextureBlob([Table {mumble.user, ...}, mumble.user ..])
 
 -- Request a users full comment data blob
 -- Server will respond with a "OnUserState" with the requested data filled out
 -- After the hook is called, mumble.user:getComment() will also return the full data
-mumble.client:requestCommentBlob(Table {mumble.user, ...})
+mumble.client:requestCommentBlob([Table {mumble.user, ...}, mumble.user ..])
 
 -- Request a channels full description data blob
 -- Server will respond with a "OnChannelState" with the requested data filled out
 -- After the hook is called, mumble.channel:getDescription() will also return the full data
-mumble.client:requestDescriptionBlob(Table {mumble.user, ...})
+mumble.client:requestDescriptionBlob(T[Table {mumble.channel, ...}, mumble.channel ..])
 
 -- Creates a channel
 -- Will be parented to the root channel
-mumble.client:createChannel(String name, String description = "", Number position = 0, Boolean temporary = false, Number max_users = 0)
+mumble.client:createChannel(String name, [ String description = "", Number position = 0, Boolean temporary = false, Number max_users = 0 ])
 ```
 
 ### mumble.user
@@ -720,6 +735,8 @@ String decoded = mumble.decoder:decode_float(String encoded)
 
 ### mumble.audiostream
 
+[Click here for a list of supported audio formats](https://libsndfile.github.io/libsndfile/formats.html)
+
 ``` lua
 -- Returns if this audio stream is currently playing or not
 Boolean isplaying = mumble.audiostream:isPlaying()
@@ -764,16 +781,25 @@ Table info = {
 	["max_frame_size"] = Number max_frame_size
 }
 
-Table comments = mumble.audiostream:getComments()
+-- Returns the title of the file.
+-- Will return nil if not available.
+String title = mumble.audiostream:getTitle()
 
--- Structure
--- Contains a list of comments embedded in the file.
--- This structure is only an example, it's possible for some files to have no comments at all.
-Table comments = {
-        [1] = "TRACKNUMBER=4/11",
-        [2] = "TXXX=iso6mp41",
-        ...
-}
+-- Returns the artist of the file.
+-- Will return nil if not available.
+String artist = mumble.audiostream:getArtist()
+
+-- Returns the copyright of the file.
+-- Will return nil if not available.
+String title = mumble.audiostream:getCopyright()
+
+-- Returns the software the file was created in.
+-- Will return nil if not available.
+String title = mumble.audiostream:getSoftware()
+
+-- Returns the comments of the file.
+-- Will return nil if not available.
+String comments = mumble.audiostream:getComments()
 
 -- Enables the audio stream to loop to the beginning when reaching the end.
 -- Boolean = true will cause it to loop forever.
@@ -1007,7 +1033,7 @@ Table event = {
 ```
 ___
 
-### `OnUserConnected (mumble.client client, Table event)`
+### `OnUserConnect (mumble.client client, Table event)`
 
 Called when a mumble.user has connected to the server
 

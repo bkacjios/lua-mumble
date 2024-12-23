@@ -152,7 +152,7 @@ int voicepacket_getlength(const VoicePacket *packet)
 	return packet->length;
 }
 
-void audio_transmission_reference(lua_State *l, AudioStream *sound) {
+static void audio_transmission_reference(lua_State *l, AudioStream *sound) {
 	sound->refrence = mumble_registry_ref(l, sound->client->audio_streams);
 	list_add(&sound->client->stream_list, sound->refrence, sound);
 }
@@ -161,6 +161,7 @@ void audio_transmission_unreference(lua_State*l, AudioStream *sound)
 {
 	mumble_registry_unref(l, sound->client->audio_streams, sound->refrence);
 	list_remove(&sound->client->stream_list, sound->refrence);
+	sound->refrence = -1;
 }
 
 void mumble_audio_timer(EV_P_ ev_timer *w_, int revents)
@@ -173,14 +174,13 @@ void mumble_audio_timer(EV_P_ ev_timer *w_, int revents)
 	}
 }
 
-void handle_audio_stream_end(lua_State *l, MumbleClient *client, AudioStream *sound, bool *didLoop) {
+static void handle_audio_stream_end(lua_State *l, MumbleClient *client, AudioStream *sound, bool *didLoop) {
+	sf_seek(sound->file, 0, SEEK_SET);
 	if (sound->looping) {
 		*didLoop = true;
-		stb_vorbis_seek_start(sound->ogg);
 	} else if (sound->loop_count > 0) {
 		*didLoop = true;
 		sound->loop_count--;
-		stb_vorbis_seek_start(sound->ogg);
 	} else {
 		sound->playing = false;
 		mumble_registry_pushref(l, client->audio_streams, sound->refrence);
@@ -189,52 +189,69 @@ void handle_audio_stream_end(lua_State *l, MumbleClient *client, AudioStream *so
 	}
 }
 
-void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream *sound, uint32_t frame_size, long *biggest_read, bool *didLoop) {
+static void convert_to_stereo_and_adjust_volume(float *input, float *output, int input_channels, int frames, float volume) {
+	for (int i = 0; i < frames; i++) {
+		if (input_channels == 1) {
+			// Mono: Duplicate sample to both channels
+			float sample = input[i] * volume;
+			output[i * 2] = sample;		// Left
+			output[i * 2 + 1] = sample;	// Right
+		} else {
+			// Stereo or multichannel: Copy first two channels
+			output[i * 2] = input[i * input_channels] * volume;			// Left
+			output[i * 2 + 1] = input[i * input_channels + 1] * volume;	// Right
+		}
+	}
+}
+
+static void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream *sound, uint32_t frame_size, sf_count_t *biggest_read, bool *didLoop) {
 	if (sound == NULL || !sound->playing) return;
 
 	const int channels = sound->info.channels;
-	const uint32_t source_rate = sound->info.sample_rate;
-	uint32_t sample_size = client->audio_frames * source_rate / 1000;
+	const sf_count_t source_rate = sound->info.samplerate;
+	
+	sf_count_t sample_size = client->audio_frames * source_rate / 1000;
 
 	if (sample_size > PCM_BUFFER) {
 		return;
 	}
 
-	memset(sound->buffer, 0, sizeof(sound->buffer));
+	float input_buffer[PCM_BUFFER];
+	float output_buffer[PCM_BUFFER];
 
-	long read = stb_vorbis_get_samples_float_interleaved(
-		sound->ogg, AUDIO_PLAYBACK_CHANNELS, (float *)sound->buffer, sample_size * AUDIO_PLAYBACK_CHANNELS
-	);
+	sf_count_t read = sf_readf_float(sound->file, input_buffer, sample_size);
 
-	if (channels == 1 && read > 0) {
-		// The audio is mono, so make both channels the same
-		for (int i = 0; i < read; i++) {
-			sound->buffer[i].r = sound->buffer[i].l;
-		}
-	}
+	convert_to_stereo_and_adjust_volume(input_buffer, output_buffer, channels, read, sound->volume * client->volume);
 
 	if (source_rate != AUDIO_SAMPLE_RATE) {
 		// Resample using linear interpolation
 		float resample_ratio = (float)AUDIO_SAMPLE_RATE / source_rate;
-		sample_size = (uint32_t)(sample_size * resample_ratio);
-		read = (long)(read * resample_ratio);
+		int new_sample_count = (int)(read * resample_ratio); // Total number of output samples
 
-		for (int t = 0; t < read; t++) {
-			float source_idx = (float)t * source_rate / AUDIO_SAMPLE_RATE;
-			int idx1 = (int)source_idx;
-			int idx2 = (idx1 + 1 < sample_size) ? (idx1 + 1) : idx1;
+		for (int t = 0; t < new_sample_count; t++) {
+			// Calculate the position in the source buffer
+			float source_idx = (float)t / resample_ratio;	// Index in source samples
+			int idx1 = (int)source_idx;						// Base index
+			int idx2 = idx1 + 1;							// Next index
 
+			// Ensure indices are within bounds
+			if (idx2 >= sample_size) {
+				idx2 = idx1; // Avoid accessing out-of-bounds
+			}
+
+			// Interpolation factor
 			float alpha = source_idx - idx1;
-			client->audio_rebuffer[t * 2].l = sound->buffer[idx1 * 2].l * (1.0f - alpha) + sound->buffer[idx2 * 2].l * alpha;
-			client->audio_rebuffer[t * 2].r = sound->buffer[idx1 * 2].r * (1.0f - alpha) + sound->buffer[idx2 * 2].r * alpha;
+
+			// Interpolate left and right channels
+			client->audio_output[t].l = output_buffer[idx1 * 2] * (1.0f - alpha) + output_buffer[idx2 * 2] * alpha;
+			client->audio_output[t].r = output_buffer[idx1 * 2 + 1] * (1.0f - alpha) + output_buffer[idx2 * 2 + 1] * alpha;
 		}
 
-		memcpy(sound->buffer, client->audio_rebuffer, sizeof(client->audio_rebuffer));
-	}
-
-	for (int i = 0; i < read; i++) {
-		client->audio_buffer[i].l += sound->buffer[i].l * sound->volume * client->volume;
-		client->audio_buffer[i].r += sound->buffer[i].r * sound->volume * client->volume;
+		// Update the number of samples processed
+		read = new_sample_count;
+	} else {
+		// We don't need to resample, so just move it to our output buffer
+		memmove((float*)client->audio_output, output_buffer, sizeof(output_buffer));
 	}
 
 	if (read < sample_size) {
@@ -247,7 +264,7 @@ void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream *sound
 	}
 }
 
-void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
+static void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
 	uint32_t frame_header = encoded_len;
 	if (end_frame) {
 		frame_header |= (1 << 13);
@@ -273,7 +290,7 @@ void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encoded, opu
 	}
 }
 
-void send_protobuf_audio(lua_State *l, MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
+static void send_protobuf_audio(lua_State *l, MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
 	MumbleUDP__Audio audio = MUMBLE_UDP__AUDIO__INIT;
 	ProtobufCBinaryData audio_data = { .data = encoded, .len = (size_t)encoded_len };
 
@@ -300,9 +317,9 @@ void send_protobuf_audio(lua_State *l, MumbleClient *client, uint8_t *encoded, o
 	}
 }
 
-void encode_and_send_audio(lua_State *l, MumbleClient *client, uint32_t frame_size, bool end_frame) {
+static void encode_and_send_audio(lua_State *l, MumbleClient *client, sf_count_t frame_size, bool end_frame) {
 	uint8_t encoded[PAYLOAD_SIZE_MAX];
-	opus_int32 encoded_len = opus_encode_float(client->encoder, (float *)client->audio_buffer, frame_size, encoded, PAYLOAD_SIZE_MAX);
+	opus_int32 encoded_len = opus_encode_float(client->encoder, (float *)client->audio_output, frame_size, encoded, PAYLOAD_SIZE_MAX);
 
 	if (encoded_len <= 0) return;
 
@@ -318,9 +335,8 @@ void encode_and_send_audio(lua_State *l, MumbleClient *client, uint32_t frame_si
 void audio_transmission_event(lua_State *l, MumbleClient *client) {
 	lua_stackguard_entry(l);
 
-	long biggest_read = 0;
-	const uint32_t frame_size = client->audio_frames * AUDIO_SAMPLE_RATE / 1000;
-	memset(client->audio_buffer, 0, sizeof(client->audio_buffer));
+	sf_count_t biggest_read = 0;
+	const sf_count_t frame_size = client->audio_frames * AUDIO_SAMPLE_RATE / 1000;
 
 	bool didLoop = false;
 	LinkNode *current = client->stream_list;
@@ -376,14 +392,16 @@ static int audiostream_play(lua_State *l)
 	if (!sound->playing) {
 		sound->playing = true;
 
-		// Push a copy of the audio stream and save a reference
-		lua_pushvalue(l, 1);
-		sound->refrence = mumble_registry_ref(l, sound->client->audio_streams);
+		if (sound->refrence < 0) {
+			// Push a copy of the audio stream and save a reference
+			lua_pushvalue(l, 1);
+			sound->refrence = mumble_registry_ref(l, sound->client->audio_streams);
 
-		// Add to our stream list
-		list_add(&sound->client->stream_list, sound->refrence, sound);
+			// Add to our stream list
+			list_add(&sound->client->stream_list, sound->refrence, sound);
+		}
 	} else {
-		stb_vorbis_seek_start(sound->ogg);
+		sf_seek(sound->file, 0, SEEK_SET);
 	}
 	return 0;
 }
@@ -393,7 +411,7 @@ static int audiostream_stop(lua_State *l)
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	if (sound->playing) {
 		sound->playing = false;
-		stb_vorbis_seek_start(sound->ogg);
+		sf_seek(sound->file, 0, SEEK_SET);
 		audio_transmission_unreference(l, sound);
 	}
 	return 0;
@@ -409,25 +427,21 @@ static int audiostream_seek(lua_State *l)
 	int option = luaL_checkoption(l, 2, "cur", op);
 	long offset = luaL_optlong(l, 3, 0);
 
+	sf_count_t position;
+
 	switch (option) {
 		case START:
-			stb_vorbis_seek(sound->ogg, offset);
+			position = sf_seek(sound->file, offset, SEEK_SET);
 			break;
 		case CUR:
-		{
-			unsigned int samples = stb_vorbis_get_sample_offset(sound->ogg);
-			stb_vorbis_seek(sound->ogg, samples + offset);
+			position = sf_seek(sound->file, offset, SEEK_CUR);
 			break;
-		}
 		case END:
-		{
-			unsigned int samples = stb_vorbis_stream_length_in_samples(sound->ogg);
-			stb_vorbis_seek(sound->ogg, samples + offset);
+			position = sf_seek(sound->file, offset, SEEK_END);
 			break;
-		}
 	}
 
-	lua_pushinteger(l, stb_vorbis_get_sample_offset(sound->ogg));
+	lua_pushinteger(l, position);
 	return 1;
 }
 
@@ -435,20 +449,23 @@ static int audiostream_getLength(lua_State *l)
 {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 
-	enum what {SAMPLES, SECONDS};
-	static const char * op[] = {"samples", "seconds", NULL};
+	enum what {SAMPLES, FRAMES, SECONDS};
+	static const char * op[] = {"samples", "frames", "seconds", NULL};
 
 	switch (luaL_checkoption(l, 2, NULL, op)) {
 		case SAMPLES:
 		{
-			unsigned int samples = stb_vorbis_stream_length_in_samples(sound->ogg);
-			lua_pushinteger(l, samples);
+			lua_pushinteger(l, sound->info.frames * sound->info.channels);
+			return 1;
+		}
+		case FRAMES:
+		{
+			lua_pushinteger(l, sound->info.frames);
 			return 1;
 		}
 		case SECONDS:
 		{
-			float seconds = stb_vorbis_stream_length_in_seconds(sound->ogg);
-			lua_pushnumber(l, seconds);
+			lua_pushnumber(l, (double) sound->info.frames / sound->info.samplerate);
 			return 1;
 		}
 	}
@@ -460,40 +477,56 @@ static int audiostream_getInfo(lua_State *l)
 {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 
-	stb_vorbis_info info = stb_vorbis_get_info(sound->ogg);
-
 	lua_newtable(l);
 	{
-		lua_pushinteger(l, info.channels);
+		lua_pushinteger(l, sound->info.frames);
+		lua_setfield(l, -2, "frames");
+		lua_pushinteger(l, sound->info.samplerate);
+		lua_setfield(l, -2, "samplerate");
+		lua_pushinteger(l, sound->info.channels);
 		lua_setfield(l, -2, "channels");
-		lua_pushinteger(l, info.sample_rate);
-		lua_setfield(l, -2, "sample_rate");
-		lua_pushinteger(l, info.setup_memory_required);
-		lua_setfield(l, -2, "setup_memory_required");
-		lua_pushinteger(l, info.setup_temp_memory_required);
-		lua_setfield(l, -2, "setup_temp_memory_required");
-		lua_pushinteger(l, info.temp_memory_required);
-		lua_setfield(l, -2, "temp_memory_required");
-		lua_pushinteger(l, info.max_frame_size);
-		lua_setfield(l, -2, "max_frame_size");
+		lua_pushinteger(l, sound->info.format);
+		lua_setfield(l, -2, "format");
+		lua_pushinteger(l, sound->info.sections);
+		lua_setfield(l, -2, "sections");
+		lua_pushinteger(l, sound->info.seekable);
+		lua_setfield(l, -2, "seekable");
 	}
+	return 1;
+}
+
+static int audiostream_getTitle(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	lua_pushstring(l, sf_get_string(sound->file, SF_STR_TITLE));
+	return 1;
+}
+
+static int audiostream_getArtist(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	lua_pushstring(l, sf_get_string(sound->file, SF_STR_ARTIST));
+	return 1;
+}
+
+static int audiostream_getCopyright(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	lua_pushstring(l, sf_get_string(sound->file, SF_STR_COPYRIGHT));
+	return 1;
+}
+
+static int audiostream_getSoftware(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	lua_pushstring(l, sf_get_string(sound->file, SF_STR_SOFTWARE));
 	return 1;
 }
 
 static int audiostream_getComments(lua_State *l)
 {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
-
-	stb_vorbis_comment cmnt = stb_vorbis_get_comment(sound->ogg);
-
-	lua_newtable(l);
-	{
-		for (int i=0; i < cmnt.comment_list_length; i++) {
-			lua_pushinteger(l, i+1);
-			lua_pushstring(l, cmnt.comment_list[i]);
-			lua_settable(l, -3);
-		}
-	}
+	lua_pushstring(l, sf_get_string(sound->file, SF_STR_COMMENT));
 	return 1;
 }
 
@@ -542,7 +575,7 @@ static int audiostream_getLoopCount(lua_State *l)
 static int audiostream_gc(lua_State *l)
 {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
-	stb_vorbis_close(sound->ogg);
+	sf_close(sound->file);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_AUDIOSTREAM, sound);
 	return 0;
 }
@@ -564,6 +597,10 @@ const luaL_Reg mumble_audiostream[] = {
 	{"getLength", audiostream_getLength},
 	{"getDuration", audiostream_getLength},
 	{"getInfo", audiostream_getInfo},
+	{"getTitle", audiostream_getTitle},
+	{"getArtist", audiostream_getArtist},
+	{"getCopyright", audiostream_getCopyright},
+	{"getSoftware", audiostream_getSoftware},
 	{"getComments", audiostream_getComments},
 	{"setLooping", audiostream_setLooping},
 	{"isLooping", audiostream_isLooping},

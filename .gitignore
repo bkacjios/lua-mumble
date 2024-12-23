@@ -7,4 +7,6 @@ config/
 *.pem
 *.d
 *.ogg
+*.mp3
+*.wav
 gitversion.h
