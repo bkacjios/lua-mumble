@@ -204,6 +204,18 @@ static void convert_to_stereo_and_adjust_volume(float *input, float *output, int
 	}
 }
 
+// Threshold for soft clipping
+#define SOFT_CLIP_THRESHOLD 0.9f
+
+static float soft_clip(float sample) {
+	if (sample > SOFT_CLIP_THRESHOLD) {
+		return SOFT_CLIP_THRESHOLD + (sample - SOFT_CLIP_THRESHOLD) * 0.2f;
+	} else if (sample < -SOFT_CLIP_THRESHOLD) {
+		return -SOFT_CLIP_THRESHOLD + (sample + SOFT_CLIP_THRESHOLD) * 0.2f;
+	}
+	return sample;
+}
+
 static void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream *sound, uint32_t frame_size, sf_count_t *biggest_read, bool *didLoop) {
 	if (sound == NULL || !sound->playing) return;
 
@@ -242,9 +254,12 @@ static void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream
 			// Interpolation factor
 			float alpha = source_idx - idx1;
 
+			float left = output_buffer[idx1 * 2] * (1.0f - alpha) + output_buffer[idx2 * 2] * alpha;
+			float right = output_buffer[idx1 * 2 + 1] * (1.0f - alpha) + output_buffer[idx2 * 2 + 1] * alpha;
+
 			// Interpolate left and right channels
-			client->audio_output[t].l += output_buffer[idx1 * 2] * (1.0f - alpha) + output_buffer[idx2 * 2] * alpha;
-			client->audio_output[t].r += output_buffer[idx1 * 2 + 1] * (1.0f - alpha) + output_buffer[idx2 * 2 + 1] * alpha;
+			client->audio_output[t].l += soft_clip(left);
+			client->audio_output[t].r += soft_clip(right);
 		}
 
 		// Update the number of samples processed
@@ -252,8 +267,8 @@ static void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream
 	} else {
 		// We don't need to resample, so just move it to our output buffer
 		for (int i = 0; i < read; i++) {
-			client->audio_output[i].l += output_buffer[i * 2];
-			client->audio_output[i].r += output_buffer[i * 2 + 1];
+			client->audio_output[i].l += soft_clip(output_buffer[i * 2]);
+			client->audio_output[i].r += soft_clip(output_buffer[i * 2 + 1]);
 		}
 	}
 
