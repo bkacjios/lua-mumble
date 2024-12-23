@@ -243,15 +243,18 @@ static void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream
 			float alpha = source_idx - idx1;
 
 			// Interpolate left and right channels
-			client->audio_output[t].l = output_buffer[idx1 * 2] * (1.0f - alpha) + output_buffer[idx2 * 2] * alpha;
-			client->audio_output[t].r = output_buffer[idx1 * 2 + 1] * (1.0f - alpha) + output_buffer[idx2 * 2 + 1] * alpha;
+			client->audio_output[t].l += output_buffer[idx1 * 2] * (1.0f - alpha) + output_buffer[idx2 * 2] * alpha;
+			client->audio_output[t].r += output_buffer[idx1 * 2 + 1] * (1.0f - alpha) + output_buffer[idx2 * 2 + 1] * alpha;
 		}
 
 		// Update the number of samples processed
 		read = new_sample_count;
 	} else {
 		// We don't need to resample, so just move it to our output buffer
-		memmove((float*)client->audio_output, output_buffer, sizeof(output_buffer));
+		for (int i = 0; i < read; i++) {
+			client->audio_output[i].l += output_buffer[i * 2];
+			client->audio_output[i].r += output_buffer[i * 2 + 1];
+		}
 	}
 
 	if (read < sample_size) {
@@ -340,6 +343,8 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 
 	bool didLoop = false;
 	LinkNode *current = client->stream_list;
+
+	memset(client->audio_output, 0, sizeof(client->audio_output));
 
 	while (current != NULL) {
 		AudioStream *sound = current->data;
