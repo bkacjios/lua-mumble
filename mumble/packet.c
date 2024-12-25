@@ -6,13 +6,23 @@
 #include "user.h"
 #include "client.h"
 
+typedef struct {
+	uv_udp_send_t req;
+	int is_done;
+} send_context_t;
+
 void on_send(uv_udp_send_t* req, int status) {
+	send_context_t* context = (send_context_t*)req->data;
+
+	// Signal that the send operation is complete
+	context->is_done = 1;
+
 	if (status < 0) {
 		mumble_log(LOG_ERROR, "[UDP] Error sending UDP packet: %s\n", uv_strerror(status));
 	} else {
-		mumble_log(LOG_TRACE, "[UDP] sent UDP packet successfully\n");
+		mumble_log(LOG_TRACE, "[UDP] Sent UDP packet successfully\n");
 	}
-	//free(req);
+	free(req);
 }
 
 int packet_sendudp(MumbleClient* client, const void *message, const int length)
@@ -20,12 +30,27 @@ int packet_sendudp(MumbleClient* client, const void *message, const int length)
 	uint8_t encrypted[length + 4];
 	if (crypt_isValid(client->crypt) && crypt_encrypt(client->crypt, message, encrypted, length))
 	{
-		//mumble_log(LOG_TRACE, "SENDING %s: %p\n", "UDP", message);
-
 		uv_buf_t buf = uv_buf_init((char*)encrypted, length + 4);
 
-		uv_udp_send_t send_req;
-		uv_udp_send(&send_req, &client->socket_udp, &buf, 1, NULL, on_send);
+		send_context_t* context = (send_context_t*)malloc(sizeof(send_context_t));
+		context->is_done = 0;
+
+		// Prepare the request
+		uv_udp_send_t* req = &context->req;
+		req->data = context;
+
+		int ret = uv_udp_send(req, &client->socket_udp, &buf, 1, NULL, on_send);
+
+		if (ret < 0) {
+			fprintf(stderr, "uv_udp_send failed: %s\n", uv_strerror(ret));
+			free(req);
+			return 0;
+		}
+
+		// Wait until the send operation is done (helps prevent the audio timer from stuttering)
+		while (!context->is_done) {
+			uv_run(uv_default_loop(), UV_RUN_ONCE);
+		}
 	} else {
 		mumble_log(LOG_ERROR, "[UDP] Unable to encrypt UDP packet\n");
 	}

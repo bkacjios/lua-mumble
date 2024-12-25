@@ -790,7 +790,7 @@ void mumble_create_audio_timer(MumbleClient *client)
 
 	// Create a timer for audio data
 	uv_timer_init(uv_default_loop(), &client->audio_timer);
-	uv_timer_start(&client->audio_timer, mumble_audio_timer, time, 0);
+	uv_timer_start(&client->audio_timer, mumble_audio_timer, time, time);
 }
 
 static int mumble_loop(lua_State *l)
