@@ -166,12 +166,21 @@ void audio_transmission_unreference(lua_State*l, AudioStream *sound)
 
 void mumble_audio_timer(uv_timer_t* handle)
 {
+	static uint64_t start_time = 0;
+    start_time = uv_now(uv_default_loop());
+
 	MumbleClient* client = (MumbleClient*) handle->data;
 	lua_State *l = client->l;
 
 	if (client->connected) {
 		audio_transmission_event(l, client);
 	}
+
+	uint64_t end_time = uv_now(uv_default_loop());
+	uint64_t duration = end_time - start_time;
+    uint64_t next_timeout = client->audio_timer_interval > duration ? client->audio_timer_interval - duration : 0;
+
+    uv_timer_start(handle, mumble_audio_timer, next_timeout, 0);
 }
 
 static void handle_audio_stream_end(lua_State *l, MumbleClient *client, AudioStream *sound, bool *didLoop) {

@@ -77,7 +77,7 @@
 #define AUDIO_FRAME_SIZE_LARGE	60
 
 // 10 = Lower latency, 60 = Better quality
-#define AUDIO_DEFAULT_FRAMES AUDIO_FRAME_SIZE_SMALL
+#define AUDIO_DEFAULT_FRAMES AUDIO_FRAME_SIZE_MEDIUM
 
 // How many channels the ogg file playback should handle
 #define AUDIO_PLAYBACK_CHANNELS 2
@@ -133,6 +133,7 @@ typedef struct lua_timer lua_timer;
 typedef struct mumble_crypt mumble_crypt;
 typedef struct thread_io thread_io;
 typedef struct MumbleThread MumbleThread;
+typedef struct AudioTimer AudioTimer;
 
 struct lua_timer {
 	uv_timer_t timer;
@@ -207,6 +208,8 @@ struct MumbleClient {
 	uint32_t			session;
 	float				volume;
 	uv_timer_t			audio_timer;
+	uint64_t			audio_timer_interval;
+	struct timespec		audio_timer_last;
 	uv_timer_t			ping_timer;
 	AudioFrame			audio_output[PCM_BUFFER];
 	uint32_t			audio_sequence;
@@ -350,8 +353,7 @@ extern uint64_t util_get_varint(uint8_t buffer[], int *len);
 
 extern void mumble_ping(lua_State* l, MumbleClient* client);
 
-extern float mumble_adjust_audio_bandwidth(MumbleClient *client);
-extern float mumble_adjust_audio_bandwidth_2(MumbleClient *client);
+extern uint64_t mumble_adjust_audio_bandwidth(MumbleClient *client);
 extern void mumble_create_audio_timer(MumbleClient *client);
 extern int mumble_client_connect(lua_State *l);
 extern void mumble_disconnect(lua_State* l, MumbleClient *client, const char* reason, bool garbagecollected);

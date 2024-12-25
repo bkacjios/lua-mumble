@@ -379,6 +379,7 @@ static int client_setAudioPacketSize(lua_State *l) {
 	}
 
 	client->audio_frames = frames;
+	client->audio_timer_interval = frames;
 	uv_timer_stop(&client->audio_timer);
 
 	if (client->connected) {
