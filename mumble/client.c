@@ -379,9 +379,10 @@ static int client_setAudioPacketSize(lua_State *l) {
 	}
 
 	client->audio_frames = frames;
-	client->audio_timer.timer.repeat = (float) frames / 1000;
+	uv_timer_stop(&client->audio_timer);
+
 	if (client->connected) {
-		ev_timer_again(EV_DEFAULT, &client->audio_timer.timer);
+		uv_timer_start(&client->audio_timer, mumble_audio_timer, frames, frames);
 	}
 	return 0;
 }

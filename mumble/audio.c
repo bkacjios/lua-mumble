@@ -164,13 +164,13 @@ void audio_transmission_unreference(lua_State*l, AudioStream *sound)
 	sound->refrence = -1;
 }
 
-void mumble_audio_timer(EV_P_ ev_timer *w_, int revents)
+void mumble_audio_timer(uv_timer_t* handle)
 {
-	my_timer *w = (my_timer *) w_;
-	MumbleClient *client = w->client;
+	MumbleClient* client = (MumbleClient*) handle->data;
+	lua_State *l = client->l;
 
 	if (client->connected) {
-		audio_transmission_event(w->l, client);
+		audio_transmission_event(l, client);
 	}
 }
 

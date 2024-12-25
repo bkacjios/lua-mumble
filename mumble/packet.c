@@ -6,13 +6,26 @@
 #include "user.h"
 #include "client.h"
 
+void on_send(uv_udp_send_t* req, int status) {
+	if (status < 0) {
+		mumble_log(LOG_ERROR, "[UDP] Error sending UDP packet: %s\n", uv_strerror(status));
+	} else {
+		mumble_log(LOG_TRACE, "[UDP] sent UDP packet successfully\n");
+	}
+	//free(req);
+}
+
 int packet_sendudp(MumbleClient* client, const void *message, const int length)
 {
 	uint8_t encrypted[length + 4];
 	if (crypt_isValid(client->crypt) && crypt_encrypt(client->crypt, message, encrypted, length))
 	{
 		//mumble_log(LOG_TRACE, "SENDING %s: %p\n", "UDP", message);
-		sendto(client->socket_udp, encrypted, sizeof(encrypted), 0, client->server_host_udp->ai_addr, client->server_host_udp->ai_addrlen);
+
+		uv_buf_t buf = uv_buf_init((char*)encrypted, length + 4);
+
+		uv_udp_send_t send_req;
+		uv_udp_send(&send_req, &client->socket_udp, &buf, 1, NULL, on_send);
 	} else {
 		mumble_log(LOG_ERROR, "[UDP] Unable to encrypt UDP packet\n");
 	}
@@ -323,7 +336,7 @@ void packet_server_sync(lua_State *l, MumbleClient *client, Packet *packet)
 	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", sync->base.descriptor->name, sync);
 
 	client->synced = true;
-	ev_timer_start(EV_DEFAULT, &client->ping_timer.timer);
+	uv_timer_start(&client->ping_timer, mumble_ping_timer, PING_TIME, PING_TIME);
 
 	lua_newtable(l);
 		if (sync->has_session) {

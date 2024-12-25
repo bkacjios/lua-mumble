@@ -7,7 +7,7 @@
 #include <limits.h>
 #include <errno.h>
 
-#include <ev.h>
+#include <uv.h>
 
 #define LUA_COMPAT_MODULE
 #define LUA_COMPAT_5_1
@@ -91,7 +91,8 @@
 
 #define PAYLOAD_SIZE_MAX (1024 * 8 - 1)
 
-#define PING_TIME 30
+#define PING_TIME 30000
+
 // How many dropped UDP pings will result in falling back to TCP tunnel
 #define UDP_TCP_FALLBACK 2
 
@@ -128,32 +129,20 @@ typedef struct AudioFrame AudioFrame;
 typedef struct MumbleChannel MumbleChannel;
 typedef struct MumbleUser MumbleUser;
 typedef struct LinkNode LinkNode;
-typedef struct my_io my_io;
-typedef struct my_timer my_timer;
 typedef struct lua_timer lua_timer;
 typedef struct mumble_crypt mumble_crypt;
 typedef struct thread_io thread_io;
 typedef struct MumbleThread MumbleThread;
 
-struct my_io {
-	ev_io io;
-	MumbleClient* client;
-	lua_State* l;
-};
-
-struct my_timer {
-	ev_timer timer;
-	MumbleClient* client;
-	lua_State* l;
-};
-
 struct lua_timer {
-	ev_timer timer;
+	uv_timer_t timer;
 	lua_State* l;
 	bool started;
 	uint32_t count;
 	int self;
 	int callback;
+	uint64_t delay;
+	uint64_t repeat;
 };
 
 struct AudioFrame {
@@ -175,7 +164,7 @@ struct AudioStream {
 };
 
 struct thread_io {
-	ev_io io;
+	// ev_io io;
 	lua_State* l;
 	MumbleThread* thread;
 };
@@ -191,9 +180,14 @@ struct MumbleThread {
 };
 
 struct MumbleClient {
+	lua_State*			l;
 	int					self;
-	int					socket_tcp;
-	int					socket_udp;
+	uv_connect_t		tcp_connect_req;
+	uv_tcp_t			socket_tcp;
+	uv_udp_t			socket_udp;
+	uv_poll_t			ssl_poll;
+	BIO*				ssl_bio_read;
+	BIO*				ssl_bio_write;
 	struct addrinfo*	server_host_udp;
 	struct addrinfo*	server_host_tcp;
 	SSL_CTX				*ssl_context;
@@ -212,11 +206,8 @@ struct MumbleClient {
 	double				time;
 	uint32_t			session;
 	float				volume;
-	my_io				socket_tcp_io;
-	my_io				socket_udp_io;
-	my_io				socket_tcp_connect;
-	my_timer			audio_timer;
-	my_timer			ping_timer;
+	uv_timer_t			audio_timer;
+	uv_timer_t			ping_timer;
 	AudioFrame			audio_output[PCM_BUFFER];
 	uint32_t			audio_sequence;
 	uint32_t			audio_frames;
@@ -335,8 +326,9 @@ extern int luaopen_mumble(lua_State *l);
 
 extern void mumble_log(int level, const char* fmt, ...);
 
-extern void mumble_audio_timer(EV_P_ ev_timer *w_, int revents);
-extern void mumble_thread_event(struct ev_loop *loop, ev_io *w, int revents);
+extern void mumble_audio_timer(uv_timer_t* handle);
+extern void mumble_ping_timer(uv_timer_t* handle);
+//extern void mumble_thread_event(struct ev_loop *loop, ev_io *w, int revents);
 
 extern double gettime(clockid_t mode);
 
@@ -357,9 +349,6 @@ extern int luaL_isudata(lua_State *L, int ud, const char *tname);
 extern uint64_t util_get_varint(uint8_t buffer[], int *len);
 
 extern void mumble_ping(lua_State* l, MumbleClient* client);
-extern uint64_t mumble_ping_udp_legacy(lua_State* l, MumbleClient* client);
-extern uint64_t mumble_ping_udp_protobuf(lua_State* l, MumbleClient* client);
-extern void mumble_ping_tcp(lua_State* l, MumbleClient* client);
 
 extern float mumble_adjust_audio_bandwidth(MumbleClient *client);
 extern float mumble_adjust_audio_bandwidth_2(MumbleClient *client);

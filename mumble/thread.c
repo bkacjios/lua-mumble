@@ -106,21 +106,21 @@ static void *mumble_thread_worker(void *arg)
 	return NULL;
 }
 
-void mumble_thread_event(struct ev_loop *loop, ev_io *w_, int revents)
-{
-	thread_io *w = (thread_io *) w_;
+// void mumble_thread_event(struct ev_loop *loop, ev_io *w_, int revents)
+// {
+// 	thread_io *w = (thread_io *) w_;
 
-	// TODO: Allow sending and receiving of data between threads using this pipe
-	int finished;
-	int n = read(w_->fd, &finished, sizeof(int));
+// 	// TODO: Allow sending and receiving of data between threads using this pipe
+// 	int finished;
+// 	int n = read(w_->fd, &finished, sizeof(int));
 
-	if (n > 0) {
-		mumble_log(LOG_DEBUG, "thread event data received\n");
-		mumble_thread_exit(w->l, w->thread);
-	} else {
-		mumble_log(LOG_ERROR, "thread pipe error\n");
-	}
-}
+// 	if (n > 0) {
+// 		mumble_log(LOG_DEBUG, "thread event data received\n");
+// 		mumble_thread_exit(w->l, w->thread);
+// 	} else {
+// 		mumble_log(LOG_ERROR, "thread pipe error\n");
+// 	}
+// }
 
 int mumble_thread_exit(lua_State *l, MumbleThread *thread)
 {
@@ -177,8 +177,8 @@ int mumble_thread_new(lua_State *l)
 	thread->event.l = l;
 	thread->event.thread = thread;
 
-	ev_io_init(&thread->event.io, mumble_thread_event, thread->pipe[READ], EV_READ);
-	ev_io_start(EV_DEFAULT, &thread->event.io);
+	// ev_io_init(&thread->event.io, mumble_thread_event, thread->pipe[READ], EV_READ);
+	// ev_io_start(EV_DEFAULT, &thread->event.io);
 
 	pthread_create(&thread->pthread, NULL, mumble_thread_worker, thread);
 
@@ -207,7 +207,7 @@ static int thread_server_tostring(lua_State *l)
 static int thread_server_gc(lua_State *l)
 {
 	MumbleThread *thread = luaL_checkudata(l, 1, METATABLE_THREAD_SERVER);
-	ev_io_stop(EV_DEFAULT, &thread->event.io);
+	// ev_io_stop(EV_DEFAULT, &thread->event.io);
 	close(thread->pipe[READ]);
 	close(thread->pipe[WRITE]);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_THREAD_SERVER, thread);
