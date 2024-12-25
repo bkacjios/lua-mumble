@@ -129,20 +129,20 @@ typedef struct AudioFrame AudioFrame;
 typedef struct MumbleChannel MumbleChannel;
 typedef struct MumbleUser MumbleUser;
 typedef struct LinkNode LinkNode;
-typedef struct lua_timer lua_timer;
+typedef struct MumbleTimer MumbleTimer;
 typedef struct mumble_crypt mumble_crypt;
 typedef struct thread_io thread_io;
 typedef struct MumbleThread MumbleThread;
 typedef struct AudioTimer AudioTimer;
 
-struct lua_timer {
+struct MumbleTimer {
 	uv_timer_t timer;
 	lua_State* l;
-	bool started;
+	bool running;
 	uint32_t count;
 	int self;
 	int callback;
-	uint64_t delay;
+	uint64_t after;
 	uint64_t repeat;
 };
 
@@ -209,7 +209,6 @@ struct MumbleClient {
 	float				volume;
 	uv_timer_t			audio_timer;
 	uint64_t			audio_timer_interval;
-	struct timespec		audio_timer_last;
 	uv_timer_t			ping_timer;
 	AudioFrame			audio_output[PCM_BUFFER];
 	uint32_t			audio_sequence;

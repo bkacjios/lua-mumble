@@ -2,34 +2,34 @@
 
 #include "timer.h"
 
-static lua_timer* mumble_checktimer(lua_State *l, int index)
+static MumbleTimer* mumble_checktimer(lua_State *l, int index)
 {
-	lua_timer *timer = luaL_checkudata(l, index, METATABLE_TIMER);
+	MumbleTimer *timer = luaL_checkudata(l, index, METATABLE_TIMER);
 
 	return timer;
 }
 
-static void mumble_lua_timer_finish(lua_State *l, lua_timer *ltimer)
+static void mumble_lua_timer_finish(lua_State *l, MumbleTimer *ltimer)
 {
-	if (ltimer->started) {
-		// if (ev_is_active(&ltimer->timer)) {
+	if (ltimer->running) {
+		if (uv_is_active((uv_handle_t*) &ltimer->timer)) {
 			mumble_log(LOG_TRACE, "mumble.timer: %p stopping\n", ltimer);
-			uv_timer_init(uv_default_loop(), &ltimer->timer);
-		// }
+			uv_timer_stop(&ltimer->timer);
+		}
 		// Cleanup all our references
 		mumble_log(LOG_TRACE, "mumble.timer: %p cleanup\n", ltimer);
 		mumble_registry_unref(l, MUMBLE_TIMER_REG, ltimer->self);
 		mumble_registry_unref(l, MUMBLE_TIMER_REG, ltimer->callback);
-		ltimer->started = false;
+		ltimer->running = false;
 	}
 }
 
 static void mumble_lua_timer(uv_timer_t* handle)
 {
-	lua_timer* timer = (lua_timer*) handle->data;
+	MumbleTimer* ltimer = (MumbleTimer*) handle->data;
 
-	lua_State *l = timer->l;
-	timer->count++;
+	lua_State *l = ltimer->l;
+	ltimer->count++;
 
 	lua_stackguard_entry(l);
 
@@ -37,9 +37,9 @@ static void mumble_lua_timer(uv_timer_t* handle)
 	lua_pushcfunction(l, mumble_traceback);
 
 	// Push the callback function from the registry
-	mumble_registry_pushref(l, MUMBLE_TIMER_REG, timer->callback);
+	mumble_registry_pushref(l, MUMBLE_TIMER_REG, ltimer->callback);
 	// Push ourself to the callback for use
-	mumble_registry_pushref(l, MUMBLE_TIMER_REG, timer->self);
+	mumble_registry_pushref(l, MUMBLE_TIMER_REG, ltimer->self);
 
 	// Call the callback with our custom error handler function
 	if (lua_pcall(l, 1, 0, -3) != 0) {
@@ -50,22 +50,30 @@ static void mumble_lua_timer(uv_timer_t* handle)
 	// Pop the error handler
 	lua_pop(l, 1);
 
-	// If the timer isn't active after our callback function call..
-	// if (!ev_is_active(w_)) {
-		// Mark our timer as finished.
-		// This allows the timer object to be garbage collected the moment our callback is done being used.
-		mumble_lua_timer_finish(l, timer);
-	// }
+	if (!uv_is_active((uv_handle_t*) handle)) {
+		// Timer is no longer active
+		// Finish and cleanup timer references to allow for garbage collection
+		mumble_lua_timer_finish(l, ltimer);
+	} else {
+		// Timer is still active, stop and go again incase we adjusted the values
+		uv_timer_stop(&ltimer->timer);
+		uv_timer_start(&ltimer->timer, mumble_lua_timer, ltimer->after, ltimer->repeat);
+	}
 
 	lua_stackguard_exit(l);
 }
 
 int mumble_timer_new(lua_State *l)
 {
-	lua_timer *ltimer = lua_newuserdata(l, sizeof(lua_timer));
+	MumbleTimer *ltimer = lua_newuserdata(l, sizeof(MumbleTimer));
 	ltimer->count = 0;
 	ltimer->l = l;
-	ltimer->started = false;
+	ltimer->running = false;
+	ltimer->after = 0;
+	ltimer->repeat = 0;
+	ltimer->self = -1;
+	ltimer->callback = -1;
+	ltimer->timer.data = ltimer;
 
 	luaL_getmetatable(l, METATABLE_TIMER);
 	lua_setmetatable(l, -2);
@@ -76,14 +84,17 @@ int mumble_timer_new(lua_State *l)
 
 static int timer_start(lua_State *l)
 {
-	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	luaL_checktype(l, 2, LUA_TFUNCTION);
 
 	uint64_t after = (uint64_t) luaL_optnumber(l, 3, 0) * 1000;
 	uint64_t repeat = (uint64_t) luaL_optnumber(l, 4, 0) * 1000;
 
-	if (!ltimer->started) {
-		ltimer->started = true;
+	ltimer->after = after;
+	ltimer->repeat = repeat;
+
+	if (!ltimer->running) {
+		ltimer->running = true;
 
 		lua_pushvalue(l, 1); // Push a copy of the userdata to prevent garabage collection
 		ltimer->self = mumble_registry_ref(l, MUMBLE_TIMER_REG); // Pop it off as a reference
@@ -98,15 +109,16 @@ static int timer_start(lua_State *l)
 		// Return ourself
 		lua_settop(l, 1);
 	} else {
-		// Timer is already running, so go again
-		// ev_timer_again(EV_DEFAULT, &ltimer->timer);
+		// Timer is already running, so stop and go again
+		uv_timer_stop(&ltimer->timer);
+		uv_timer_start(&ltimer->timer, mumble_lua_timer, ltimer->after, ltimer->repeat);
 	}
 	return 1;
 }
 
 static int timer_stop(lua_State *l)
 {
-	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	mumble_lua_timer_finish(l, ltimer);
 	// Return ourself
 	lua_settop(l, 1);
@@ -115,11 +127,12 @@ static int timer_stop(lua_State *l)
 
 static int timer_set(lua_State *l)
 {
-	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	double after = luaL_checknumber(l, 2);
 	double repeat = luaL_optnumber(l, 3, 0);
 
-	// ev_timer_set(&ltimer->timer, after, repeat);
+	ltimer->after = after;
+	ltimer->repeat = repeat;
 
 	// Return ourself
 	lua_settop(l, 1);
@@ -128,17 +141,17 @@ static int timer_set(lua_State *l)
 
 static int timer_get(lua_State *l)
 {
-	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
-	lua_pushnumber(l, ltimer->delay);
+	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	lua_pushnumber(l, ltimer->after);
 	lua_pushnumber(l, ltimer->repeat);
 	return 2;
 }
 
 static int timer_setDuration(lua_State *l)
 {
-	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 
-	ltimer->delay = luaL_checknumber(l, 2);
+	ltimer->after = luaL_checknumber(l, 2);
 
 	// Return ourself
 	lua_settop(l, 1);
@@ -147,14 +160,14 @@ static int timer_setDuration(lua_State *l)
 
 static int timer_getDuration(lua_State *l)
 {
-	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
-	lua_pushnumber(l, ltimer->delay);
+	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	lua_pushnumber(l, ltimer->after);
 	return 1;
 }
 
 static int timer_setRepeat(lua_State *l)
 {
-	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	
 	ltimer->repeat = luaL_checknumber(l, 2);
 
@@ -165,23 +178,24 @@ static int timer_setRepeat(lua_State *l)
 
 static int timer_getRepeat(lua_State *l)
 {
-	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	lua_pushnumber(l, ltimer->repeat);
 	return 1;
 }
 
 static int timer_getCount(lua_State *l)
 {
-	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	lua_pushinteger(l, ltimer->count);
 	return 1;
 }
 
 static int timer_again(lua_State *l)
 {
-	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 
-	// ev_timer_again(EV_DEFAULT, &ltimer->timer);
+	uv_timer_stop(&ltimer->timer);
+	uv_timer_start(&ltimer->timer, mumble_lua_timer, ltimer->after, ltimer->repeat);
 
 	// Return ourself
 	lua_settop(l, 1);
@@ -190,14 +204,14 @@ static int timer_again(lua_State *l)
 
 static int timer_isActive(lua_State *l)
 {
-	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
-	// lua_pushboolean(l, ev_is_active(&ltimer->timer));
+	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	lua_pushboolean(l, uv_is_active((uv_handle_t*) &ltimer->timer));
 	return 1;
 }
 
 static int timer_gc(lua_State *l)
 {
-	lua_timer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	mumble_lua_timer_finish(l, ltimer);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_TIMER, ltimer);
 	return 0;
