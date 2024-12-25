@@ -737,6 +737,8 @@ String decoded = mumble.decoder:decode_float(String encoded)
 
 [Click here for a list of supported audio formats](https://libsndfile.github.io/libsndfile/formats.html)
 
+All audio will be resampled to 48000 Hz and remixed to stereo.
+
 ``` lua
 -- Returns if this audio stream is currently playing or not
 Boolean isplaying = mumble.audiostream:isPlaying()
