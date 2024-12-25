@@ -42,7 +42,7 @@ int packet_sendudp(MumbleClient* client, const void *message, const int length)
 		int ret = uv_udp_send(req, &client->socket_udp, &buf, 1, NULL, on_send);
 
 		if (ret < 0) {
-			fprintf(stderr, "uv_udp_send failed: %s\n", uv_strerror(ret));
+			mumble_log(LOG_ERROR, "[UDP] Unable to send UDP packet: %s\n", uv_strerror(ret));
 			free(req);
 			return 0;
 		}

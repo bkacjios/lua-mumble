@@ -6,14 +6,14 @@ A lua module to connect to a mumble server and interact with it
 
 ### Ubuntu
 ```bash
-sudo apt-get install libluajit-5.1-dev protobuf-c libprotobuf-c-dev libssl-dev libopus-dev libev-dev
+sudo apt-get install libluajit-5.1-dev protobuf-c libprotobuf-c-dev libssl-dev libopus-dev libuv1-dev 
 ```
 
 Note: `liblua5.1-0-dev` can be substituted with `libluajit-5.1-dev`, `liblua5.2-dev`, or `liblua5.3-dev` depending on your needs.
 
 ### Arch Linux
 ```bash
-sudo pacman -S luajit protobuf-c openssl libsndfile opus ev
+sudo pacman -S luajit protobuf-c openssl libsndfile opus libuv
 ```
 
 Note: `luajit` can be substituted with `lua5.1`, `lua5.2` or `lua5.3` depending on your needs.
@@ -78,7 +78,7 @@ mumble.thread = mumble.thread("filename.lua")
 
 -- A new timer object
 -- The timer itself will do a best-effort at avoiding drift, that is, if you configure a timer to trigger every 10 seconds, then it will normally trigger at exactly 10 second intervals. If, however, your program cannot keep up with the timer (because it takes longer than those 10 seconds to do stuff) the timer will not fire more than once per event loop iteration.
--- Timers will keep the reference active until mumble.timer:close() is called.
+-- Timers will keep the reference active until mumble.timer:stop() is called, or the timer stops on its own.
 -- Timers will dereference themselves if the timer is stopped after the callback funciton call.
 mumble.timer = mumble.timer()
 

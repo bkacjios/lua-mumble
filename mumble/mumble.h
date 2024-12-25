@@ -185,6 +185,7 @@ struct MumbleClient {
 	int					self;
 	uv_connect_t		tcp_connect_req;
 	uv_tcp_t			socket_tcp;
+	uv_os_fd_t			socket_tcp_fd;
 	uv_udp_t			socket_udp;
 	uv_poll_t			ssl_poll;
 	BIO*				ssl_bio_read;
@@ -208,7 +209,6 @@ struct MumbleClient {
 	uint32_t			session;
 	float				volume;
 	uv_timer_t			audio_timer;
-	uint64_t			audio_timer_interval;
 	uv_timer_t			ping_timer;
 	AudioFrame			audio_output[PCM_BUFFER];
 	uint32_t			audio_sequence;

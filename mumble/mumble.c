@@ -23,6 +23,7 @@ int MUMBLE_TIMER_REG;
 int MUMBLE_THREAD_REG;
 
 static uv_signal_t mumble_signal;
+static void mumble_client_cleanup(MumbleClient *client);
 static void mumble_client_free(MumbleClient *client);
 
 static void mumble_signal_event(uv_signal_t* handle, int signum)
@@ -361,8 +362,6 @@ void socket_read_write_event_tcp(uv_poll_t* handle, int status, int events) {
 		if (ret == 1 && SSL_is_init_finished(client->ssl)) {
 			client->connected = true;
 
-			mumble_log(LOG_INFO, "SSL handshake completed\n");
-
 			// Log the connection info
 			char address[INET6_ADDRSTRLEN];
 			if (client->server_host_tcp->ai_family == AF_INET) {
@@ -378,8 +377,9 @@ void socket_read_write_event_tcp(uv_poll_t* handle, int status, int events) {
 		} else {
 			int error = SSL_get_error(client->ssl, ret);
 			if (error != SSL_ERROR_WANT_READ && error != SSL_ERROR_WANT_WRITE) {
-				mumble_log(LOG_ERROR, "SSL handshake failed: %s\n", mumble_ssl_error(error));
-				uv_close((uv_handle_t *) &client->socket_tcp, NULL);
+				const char* message = (char*) mumble_ssl_error(error);
+				mumble_log(LOG_ERROR, "SSL handshake failed: %s\n", message);
+				mumble_client_cleanup(client);
 			}
 		}
 	} else if (events & UV_READABLE && client->connected) {
@@ -488,7 +488,7 @@ void mumble_connected_tcp(uv_connect_t *req, int status)
 	MumbleClient* client = (MumbleClient*) tcp_handle->data;
 
 	// Create a new uv_poll_t to monitor the socket for SSL handshake
-	uv_poll_init(uv_default_loop(), &client->ssl_poll, tcp_handle->io_watcher.fd);
+	uv_poll_init(uv_default_loop(), &client->ssl_poll, client->socket_tcp_fd);
 	client->ssl_poll.data = client;
 
 	// Start polling the socket for readability and writability for the handshake
@@ -689,7 +689,22 @@ int mumble_client_connect(lua_State *l) {
 		return 2;
 	}
 
-	printf("connected to tcp: %p %p %d\n", &client->socket_tcp, &client->tcp_connect_req, err);
+	err = uv_fileno((uv_handle_t*) &client->socket_tcp, &client->socket_tcp_fd);
+	if (err) {
+		mumble_client_free(client);
+		lua_pushboolean(l, false);
+		lua_pushfstring(l, "failed getting file descriptor for tcp socket: %s", uv_strerror(err));
+		return 1;
+	}
+
+	if (SSL_set_fd(client->ssl, client->socket_tcp_fd) == 0) {
+		mumble_client_free(client);
+		lua_pushboolean(l, false);
+		lua_pushfstring(l, "could not set SSL file descriptor: %s", mumble_ssl_error(ERR_get_error()));
+		return 2;
+	}
+
+	printf("connected to tcp: %p %p %d\n", &client->socket_tcp, &client->tcp_connect_req, client->socket_tcp_fd);
 
 	err = uv_udp_connect(&client->socket_udp, client->server_host_udp->ai_addr);
 	if (err) {
@@ -700,13 +715,6 @@ int mumble_client_connect(lua_State *l) {
 	}
 
 	printf("connected to udp: %p %d\n", &client->socket_udp, err);
-
-	if (SSL_set_fd(client->ssl, client->socket_tcp.io_watcher.fd) == 0) {
-		mumble_client_free(client);
-		lua_pushboolean(l, false);
-		lua_pushfstring(l, "could not set SSL file descriptor: %s", mumble_ssl_error(ERR_get_error()));
-		return 2;
-	}
 
 	uv_udp_recv_start(&client->socket_udp, alloc_buffer, socket_read_event_udp);
 
@@ -786,8 +794,6 @@ void mumble_create_audio_timer(MumbleClient *client)
 {
 	uint64_t time = mumble_adjust_audio_bandwidth(client);
 
-	client->audio_timer_interval = time;
-
 	// Create a timer for audio data
 	uv_timer_init(uv_default_loop(), &client->audio_timer);
 	uv_timer_start(&client->audio_timer, mumble_audio_timer, time, time);
@@ -837,17 +843,19 @@ static void mumble_client_free(MumbleClient *client) {
 	}
 }
 
-static void mumble_client_cleanup(lua_State *l, MumbleClient *client) {
+static void mumble_client_cleanup(MumbleClient *client) {
 	uv_close((uv_handle_t*) &client->socket_udp, NULL);
 	uv_close((uv_handle_t*) &client->socket_tcp, NULL);
-	//uv_timer_stop(&client->ping_timer);
+	if (uv_is_active((uv_handle_t*) &client->ping_timer)) {
+		uv_timer_stop(&client->ping_timer);
+	}
 
 	LinkNode* current = client->stream_list;
 
 	if (current) {
 		// Cleanup any active audio transmissions
 		while (current != NULL) {
-			audio_transmission_unreference(l, current->data);
+			audio_transmission_unreference(client->l, current->data);
 			current = current->next;
 		}
 	}
@@ -857,7 +865,7 @@ static void mumble_client_cleanup(lua_State *l, MumbleClient *client) {
 	if (current) {
 		// Cleanup our user objects
 		while (current != NULL) {
-			mumble_user_remove(l, client, current->index);
+			mumble_user_remove(client->l, client, current->index);
 			current = current->next;
 		}
 	}
@@ -867,14 +875,14 @@ static void mumble_client_cleanup(lua_State *l, MumbleClient *client) {
 	if (current) {
 		// Cleanup our channel objects
 		while (current != NULL) {
-			mumble_channel_remove(l, client, current->index);
+			mumble_channel_remove(client->l, client, current->index);
 			current = current->next;
 		}
 	}
 
 	if (client->self > 0) {
 		// Remove from the connected clients list
-		mumble_registry_unref(l, MUMBLE_CLIENTS, client->self);
+		mumble_registry_unref(client->l, MUMBLE_CLIENTS, client->self);
 	}
 }
 
@@ -898,7 +906,7 @@ void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason, b
 	}
 
 	mumble_client_free(client);
-	mumble_client_cleanup(l, client);
+	mumble_client_cleanup(client);
 
 	// lua_pushcfunction(l, mumble_traceback);
 	// lua_insert(l, 1);
