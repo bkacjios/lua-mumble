@@ -86,8 +86,8 @@
 #define AUDIO_SAMPLE_RATE 48000
 
 // The size of the PCM buffer
-// Technically, it should be FRAMESIZE*SAMPLERATE/1000
-#define PCM_BUFFER 4096
+// FRAMESIZE * SAMPLERATE * CHANNELS / 1000
+#define PCM_BUFFER 60 * 48000 * 2 / 1000
 
 #define PAYLOAD_SIZE_MAX (1024 * 8 - 1)
 

@@ -258,8 +258,8 @@ static void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream
 			float right = output_buffer[idx1 * 2 + 1] * (1.0f - alpha) + output_buffer[idx2 * 2 + 1] * alpha;
 
 			// Interpolate left and right channels
-			client->audio_output[t].l += soft_clip(left);
-			client->audio_output[t].r += soft_clip(right);
+			client->audio_output[t].l = soft_clip(client->audio_output[t].l + left);
+			client->audio_output[t].r = soft_clip(client->audio_output[t].r + right);
 		}
 
 		// Update the number of samples processed
@@ -267,8 +267,8 @@ static void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream
 	} else {
 		// We don't need to resample, so just move it to our output buffer
 		for (int i = 0; i < read; i++) {
-			client->audio_output[i].l += soft_clip(output_buffer[i * 2]);
-			client->audio_output[i].r += soft_clip(output_buffer[i * 2 + 1]);
+			client->audio_output[i].l = soft_clip(client->audio_output[i].l + output_buffer[i * 2]);
+			client->audio_output[i].r = soft_clip(client->audio_output[i].r + output_buffer[i * 2 + 1]);
 		}
 	}
 

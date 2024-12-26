@@ -303,14 +303,12 @@ void mumble_handle_udp_packet(lua_State* l, MumbleClient* client, char* unencryp
 
 void socket_read_event_udp(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf, const struct sockaddr* addr, unsigned flags)
 {
+	MumbleClient* client = (MumbleClient*) handle->data;
+	lua_State *l = client->l;
+
 	// Check for errors in the read operation
 	if (nread < 0) {
-		if (nread == UV_EOF) {
-			mumble_log(LOG_INFO, "[UDP] Connection closed\n");
-		} else {
-			mumble_log(LOG_ERROR, "[UDP] Error receiving UDP packet: %s\n", uv_strerror(nread));
-		}
-		uv_close((uv_handle_t*) handle, NULL);
+		mumble_log(LOG_ERROR, "[UDP] Error receiving UDP packet: %s\n", uv_strerror(nread));
 		return;
 	}
 
@@ -319,9 +317,6 @@ void socket_read_event_udp(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf,
 		mumble_log(LOG_TRACE, "[UDP] No data received\n");
 		return;
 	}
-
-	MumbleClient* client = (MumbleClient*) handle->data;
-	lua_State *l = client->l;
 
 	uint8_t unencrypted[nread];
 	memset(unencrypted, 0, sizeof(unencrypted));
@@ -370,17 +365,7 @@ void handle_ssl_read_error(MumbleClient* client, int ret) {
 		return; // Retry when SSL is ready
 	}
 
-	if (err == SSL_ERROR_SSL) {
-		unsigned long err_code;
-		const char* message = "unknown error";
-		while ((err_code = ERR_get_error()) != 0) {
-			message = (const char*)mumble_ssl_error(err_code);
-			mumble_log(LOG_WARN, "SSL read error: %s\n", message);
-		}
-		mumble_disconnect(client->l, client, message, false);
-	} else if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL) {
-		mumble_disconnect(client->l, client, "connection closed by server", false);
-	}
+	mumble_disconnect(client->l, client, mumble_ssl_error(ERR_get_error()), false);
 }
 
 void socket_read_write_event_tcp(uv_poll_t* handle, int status, int events) {
@@ -723,8 +708,6 @@ int mumble_client_connect(lua_State *l) {
 		return 2;
 	}
 
-	printf("connected to tcp: %p %p %d\n", &client->socket_tcp, &client->tcp_connect_req, client->socket_tcp_fd);
-
 	err = uv_udp_connect(&client->socket_udp, client->server_host_udp->ai_addr);
 	if (err) {
 		mumble_client_free(client);
@@ -733,13 +716,10 @@ int mumble_client_connect(lua_State *l) {
 		return 2;
 	}
 
-	printf("connected to udp: %p %d\n", &client->socket_udp, err);
-
 	uv_udp_recv_start(&client->socket_udp, alloc_buffer, socket_read_event_udp);
 
-	// Create a timer to ping the server every X seconds
+	// Create a timer to constantly send out pings to the server
 	uv_timer_init(loop, &client->ping_timer);
-	// uv_timer_start(&client->ping_timer, mumble_ping_timer, PING_TIME, PING_TIME);
 
 	// Register ourself in the list of connected clients
 	lua_pushvalue(l, 1);
@@ -1512,6 +1492,21 @@ void mumble_init(lua_State *l)
 			lua_setfield(l, -2, "LARGE");
 		}
 		lua_setfield(l, -2, "audio");
+
+		lua_newtable(l);
+		{
+			lua_pushinteger(l, LOG_INFO);
+			lua_setfield(l, -2, "INFO");
+			lua_pushinteger(l, LOG_WARN);
+			lua_setfield(l, -2, "WARN");
+			lua_pushinteger(l, LOG_ERROR);
+			lua_setfield(l, -2, "ERROR");
+			lua_pushinteger(l, LOG_DEBUG);
+			lua_setfield(l, -2, "DEBUG");
+			lua_pushinteger(l, LOG_TRACE);
+			lua_setfield(l, -2, "TRACE");
+		}
+		lua_setfield(l, -2, "log");
 
 		lua_newtable(l);
 		{
