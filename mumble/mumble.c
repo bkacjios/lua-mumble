@@ -449,9 +449,9 @@ void socket_read_write_event_tcp(uv_poll_t* handle, int status, int events) {
 						return;
 					}
 
-					// if (packet.length > MAX_PACKET_SIZE) { // Prevent excessive allocation
-					// 	mumble_log(LOG_ERROR, "packet length too large: %u\n", packet.length);
-					// 	mumble_disconnect(l, client, "protocol violation: oversized packet", false);
+					// if (packet.length > PACKET_MAX_SIZE) { // Prevent excessive allocation
+					// 	mumble_log(LOG_WARN, "packet length too large: %u\n", packet.length);
+					// 	packet_reset(&packet);
 					// 	return;
 					// }
 
@@ -459,7 +459,6 @@ void socket_read_write_event_tcp(uv_poll_t* handle, int status, int events) {
 					packet.body = malloc(sizeof(uint8_t) * packet.length);
 					if (!packet.body) {
 						mumble_log(LOG_ERROR, "failed to create packet buffer: %s", strerror(errno));
-						mumble_disconnect(l, client, "out of memory", false);
 						packet_reset(&packet);
 						return;
 					}
