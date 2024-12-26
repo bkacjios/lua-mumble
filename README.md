@@ -73,9 +73,6 @@ mumble.user = mumble.client.me
 mumble.user = mumble.client:getMe()
 mumble.user = mumble.client:getSelf()
 
--- Run a script in a thread with its own separate Lua environment
-mumble.thread = mumble.thread("filename.lua")
-
 -- A new timer object
 -- The timer itself will do a best-effort at avoiding drift, that is, if you configure a timer to trigger every 10 seconds, then it will normally trigger at exactly 10 second intervals. If, however, your program cannot keep up with the timer (because it takes longer than those 10 seconds to do stuff) the timer will not fire more than once per event loop iteration.
 -- Timers will keep the reference active until mumble.timer:stop() is called, or the timer stops on its own.

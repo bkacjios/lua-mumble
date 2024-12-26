@@ -1640,6 +1640,7 @@ void mumble_init(lua_State *l)
 		lua_setmetatable(l, -2);
 		lua_setfield(l, -2, "timer");
 
+#if defined(MUMBLE_THREADS) && MUMBLE_THREADS > 0
 		lua_newtable(l);
 		{
 			// Register thread metatable
@@ -1668,6 +1669,7 @@ void mumble_init(lua_State *l)
 		}
 		lua_setmetatable(l, -2);
 		lua_setfield(l, -2, "thread");
+#endif
 
 		// Register encoder metatable
 		luaL_newmetatable(l, METATABLE_AUDIOSTREAM);
@@ -1678,7 +1680,7 @@ void mumble_init(lua_State *l)
 		luaL_register(l, NULL, mumble_audiostream);
 		lua_setfield(l, -2, "audiostream");
 
-		// Register thread metatable
+		// Register buffer metatable
 		luaL_newmetatable(l, METATABLE_BUFFER);
 		{
 			lua_pushvalue(l, -1);

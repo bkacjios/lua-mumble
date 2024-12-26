@@ -113,6 +113,8 @@
 #define LOG_DEBUG 4
 #define LOG_TRACE 5
 
+#define MUMBLE_THREADS 0
+
 #ifdef DEBUG
 #define LOG_LEVEL LOG_DEBUG
 #else
