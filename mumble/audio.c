@@ -282,6 +282,20 @@ static void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream
 	}
 }
 
+static void audio_transmission_bitrate_warning(MumbleClient *client, size_t length) {
+	LinkNode* current = client->stream_list;
+
+	if (current) {
+		// Cleanup any active audio transmissions
+		while (current != NULL) {
+			audio_transmission_unreference(client->l, current->data);
+			current = current->next;
+		}
+	}
+
+	mumble_log(LOG_WARN, "Audio packet length %u greater than maximum of %u, stopping all audio streams. Try reducing the bitrate.\n", length, UDP_BUFFER_MAX);
+}
+
 static void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
 	uint32_t frame_header = encoded_len;
 	if (end_frame) {
@@ -299,7 +313,7 @@ static void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encod
 	int len = voicepacket_getlength(&packet);
 
 	if (len > UDP_BUFFER_MAX) {
-		mumble_log(LOG_WARN, "Audio packet too large, try reducing the bitrate (%u, maximum %u)\n", len, UDP_BUFFER_MAX);
+		audio_transmission_bitrate_warning(client, len);
 		return;
 	}
 
@@ -330,7 +344,7 @@ static void send_protobuf_audio(lua_State *l, MumbleClient *client, uint8_t *enc
 	int len = 1 + mumble_udp__audio__pack(&audio, packet_buffer + 1);
 
 	if (len > UDP_BUFFER_MAX) {
-		mumble_log(LOG_WARN, "Audio packet too large, try reducing the bitrate (%u, maximum %u)\n", len, UDP_BUFFER_MAX);
+		audio_transmission_bitrate_warning(client, len);
 		return;
 	}
 
