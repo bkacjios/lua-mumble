@@ -741,9 +741,8 @@ static int getNetworkBandwidth(int bitrate, int frames) {
 	// 4  - volume_adjustment
 	// 1  - is_terminator
 	// 4  - target
-	// 4  - context
 	// OPUS DATA
-	int overhead = 8 + 8 + 4 + 8 + 24 + 4 + 1 + 4 + 4;
+	int overhead = 8 + 8 + 4 + 8 + 24 + 4 + 1 + 4;
 
 	// Calculate the size of the Opus data
 	int opus_data_size = frames * (bitrate / 8) / frames * AUDIO_PLAYBACK_CHANNELS;

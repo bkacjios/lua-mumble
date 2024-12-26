@@ -289,7 +289,7 @@ static void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encod
 	}
 
 	VoicePacket packet;
-	uint8_t packet_buffer[UDP_BUFFER_MAX];
+	uint8_t packet_buffer[PCM_BUFFER];
 	voicepacket_init(&packet, packet_buffer);
 	voicepacket_setheader(&packet, LEGACY_UDP_OPUS, client->audio_target, client->audio_sequence);
 	voicepacket_setframe(&packet, LEGACY_UDP_OPUS, frame_header, encoded, encoded_len);
@@ -297,6 +297,12 @@ static void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encod
 	mumble_handle_speaking_hooks_legacy(l, client, packet_buffer + 1, LEGACY_UDP_OPUS, client->audio_target, client->session);
 
 	int len = voicepacket_getlength(&packet);
+
+	if (len > UDP_BUFFER_MAX) {
+		mumble_log(LOG_WARN, "Audio packet too large, try reducing the bitrate (%u, maximum %u)\n", len, UDP_BUFFER_MAX);
+		return;
+	}
+
 	if (client->tcp_udp_tunnel) {
 		mumble_log(LOG_TRACE, "[TCP] Sending legacy audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)\n",
 			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
@@ -318,11 +324,15 @@ static void send_protobuf_audio(lua_State *l, MumbleClient *client, uint8_t *enc
 	audio.target = client->audio_target;
 	audio.n_positional_data = 0;
 
-	uint8_t packet_buffer[UDP_BUFFER_MAX];
+	uint8_t packet_buffer[PCM_BUFFER];
 	packet_buffer[0] = PROTO_UDP_AUDIO;
 
-	mumble_handle_speaking_hooks_protobuf(l, client, &audio, client->session);
 	int len = 1 + mumble_udp__audio__pack(&audio, packet_buffer + 1);
+
+	if (len > UDP_BUFFER_MAX) {
+		mumble_log(LOG_WARN, "Audio packet too large, try reducing the bitrate (%u, maximum %u)\n", len, UDP_BUFFER_MAX);
+		return;
+	}
 
 	if (client->tcp_udp_tunnel) {
 		mumble_log(LOG_TRACE, "[TCP] Sending protobuf TCP audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)\n",
@@ -333,6 +343,8 @@ static void send_protobuf_audio(lua_State *l, MumbleClient *client, uint8_t *enc
 			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
 		packet_sendudp(client, packet_buffer, len);
 	}
+
+	mumble_handle_speaking_hooks_protobuf(l, client, &audio, client->session);
 }
 
 static void encode_and_send_audio(lua_State *l, MumbleClient *client, sf_count_t frame_size, bool end_frame) {
