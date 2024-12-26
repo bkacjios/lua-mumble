@@ -348,6 +348,41 @@ void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
 	buf->len = suggested_size;
 }
 
+void packet_reset(MumblePacket* packet) {
+	packet->type = 0;
+	packet->length = 0;
+	packet->header_len = 0;
+	if (packet->header) {
+		free(packet->header);
+		packet->header = NULL;
+	}
+	packet->body_len = 0;
+	if (packet->body) {
+		free(packet->body);
+		packet->body = NULL;
+	}
+}
+
+void handle_ssl_read_error(MumbleClient* client, int ret) {
+	int err = SSL_get_error(client->ssl, ret);
+
+	if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
+		return; // Retry when SSL is ready
+	}
+
+	if (err == SSL_ERROR_SSL) {
+		unsigned long err_code;
+		const char* message = "unknown error";
+		while ((err_code = ERR_get_error()) != 0) {
+			message = (const char*)mumble_ssl_error(err_code);
+			mumble_log(LOG_WARN, "SSL read error: %s\n", message);
+		}
+		mumble_disconnect(client->l, client, message, false);
+	} else if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL) {
+		mumble_disconnect(client->l, client, "connection closed by server", false);
+	}
+}
+
 void socket_read_write_event_tcp(uv_poll_t* handle, int status, int events) {
 	if (status < 0) {
 		mumble_log(LOG_ERROR, "tcp poll error: %s\n", uv_strerror(status));
@@ -383,96 +418,81 @@ void socket_read_write_event_tcp(uv_poll_t* handle, int status, int events) {
 			}
 		}
 	} else if (events & UV_READABLE && client->connected) {
-		uint32_t total_read = 0;
-		uint8_t proto_header[6];
+		// Static since this process might take a few iterations to complete
+		static MumblePacket packet;
 
-		int ret = SSL_read(client->ssl, proto_header, sizeof(proto_header));
+		// Setup for a new packet to be read
+		if (!packet.header) {
+			packet.header_len = 0;
+			packet.header = malloc(sizeof(uint8_t) * PACKET_HEADER_SIZE);
+			packet.body_len = 0;
+			packet.body = NULL;
+		}
 
-		if (ret <= 0) {
-			int err = SSL_get_error(client->ssl, ret);
+		// Read the header if not fully read
+		if (packet.header_len < PACKET_HEADER_SIZE) {
+			int ret = SSL_read(client->ssl,
+							   packet.header + packet.header_len,
+							   PACKET_HEADER_SIZE - packet.header_len);
 
-			if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
-				return; // Retry when SSL is ready
-			}
+			if (ret > 0) {
+				packet.header_len += ret;
 
-			if (err == SSL_ERROR_SSL) {
-				unsigned long err_code;
-				char *message = "unknown error";
-				while ((err_code = ERR_get_error()) != 0) {
-					message = (char*) mumble_ssl_error(err_code);
-					mumble_log(LOG_WARN, "ssl read error: %s\n", message);
+				// Header complete, parse packet type and length
+				if (packet.header_len == PACKET_HEADER_SIZE) {
+					packet.type = ntohs(*(uint16_t *)packet.header);
+					packet.length = ntohl(*(uint32_t *)(packet.header + 2));
+
+					if (packet.type >= sizeof(packet_handler) / sizeof(Packet_Handler_Func)) {
+						mumble_log(LOG_DEBUG, "received unknown packet type %u\n", packet.type);
+						packet_reset(&packet);
+						return;
+					}
+
+					// if (packet.length > MAX_PACKET_SIZE) { // Prevent excessive allocation
+					// 	mumble_log(LOG_ERROR, "packet length too large: %u\n", packet.length);
+					// 	mumble_disconnect(l, client, "protocol violation: oversized packet", false);
+					// 	return;
+					// }
+
+					// Reallocate buffer for the message body
+					packet.body = malloc(sizeof(uint8_t) * packet.length);
+					if (!packet.body) {
+						mumble_log(LOG_ERROR, "failed to create packet buffer: %s", strerror(errno));
+						mumble_disconnect(l, client, "out of memory", false);
+						packet_reset(&packet);
+						return;
+					}
 				}
-				mumble_disconnect(l, client, message, false);
-			} else if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL) {
-				mumble_disconnect(l, client, "connection closed by server", false);
-			}
-		}
-
-		if (ret != 6) {
-			mumble_log(LOG_DEBUG, "only received %u bytes of expected 6\n", ret);
-			return;
-		}
-
-		static Packet packet_read;
-
-		// Firt 2 bytes of the header is the packet type
-		packet_read.type = ntohs(*(uint16_t *)proto_header);
-
-		if (packet_read.type >= sizeof(packet_handler) / sizeof(Packet_Handler_Func)) {
-			mumble_log(LOG_DEBUG, "received unknown packet type %u\n", packet_read.type);
-			return;
-		}
-
-		// Next 4 bytes is the size of the packet
-		packet_read.length = ntohl(*(uint32_t *)(proto_header + 2));
-
-		int pending = SSL_pending(client->ssl);
-
-		if (packet_read.length > pending) {
-			mumble_log(LOG_DEBUG, "not enough data available (wanted %u, received %u)\n", packet_read.length, pending);
-			return;
-		}
-
-		packet_read.buffer = malloc(sizeof(uint8_t) * packet_read.length);
-
-		if (packet_read.buffer == NULL) {
-			mumble_log(LOG_ERROR, "failed to malloc packet buffer: %s", strerror(errno));
-			return;
-		}
-
-		while (total_read < packet_read.length) {
-			ret = SSL_read(client->ssl, packet_read.buffer + total_read, packet_read.length - total_read);
-			if (ret <= 0) {
-				mumble_log(LOG_ERROR, "error reading from ssl socket: %s", mumble_ssl_error(ERR_get_error()));
-				free(packet_read.buffer);
+			} else {
+				handle_ssl_read_error(client, ret);
 				return;
 			}
-			total_read += ret;
 		}
 
-		if (total_read != packet_read.length) {
-			mumble_log(LOG_ERROR, "packet length does not match length read (read %u, expected %u)", total_read, packet_read.length);
-			free(packet_read.buffer);
-			return;
+		// Read the message body if the header is complete
+		if (packet.header_len == PACKET_HEADER_SIZE && packet.body_len < packet.length) {
+			int ret = SSL_read(client->ssl,
+							   packet.body + packet.body_len,
+							   packet.length - packet.body_len);
+			if (ret > 0) {
+				packet.body_len += ret;
+
+				// Body complete, process the packet
+				if (packet.body_len == packet.length) {
+					Packet_Handler_Func handler = packet_handler[packet.type];
+					if (handler) {
+						lua_stackguard_entry(l);
+						handler(l, client, &packet);
+						lua_stackguard_exit(l);
+					}
+					packet_reset(&packet);
+				}
+			} else {
+				handle_ssl_read_error(client, ret);
+				return;
+			}
 		}
-
-		Packet_Handler_Func handler = packet_handler[packet_read.type];
-
-		if (handler != NULL) {
-			// Call our packet handler functions
-			lua_stackguard_entry(l);
-			handler(l, client, &packet_read);
-			lua_stackguard_exit(l);
-		}
-
-		free(packet_read.buffer);
-
-		// if (client->connected && SSL_pending(client->ssl) > 0) {
-		// 	printf("MORE PENDING! %d\n", SSL_pending(client->ssl));
-		// 	// If we still have pending packets to read, set this event to be called again
-		// 	socket_read_write_event_tcp(handle, status, events);
-		// }
-
 	}
 }
 

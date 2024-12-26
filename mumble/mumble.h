@@ -295,11 +295,16 @@ struct MumbleUser
 	LinkNode*		listens;
 };
 
+#define PACKET_HEADER_SIZE 6
+
 typedef struct {
 	uint16_t type;
-	uint32_t length;
-	uint8_t *buffer;
-} Packet;
+	size_t length;
+	size_t header_len;
+	uint8_t *header;
+	size_t body_len;
+	uint8_t *body;
+} MumblePacket;
 
 typedef struct {
 	uint8_t *buffer;

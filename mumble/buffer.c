@@ -115,8 +115,11 @@ uint8_t buffer_readByte(ByteBuffer* buffer, int8_t* output)
 	return 1;
 }
 
+buffer_rw(UnsignedByte,uint8_t);
 buffer_rw(Short,int16_t);
+buffer_rw(UnsignedShort,uint16_t);
 buffer_rw(Int,int32_t);
+buffer_rw(UnsignedInt,uint32_t);
 buffer_rw(Long,int64_t);
 buffer_rw(Float,float);
 buffer_rw(Double,double);
