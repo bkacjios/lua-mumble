@@ -48,6 +48,8 @@
 
 #include <sndfile.h>
 
+#include "buffer.h"
+
 #define MODULE_NAME "lua-mumble"
 
 // You can change this to simulate older clients.
@@ -113,13 +115,13 @@
 #define LOG_DEBUG 4
 #define LOG_TRACE 5
 
-#define MUMBLE_THREADS 0
-
 #ifdef DEBUG
 #define LOG_LEVEL LOG_DEBUG
 #else
 #define LOG_LEVEL LOG_ERROR
 #endif
+
+#define MUMBLE_UNREFERENCED 0
 
 /*
  * Structures
@@ -133,8 +135,8 @@ typedef struct MumbleUser MumbleUser;
 typedef struct LinkNode LinkNode;
 typedef struct MumbleTimer MumbleTimer;
 typedef struct mumble_crypt mumble_crypt;
-typedef struct thread_io thread_io;
-typedef struct MumbleThread MumbleThread;
+typedef struct MumbleThreadWorker MumbleThreadWorker;
+typedef struct MumbleThreadController MumbleThreadController;
 typedef struct AudioTimer AudioTimer;
 
 struct MumbleTimer {
@@ -166,20 +168,24 @@ struct AudioStream {
 	bool looping;
 };
 
-struct thread_io {
-	// ev_io io;
+struct MumbleThreadWorker {
 	lua_State* l;
-	MumbleThread* thread;
+	MumbleThreadController* controller;
+	uv_async_t async_message;
+	ByteBuffer* message_buffer;
+	int message;
 };
 
-struct MumbleThread {
-    pthread_t pthread;
-	const char *filename;
+struct MumbleThreadController {
+	lua_State* l;
+	uv_thread_t thread;
+	uv_async_t async_finished;
+	uv_async_t async_message;
+	char *bytecode;
+	size_t bytecode_size;
 	int self;
-	int finished;
-	pthread_mutex_t lock;
-	int pipe[2];
-	thread_io event;
+	int finish;
+	int message;
 };
 
 struct MumbleClient {
@@ -190,8 +196,6 @@ struct MumbleClient {
 	uv_os_fd_t			socket_tcp_fd;
 	uv_udp_t			socket_udp;
 	uv_poll_t			ssl_poll;
-	BIO*				ssl_bio_read;
-	BIO*				ssl_bio_write;
 	struct addrinfo*	server_host_udp;
 	struct addrinfo*	server_host_tcp;
 	SSL_CTX				*ssl_context;
@@ -351,6 +355,7 @@ extern void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int lev
 extern void luaL_debugstack(lua_State *l, const char* text);
 extern int luaL_typerror(lua_State *L, int narg, const char *tname);
 extern int luaL_typerror_table(lua_State *L, int narg, int nkey, int nvalue, const char *tname);
+extern int luaL_checkfunction(lua_State *L, int i);
 extern int luaL_checkboolean(lua_State *L, int i);
 extern int luaL_optboolean(lua_State *L, int i, int d);
 extern int luaL_isudata(lua_State *L, int ud, const char *tname);

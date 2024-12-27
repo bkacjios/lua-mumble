@@ -161,7 +161,7 @@ void audio_transmission_unreference(lua_State*l, AudioStream *sound)
 {
 	mumble_registry_unref(l, sound->client->audio_streams, sound->refrence);
 	list_remove(&sound->client->stream_list, sound->refrence);
-	sound->refrence = -1;
+	sound->refrence = MUMBLE_UNREFERENCED;
 }
 
 void mumble_audio_timer(uv_timer_t* handle)
@@ -308,8 +308,6 @@ static void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encod
 	voicepacket_setheader(&packet, LEGACY_UDP_OPUS, client->audio_target, client->audio_sequence);
 	voicepacket_setframe(&packet, LEGACY_UDP_OPUS, frame_header, encoded, encoded_len);
 
-	mumble_handle_speaking_hooks_legacy(l, client, packet_buffer + 1, LEGACY_UDP_OPUS, client->audio_target, client->session);
-
 	int len = voicepacket_getlength(&packet);
 
 	if (len > UDP_BUFFER_MAX) {
@@ -326,6 +324,8 @@ static void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encod
 			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
 		packet_sendudp(client, packet_buffer, len);
 	}
+
+	mumble_handle_speaking_hooks_legacy(l, client, packet_buffer + 1, LEGACY_UDP_OPUS, client->audio_target, client->session);
 }
 
 static void send_protobuf_audio(lua_State *l, MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
@@ -438,7 +438,7 @@ static int audiostream_play(lua_State *l)
 	if (!sound->playing) {
 		sound->playing = true;
 
-		if (sound->refrence < 0) {
+		if (sound->refrence <= MUMBLE_UNREFERENCED) {
 			// Push a copy of the audio stream and save a reference
 			lua_pushvalue(l, 1);
 			sound->refrence = mumble_registry_ref(l, sound->client->audio_streams);

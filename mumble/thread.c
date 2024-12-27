@@ -2,92 +2,87 @@
 
 #include "thread.h"
 
-typedef struct ThreadNode ThreadNode;
-struct ThreadNode
-{
-	pthread_t thread;
-	struct ThreadNode *next;
-};
+// Callback function to handle dumping bytecode into memory
+static int mumble_dump_controller(lua_State *l, const void *buffer, size_t size, void *ud) {
+	MumbleThreadController* controller = (MumbleThreadController*) ud;
 
-typedef struct ClientThread ClientThread;
-struct ClientThread
-{
-	MumbleThread *thread;
-};
-
-static ThreadNode* mumble_threads;
-
-enum { READ = 0, WRITE = 1 };
-
-void thread_add(ThreadNode** head_ref, pthread_t thread)
-{
-	ThreadNode* new_node = malloc(sizeof(ThreadNode));
-
-	new_node->thread = thread;
-	new_node->next = (*head_ref);
-
-	(*head_ref) = new_node;
-}
-
-void thread_remove(ThreadNode **head_ref, pthread_t thread)
-{
-	ThreadNode* temp = *head_ref, *prev;
-
-	// If head node itself holds the key to be deleted
-	if (temp != NULL && temp->thread == thread)
-	{
-		*head_ref = temp->next;   // Changed head
-		free(temp);               // free old head
-		return;
+	// Reallocate memory to accommodate the additional bytecode data
+	void *bytecode = realloc(controller->bytecode, controller->bytecode_size + size);
+	if (bytecode == NULL) {
+		return 1;
 	}
 
-	// Search for the key to be deleted, keep track of the
-	// previous node as we need to change 'prev->next'
-	while (temp != NULL && temp->thread != thread)
-	{
-		prev = temp;
-		temp = temp->next;
-	}
+	// Copy the new bytecode chunk into the allocated memory
+	memcpy((char*)bytecode + controller->bytecode_size, buffer, size);
 
-	// If key was not present in linked list 
-	if (temp == NULL) return;
-
-	// Unlink the node from linked list 
-	prev->next = temp->next;
-
-	free(temp);               // free old head
+	// Update the bytecode pointer and size
+	controller->bytecode = bytecode;
+	controller->bytecode_size += size;
+	return 0;
 }
 
-static void *mumble_thread_worker(void *arg)
+void mumble_thread_worker_message(uv_async_t *handle)
 {
-	MumbleThread *thread = arg;
+	MumbleThreadWorker* worker = (MumbleThreadWorker*) handle->data;
 
-	// Create state and load libs
+	lua_State* l = worker->l;
+
+	lua_stackguard_entry(l);
+
+	if (worker->message > MUMBLE_UNREFERENCED) {
+		// Push our error handler
+		lua_pushcfunction(l, mumble_traceback);
+
+		// Push the callback function from the registry
+		mumble_registry_pushref(l, MUMBLE_THREAD_REG, worker->message);
+
+		// Call the callback with our custom error handler function
+		if (lua_pcall(l, 0, 0, -3) != LUA_OK) {
+			mumble_log(LOG_ERROR, "%s: %s\n", METATABLE_THREAD_CONTROLLER, lua_tostring(l, -1));
+			lua_pop(l, 1); // Pop the error
+		}
+
+		// Pop the error handler
+		lua_pop(l, 1);
+	}
+
+	lua_stackguard_exit(l);
+}
+
+void mumble_thread_worker_start(void *arg)
+{
+	MumbleThreadController *controller = arg;
+
 	lua_State *l = luaL_newstate();
 
 	lua_stackguard_entry(l);
 	
 	luaL_openlibs(l);
 
-	// mumble_init(l);
-	// lua_getfield(l, -1, "thread");
-	// lua_remove(l, -2);
-
-	// ClientThread *cthread = lua_newuserdata(l, sizeof(ClientThread));
-	// cthread->thread = thread;
-	// luaL_getmetatable(l, METATABLE_THREAD_CLIENT);
-	// lua_setmetatable(l, -2);
-	// lua_setfield(l, -2, "worker");
-	// lua_pop(l,1);
+	// Open ourself in the new state, since we need the worker metatable
+	mumble_init(l);
 
 	// Push our error handler
 	lua_pushcfunction(l, mumble_traceback);
 
-	// Load the file in our thread
-	int err = luaL_loadfile(l, thread->filename);
+	// Load the bytecode in our thread
+	int err = luaL_loadbuffer(l, controller->bytecode, controller->bytecode_size, "thread");
+
+	if (err != LUA_OK) {
+		mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
+		lua_pop(l, 1); // Pop the error
+		return;
+	}
+
+	// Create a worker thread object and pass it to our compiled bytecode
+	MumbleThreadWorker *worker = lua_newuserdata(l, sizeof(MumbleThreadWorker));
+	worker->l = l;
+	worker->controller = controller;
+	luaL_getmetatable(l, METATABLE_THREAD_WORKER);
+	lua_setmetatable(l, -2);
 
 	// Call the worker with our custom error handler function
-	if (err > 0 || lua_pcall(l, 0, 0, -2) != 0) {
+	if (lua_pcall(l, 1, 0, -3) != LUA_OK) {
 		mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
 		lua_pop(l, 1); // Pop the error
 	}
@@ -100,133 +95,227 @@ static void *mumble_thread_worker(void *arg)
 	// Close state
 	lua_close(l);
 
-	// Signal the main Lua stack that our thread has completed
-	write(thread->pipe[WRITE], &thread->finished, sizeof(thread->finished));
-
-	return NULL;
+	// Tell our main thread this worker finished
+	uv_async_send(&controller->async_finished);
 }
 
-// void mumble_thread_event(struct ev_loop *loop, ev_io *w_, int revents)
-// {
-// 	thread_io *w = (thread_io *) w_;
-
-// 	// TODO: Allow sending and receiving of data between threads using this pipe
-// 	int finished;
-// 	int n = read(w_->fd, &finished, sizeof(int));
-
-// 	if (n > 0) {
-// 		mumble_log(LOG_DEBUG, "thread event data received\n");
-// 		mumble_thread_exit(w->l, w->thread);
-// 	} else {
-// 		mumble_log(LOG_ERROR, "thread pipe error\n");
-// 	}
-// }
-
-int mumble_thread_exit(lua_State *l, MumbleThread *thread)
+void mumble_thread_worker_finish(uv_async_t *handle)
 {
+	MumbleThreadController* controller = (MumbleThreadController*) handle->data;
+
+	lua_State* l = controller->l;
+
 	lua_stackguard_entry(l);
 
-	// Check if we have a finished callback reference
-	if (thread->finished > 0) {
+	// Check if we have a message callback reference
+	if (controller->finish > MUMBLE_UNREFERENCED) {
 		// Push our error handler
 		lua_pushcfunction(l, mumble_traceback);
 
-		// Push the worker function from the registry
-		mumble_registry_pushref(l, MUMBLE_THREAD_REG, thread->finished);
+		// Push the callback function from the registry
+		mumble_registry_pushref(l, MUMBLE_THREAD_REG, controller->finish);
+		mumble_registry_pushref(l, MUMBLE_THREAD_REG, controller->self);
 
-		// Call the worker with our custom error handler function
-		if (lua_pcall(l, 0, 0, -2) != 0) {
-			mumble_log(LOG_ERROR, "%s: %s\n", METATABLE_THREAD_SERVER, lua_tostring(l, -1));
+		// Call the callback with our custom error handler function
+		if (lua_pcall(l, 1, 0, -3) != LUA_OK) {
+			mumble_log(LOG_ERROR, "%s: %s\n", METATABLE_THREAD_CONTROLLER, lua_tostring(l, -1));
 			lua_pop(l, 1); // Pop the error
 		}
 
 		// Pop the error handler
 		lua_pop(l, 1);
 
-		mumble_registry_unref(l, MUMBLE_THREAD_REG, thread->finished);
+		// Unreference our finished callback
+		mumble_registry_unref(l, MUMBLE_THREAD_REG, controller->finish);
 	}
 
-	mumble_registry_unref(l, MUMBLE_TIMER_REG, thread->self);
-	thread_remove(&mumble_threads, thread->pthread);
+	if (controller->message > MUMBLE_UNREFERENCED) {
+		// Unreference our message callback
+		mumble_registry_unref(l, MUMBLE_THREAD_REG, controller->message);
+	}
+
+	if (controller->self > MUMBLE_UNREFERENCED) {
+		// Unreference ourself
+		mumble_registry_unref(l, MUMBLE_THREAD_REG, controller->self);
+	}
 
 	lua_stackguard_exit(l);
 }
 
 int mumble_thread_new(lua_State *l)
 {
-	MumbleThread *thread = lua_newuserdata(l, sizeof(MumbleThread));
+	MumbleThreadController *controller = lua_newuserdata(l, sizeof(MumbleThreadController));
+	controller->l = l;
+	controller->self = MUMBLE_UNREFERENCED;
+	controller->finish = MUMBLE_UNREFERENCED;
+	controller->message = MUMBLE_UNREFERENCED;
+	controller->bytecode = NULL;
+	controller->bytecode_size = 0;
 
-	thread->filename = luaL_checkstring(l, 2);
-	thread->finished = 0;
+	luaL_getmetatable(l, METATABLE_THREAD_CONTROLLER);
+	lua_setmetatable(l, -2);
+	return 1;
+}
 
-	if (pipe(thread->pipe) != 0) {
-		return luaL_error(l, "could not create thread pipe");
+static int thread_controller_run(lua_State *l)
+{
+	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
+
+	// Convert our worker function to bytecode, so we can use it in a new state
+	if (luaL_checkfunction(l, 2)) {
+		lua_pushvalue(l, 2); // Push a copy of our worker function
+		if (lua_dump(l, mumble_dump_controller, controller) != LUA_OK) {
+			return luaL_error(l, "unable to convert worker function into bytecode");
+		}
+		lua_pop(l, 1); // Pop our worker function
 	}
 
 	lua_pushvalue(l, 1); // Push a copy of the userdata to prevent garabage collection
-	thread->self = mumble_registry_ref(l, MUMBLE_THREAD_REG); // Pop it off as a reference
+	controller->self = mumble_registry_ref(l, MUMBLE_THREAD_REG); // Pop it off as a reference
 
-	if (lua_isfunction(l, 3)) {
-		lua_pushvalue(l, 3); // Push a copy of our callback function
-		thread->finished = mumble_registry_ref(l, MUMBLE_THREAD_REG); // Pop it off as a reference
-	}
+	controller->async_finished.data = controller;
 
-	luaL_getmetatable(l, METATABLE_THREAD_SERVER);
-	lua_setmetatable(l, -2);
+	uv_async_init(uv_default_loop(), &controller->async_finished, mumble_thread_worker_finish);
+	uv_thread_create(&controller->thread, mumble_thread_worker_start, controller);
 
-	thread->event.l = l;
-	thread->event.thread = thread;
-
-	// ev_io_init(&thread->event.io, mumble_thread_event, thread->pipe[READ], EV_READ);
-	// ev_io_start(EV_DEFAULT, &thread->event.io);
-
-	pthread_create(&thread->pthread, NULL, mumble_thread_worker, thread);
-
-	thread_add(&mumble_threads, thread->pthread);
-	
+	lua_pushvalue(l, 1);
 	return 1;
 }
 
-void mumble_thread_join_all()
+static int thread_controller_join(lua_State *l)
 {
-	ThreadNode* current = mumble_threads;
+	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
 
-	while (current != NULL)
-	{
-		pthread_join(current->thread, NULL);
-		current = current->next;
-	}
-}
+	uv_thread_join(&controller->thread);
 
-static int thread_server_tostring(lua_State *l)
-{
-	lua_pushfstring(l, "%s: %p", METATABLE_THREAD_SERVER, lua_topointer(l, 1));
+	lua_pushvalue(l, 1);
 	return 1;
 }
 
-static int thread_server_gc(lua_State *l)
+static int thread_controller_onFinish(lua_State *l)
 {
-	MumbleThread *thread = luaL_checkudata(l, 1, METATABLE_THREAD_SERVER);
-	// ev_io_stop(EV_DEFAULT, &thread->event.io);
-	close(thread->pipe[READ]);
-	close(thread->pipe[WRITE]);
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_THREAD_SERVER, thread);
+	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
+
+	if (controller->finish > MUMBLE_UNREFERENCED) {
+		mumble_registry_unref(l, MUMBLE_THREAD_REG, controller->finish);
+	}
+
+	if (luaL_checkfunction(l, 2)) {
+		lua_pushvalue(l, 2); // Push a copy of our callback function
+		controller->finish = mumble_registry_ref(l, MUMBLE_THREAD_REG); // Pop it off as a reference
+	}
+
+	lua_pushvalue(l, 1);
+	return 1;
+}
+
+static int thread_controller_onMessage(lua_State *l)
+{
+	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
+
+	if (controller->message > MUMBLE_UNREFERENCED) {
+		mumble_registry_unref(l, MUMBLE_THREAD_REG, controller->message);
+	}
+
+	if (luaL_checkfunction(l, 2)) {
+		lua_pushvalue(l, 2); // Push a copy of our callback function
+		controller->message = mumble_registry_ref(l, MUMBLE_THREAD_REG); // Pop it off as a reference
+	}
+
+	lua_pushvalue(l, 1);
+	return 1;
+}
+
+static int thread_controller_tostring(lua_State *l)
+{
+	lua_pushfstring(l, "%s: %p", METATABLE_THREAD_CONTROLLER, lua_topointer(l, 1));
+	return 1;
+}
+
+static int thread_controller_gc(lua_State *l)
+{
+	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
+	if (controller->bytecode) {
+		free(controller->bytecode);
+	}
+	uv_close((uv_handle_t *) &controller->async_finished, NULL);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_THREAD_CONTROLLER, controller);
 	return 0;
 }
 
-const luaL_Reg mumble_thread_server[] = {
-	{"__tostring", thread_server_tostring},
-	{"__gc", thread_server_gc},
+const luaL_Reg mumble_thread_controller[] = {
+	{"run", thread_controller_run},
+	{"join", thread_controller_join},
+	{"onFinish", thread_controller_onFinish},
+	{"onMessage", thread_controller_onMessage},
+	{"__tostring", thread_controller_tostring},
+	{"__gc", thread_controller_gc},
 	{NULL, NULL}
 };
 
-static int thread_client_tostring(lua_State *l)
+static int thread_worker_onMessage(lua_State *l)
 {
-	lua_pushfstring(l, "%s: %p", METATABLE_THREAD_CLIENT, lua_topointer(l, 1));
+	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
+
+	if (luaL_checkfunction(l, 2)) {
+		lua_pushvalue(l, 2); // Push a copy of our callback function
+		worker->message = mumble_registry_ref(l, MUMBLE_THREAD_REG); // Pop it off as a reference
+	}
+
+	lua_pushvalue(l, 1);
 	return 1;
 }
 
-const luaL_Reg mumble_thread_client[] = {
-	{"__tostring", thread_client_tostring},
+static int thread_worker_sleep(lua_State *l)
+{
+	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
+	usleep(luaL_checkinteger(l, 2) * 1000);
+	lua_pushvalue(l, 1);
+	return 1;
+}
+
+static int thread_worker_loop(lua_State *l)
+{
+	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
+	uv_run(uv_default_loop(), UV_RUN_DEFAULT);
+	lua_pushvalue(l, 1);
+	return 1;
+}
+
+static int thread_worker_stop(lua_State *l)
+{
+	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
+	uv_stop(uv_default_loop());
+	lua_pushvalue(l, 1);
+	return 1;
+}
+
+static int thread_worker_buffer(lua_State *l)
+{
+	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
+	return mumble_buffer_new(l);
+}
+
+static int thread_worker_tostring(lua_State *l)
+{
+	lua_pushfstring(l, "%s: %p", METATABLE_THREAD_WORKER, lua_topointer(l, 1));
+	return 1;
+}
+
+static int thread_worker_gc(lua_State *l)
+{
+	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_THREAD_WORKER, worker);
+	return 0;
+}
+
+const luaL_Reg mumble_thread_worker[] = {
+	{"onMessage", thread_worker_onMessage},
+	{"sleep", thread_worker_sleep},
+	{"loop", thread_worker_loop},
+	{"stop", thread_worker_stop},
+	{"buffer", thread_worker_buffer},
+	{"__tostring", thread_worker_tostring},
+	{"__gc", thread_worker_gc},
 	{NULL, NULL}
 };

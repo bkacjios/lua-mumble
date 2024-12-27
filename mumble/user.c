@@ -370,12 +370,12 @@ static int user_getListens(lua_State *l)
 	LinkNode * current = user->listens;
 
 	// Add all linked channels to the table
-    while (current != NULL) {
+	while (current != NULL) {
 		lua_pushinteger(l, current->index);
 		mumble_channel_raw_get(l, user->client, current->index);
 		lua_settable(l, -3);
-        current = current->next;
-    }
+		current = current->next;
+	}
 
 	return 1;
 }

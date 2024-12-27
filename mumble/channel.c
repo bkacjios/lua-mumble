@@ -234,13 +234,13 @@ static int channel_getLinks(lua_State *l)
 	LinkNode * current = channel->links;
 
 	// Add all linked channels to the table
-    while (current != NULL) {
+	while (current != NULL) {
 		lua_pushinteger(l, current->index);
 		mumble_channel_raw_get(l, channel->client, current->index);
 		lua_settable(l, -3);
 
-        current = current->next;
-    }
+		current = current->next;
+	}
 
 	return 1;
 }

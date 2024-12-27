@@ -1,5 +1,5 @@
 # Change what version of Lua we want to compile for
-# lua5.1, lua5.2, lua5.3, luajit
+# lua5.1, lua5.2, luajit
 
 ifndef LUAVER
 LUAVER = luajit

@@ -84,6 +84,9 @@ mumble.timer = mumble.timer()
 -- Can be initialized with data or a given size
 mumble.buffer = mumble.buffer([Number size, String data])
 
+-- A new thread controller object
+mumble.thread.controller = mumble.thread()
+
 -- A new voicetarget object
 mumble.voicetarget = mumble.voicetarget()
 
@@ -543,8 +546,8 @@ mumble.timer:stop()
 ### mumble.buffer
 
 ``` lua
--- Get the written data, stored in the buffer, as a string
-String data = buffer:data()
+-- The buffers __tostring metamethod will return the written data as a string
+String data = tostring(buffer)
 
 -- Clears the buffer, wiping all data and setting the position and limit to 0
 buffer:clear()
@@ -629,6 +632,50 @@ Number written = buffer:writeBool(Boolean value)
 
 -- Reads a boolean value from the buffer (returns true or false)
 Boolean value = buffer:readBool()
+```
+
+### mumble.thread.controller
+
+```lua
+-- Runs the callback function in another thread by compiling it to bytecode.
+-- The inner scope of the function will be ran in another thread,
+-- so you will be unable to access the scope of the controller thread from within.
+-- The callback function will pass in a new mumble.thread.worker, which can be used to communicate back to the controller thread.
+mumble.thread.controller = mumble.thread.controller:run(Function callback(mumble.thread.worker))
+
+-- Sets a callback function that will be called, when the worker is joined back into the controller thread.
+mumble.thread.controller = mumble.thread.controller:onFinish(Function callback(mumble.thread.controller))
+
+-- Sets a callback function that will be called, when the thread receives a message from the worker thread.
+mumble.thread.controller = mumble.thread.controller:onMessage(Function callback(mumble.buffer))
+
+-- Sends a mumble.buffer message to its worker thread.
+mumble.thread.controller = mumble.thread.controller:send(String message)
+```
+
+### mumble.thread.worker
+
+```lua
+-- Sleep the worker thread for however many milliseconds.
+mumble.thread.worker = mumble.thread.worker:sleep(Number milliseconds)
+
+-- Keep the thread open until singnaled to close.
+-- Allows us to receive messages using mumble.worker.onMessage.
+mumble.thread.worker = mumble.thread.worker:loop()
+
+-- Signals the thread to exit its loop.
+mumble.thread.worker = mumble.thread.worker:stop()
+
+-- Sets a callback function taht will be called when receiving a message from its controller.
+mumble.thread.worker = mumble.thread.worker:onMessage(Function callback(String message))
+
+-- Sends a mumble.buffer message to its controller thread.
+mumble.thread.worker = mumble.thread.worker:send(mumble.buffer message)
+
+-- A new buffer object.
+-- Can be used to read/write raw binary data.
+-- Can be initialized with data or a given size.
+mumble.buffer = mumble.thread.worker.buffer([Number size, String data])
 ```
 
 ### mumble.voicetarget

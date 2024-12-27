@@ -334,7 +334,7 @@ static int client_openAudio(lua_State *l)
 	sound->client = client;
 	sound->playing = false;
 	sound->looping = false;
-	sound->refrence = -1;
+	sound->refrence = MUMBLE_UNREFERENCED;
 	sound->loop_count = 0;
 	sound->volume = volume;
 

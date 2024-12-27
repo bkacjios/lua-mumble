@@ -30,19 +30,9 @@ static void mumble_signal_event(uv_signal_t* handle, int signum)
 {
 	if (signum == SIGINT) {
 		printf("\n");
-		
-		/*
-		// join any threads
-		mumble_log(LOG_DEBUG, "joining threads\n");
-		mumble_thread_join_all();
-
-		// Wait for remaining events to finish
-		while (ev_pending_count(loop) > 0) {
-			ev_run(loop, EVRUN_NOWAIT);
-		}
-		*/
-
 		mumble_log(LOG_WARN, "exiting loop\n");
+		uv_signal_stop(handle);
+		uv_close((uv_handle_t*) handle, NULL);
 		uv_stop(uv_default_loop());
 	}
 }
@@ -521,7 +511,7 @@ static int mumble_client_new(lua_State *l) {
 
 	client->host = "";
 	client->port = 0;
-	client->self = -1;
+	client->self = MUMBLE_UNREFERENCED;
 	client->session = 0;
 	client->volume = 0.5;
 	client->connecting = false;
@@ -632,28 +622,6 @@ int mumble_client_connect(lua_State *l) {
 		lua_pushfstring(l, "could not create SSL object: %s", mumble_ssl_error(ERR_get_error()));
 		return 2;
 	}
-
-	client->ssl_bio_read = BIO_new(BIO_s_socket());
-
-	if (client->ssl_bio_read == NULL) {
-		mumble_client_free(client);
-		lua_pushboolean(l, false);
-		lua_pushfstring(l, "could not create SSL write bio: %s", mumble_ssl_error(ERR_get_error()));
-		return 2;
-	}
-
-	client->ssl_bio_write = BIO_new(BIO_s_socket());
-
-	if (client->ssl_bio_write == NULL) {
-		mumble_client_free(client);
-		lua_pushboolean(l, false);
-		lua_pushfstring(l, "could not create SSL write bio: %s", mumble_ssl_error(ERR_get_error()));
-		return 2;
-	}
-
-	BIO_set_nbio(client->ssl_bio_read, 1);
-	BIO_set_nbio(client->ssl_bio_write, 1);
-	SSL_set_bio(client->ssl, client->ssl_bio_read, client->ssl_bio_write);
 
 	// Audio encoder
 
@@ -847,6 +815,9 @@ static void mumble_client_cleanup(MumbleClient *client) {
 	if (uv_is_active((uv_handle_t*) &client->ping_timer)) {
 		uv_timer_stop(&client->ping_timer);
 	}
+	if (uv_is_active((uv_handle_t*) &client->audio_timer)) {
+		uv_timer_stop(&client->audio_timer);
+	}
 
 	LinkNode* current = client->stream_list;
 
@@ -910,7 +881,7 @@ void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason, b
 	// lua_insert(l, 1);
 	// lua_getglobal(l, "debug_registry");
 	// lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_REGISTRY);
-	// if (lua_pcall(l, 1, 0, 1) != 0) {
+	// if (lua_pcall(l, 1, 0, 1) != LUA_OK) {
 	// 	mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
 	// }
 	// lua_remove(l, 1);
@@ -927,18 +898,6 @@ static int mumble_getTime(lua_State *l)
 static int mumble_getConnections(lua_State *l)
 {
 	mumble_pushref(l, MUMBLE_CLIENTS);
-	return 1;
-}
-
-static int mumble_getTimers(lua_State *l)
-{
-	mumble_pushref(l, MUMBLE_TIMER_REG);
-	return 1;
-}
-
-static int mumble_getThreads(lua_State *l)
-{
-	mumble_pushref(l, MUMBLE_THREAD_REG);
 	return 1;
 }
 
@@ -1015,7 +974,7 @@ int mumble_hook_call_ret(lua_State* l, MumbleClient *client, const char* hook, i
 				lua_insert(l, 1);
 
 				// Call our callback with our arguments and our traceback function
-				if (lua_pcall(l, callargs, nresults, 1) != 0) {
+				if (lua_pcall(l, callargs, nresults, 1) != LUA_OK) {
 					// Call errored, call OnError hook
 					erroring = true;
 					mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
@@ -1377,8 +1336,6 @@ const luaL_Reg mumble[] = {
 	{"getTime", mumble_getTime},
 	{"getConnections", mumble_getConnections},
 	{"getClients", mumble_getConnections},
-	{"getTimers", mumble_getTimers},
-	{"getThreads", mumble_getThreads},
 	{NULL, NULL}
 };
 
@@ -1390,7 +1347,6 @@ int luaopen_mumble(lua_State *l)
 
 	uv_signal_init(uv_default_loop(), &mumble_signal);
 	uv_signal_start(&mumble_signal, mumble_signal_event, SIGINT);
-
 	return 0;
 }
 
@@ -1640,26 +1596,25 @@ void mumble_init(lua_State *l)
 		lua_setmetatable(l, -2);
 		lua_setfield(l, -2, "timer");
 
-#if defined(MUMBLE_THREADS) && MUMBLE_THREADS > 0
 		lua_newtable(l);
 		{
 			// Register thread metatable
-			luaL_newmetatable(l, METATABLE_THREAD_CLIENT);
+			luaL_newmetatable(l, METATABLE_THREAD_WORKER);
 			{
 				lua_pushvalue(l, -1);
 				lua_setfield(l, -2, "__index");
 			}
-			luaL_register(l, NULL, mumble_thread_client);
-			lua_setfield(l, -2, "client");
+			luaL_register(l, NULL, mumble_thread_worker);
+			lua_setfield(l, -2, "worker");
 
 			// Register thread metatable
-			luaL_newmetatable(l, METATABLE_THREAD_SERVER);
+			luaL_newmetatable(l, METATABLE_THREAD_CONTROLLER);
 			{
 				lua_pushvalue(l, -1);
 				lua_setfield(l, -2, "__index");
 			}
-			luaL_register(l, NULL, mumble_thread_server);
-			lua_setfield(l, -2, "server");
+			luaL_register(l, NULL, mumble_thread_controller);
+			lua_setfield(l, -2, "controller");
 		}
 		// If you call the thread metatable as a function it will return a new thread object
 		lua_newtable(l);
@@ -1669,7 +1624,6 @@ void mumble_init(lua_State *l)
 		}
 		lua_setmetatable(l, -2);
 		lua_setfield(l, -2, "thread");
-#endif
 
 		// Register encoder metatable
 		luaL_newmetatable(l, METATABLE_AUDIOSTREAM);
@@ -1700,6 +1654,7 @@ void mumble_init(lua_State *l)
 		lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_REGISTRY);
 		lua_setfield(l, -2, "registry");
 	}
+	lua_pop(l, 1);
 }
 
 int mumble_immutable(lua_State *l) {
