@@ -42,7 +42,7 @@ static void mumble_lua_timer(uv_timer_t* handle)
 	mumble_registry_pushref(l, MUMBLE_TIMER_REG, ltimer->self);
 
 	// Call the callback with our custom error handler function
-	if (lua_pcall(l, 1, 0, -3) != LUA_OK) {
+	if (lua_pcall(l, 1, 0, -3) != 0) {
 		mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
 		lua_pop(l, 1); // Pop the error
 	}

@@ -138,6 +138,7 @@ typedef struct mumble_crypt mumble_crypt;
 typedef struct MumbleThreadWorker MumbleThreadWorker;
 typedef struct MumbleThreadController MumbleThreadController;
 typedef struct AudioTimer AudioTimer;
+typedef struct MumbleThreadMessage MumbleThreadMessage;
 
 struct MumbleTimer {
 	uv_timer_t timer;
@@ -171,21 +172,19 @@ struct AudioStream {
 struct MumbleThreadWorker {
 	lua_State* l;
 	MumbleThreadController* controller;
-	uv_async_t async_message;
-	ByteBuffer* message_buffer;
-	int message;
 };
 
 struct MumbleThreadController {
 	lua_State* l;
 	uv_thread_t thread;
 	uv_async_t async_finished;
-	uv_async_t async_message;
+	pthread_mutex_t mutex;
+	pthread_cond_t cond;
+	bool finished;
 	char *bytecode;
 	size_t bytecode_size;
 	int self;
 	int finish;
-	int message;
 };
 
 struct MumbleClient {

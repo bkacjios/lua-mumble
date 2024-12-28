@@ -881,7 +881,7 @@ void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason, b
 	// lua_insert(l, 1);
 	// lua_getglobal(l, "debug_registry");
 	// lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_REGISTRY);
-	// if (lua_pcall(l, 1, 0, 1) != LUA_OK) {
+	// if (lua_pcall(l, 1, 0, 1) != 0) {
 	// 	mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
 	// }
 	// lua_remove(l, 1);
@@ -974,7 +974,7 @@ int mumble_hook_call_ret(lua_State* l, MumbleClient *client, const char* hook, i
 				lua_insert(l, 1);
 
 				// Call our callback with our arguments and our traceback function
-				if (lua_pcall(l, callargs, nresults, 1) != LUA_OK) {
+				if (lua_pcall(l, callargs, nresults, 1) != 0) {
 					// Call errored, call OnError hook
 					erroring = true;
 					mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));

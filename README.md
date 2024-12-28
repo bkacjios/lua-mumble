@@ -645,12 +645,6 @@ mumble.thread.controller = mumble.thread.controller:run(Function callback(mumble
 
 -- Sets a callback function that will be called, when the worker is joined back into the controller thread.
 mumble.thread.controller = mumble.thread.controller:onFinish(Function callback(mumble.thread.controller))
-
--- Sets a callback function that will be called, when the thread receives a message from the worker thread.
-mumble.thread.controller = mumble.thread.controller:onMessage(Function callback(mumble.buffer))
-
--- Sends a mumble.buffer message to its worker thread.
-mumble.thread.controller = mumble.thread.controller:send(String message)
 ```
 
 ### mumble.thread.worker
@@ -665,12 +659,6 @@ mumble.thread.worker = mumble.thread.worker:loop()
 
 -- Signals the thread to exit its loop.
 mumble.thread.worker = mumble.thread.worker:stop()
-
--- Sets a callback function taht will be called when receiving a message from its controller.
-mumble.thread.worker = mumble.thread.worker:onMessage(Function callback(String message))
-
--- Sends a mumble.buffer message to its controller thread.
-mumble.thread.worker = mumble.thread.worker:send(mumble.buffer message)
 
 -- A new buffer object.
 -- Can be used to read/write raw binary data.
