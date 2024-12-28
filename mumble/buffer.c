@@ -239,8 +239,6 @@ uint8_t buffer_readVarInt(ByteBuffer* buffer, uint64_t* output)
 
 int mumble_buffer_new(lua_State *l)
 {
-	luaL_debugstack(l, "mumble_buffer_new");
-
 	int type = lua_type(l, 2);
 
 	ByteBuffer *buffer = lua_newuserdata(l, sizeof(ByteBuffer));

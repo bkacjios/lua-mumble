@@ -11,6 +11,22 @@ typedef struct {
 	int is_done;
 } send_context_t;
 
+#define SAFE_STRDUP(dest, src) \
+	do { \
+		if ((dest) != NULL) { \
+			free(dest); \
+		} \
+		(dest) = (src) ? strdup(src) : NULL; \
+	} while (0)
+
+#define SAFE_STRNDUP(dest, src, n) \
+	do { \
+		if ((dest) != NULL) { \
+			free(dest); \
+		} \
+		(dest) = (src) ? strndup((src), (n)) : NULL; \
+	} while (0)
+
 void on_send(uv_udp_send_t* req, int status) {
 	send_context_t* context = (send_context_t*)req->data;
 
@@ -443,12 +459,12 @@ void packet_channel_state(lua_State *l, MumbleClient *client, MumblePacket *pack
 		lua_setfield(l , -2, "parent");
 	}
 	if (state->name != NULL) {
-		channel->name = strdup(state->name);
+		SAFE_STRDUP(channel->name, state->name);
 		lua_pushstring(l, channel->name);
 		lua_setfield(l , -2, "name");
 	}
 	if (state->description != NULL) {
-		channel->description = strdup(state->description);
+		SAFE_STRDUP(channel->description, state->description);
 		lua_pushstring(l, channel->description);
 		lua_setfield(l , -2, "description");
 	}
@@ -463,7 +479,7 @@ void packet_channel_state(lua_State *l, MumbleClient *client, MumblePacket *pack
 		lua_setfield(l , -2, "position");
 	}
 	if (state->has_description_hash) {
-		channel->description_hash = (char*) strndup((const char*)state->description_hash.data, state->description_hash.len);
+		SAFE_STRNDUP(channel->description_hash, state->description_hash.data, state->description_hash.len);
 		channel->description_hash_len = state->description_hash.len;
 
 		char* result;
@@ -604,7 +620,7 @@ void packet_user_state(lua_State *l, MumbleClient *client, MumblePacket *packet)
 		lua_setfield(l, -2, "session");
 
 		if (state->name != NULL) {
-			user->name = strdup(state->name);
+			SAFE_STRDUP(user->name, state->name);
 			lua_pushstring(l, user->name);
 			lua_setfield(l, -2, "name");
 		}
@@ -658,7 +674,7 @@ void packet_user_state(lua_State *l, MumbleClient *client, MumblePacket *packet)
 			lua_setfield(l, -2, "suppress");
 		}
 		if (state->comment != NULL) {
-			user->comment = strdup(state->comment);
+			SAFE_STRDUP(user->comment, state->comment);
 			lua_pushstring(l, user->comment);
 			lua_setfield(l, -2, "comment");
 		}
@@ -673,17 +689,17 @@ void packet_user_state(lua_State *l, MumbleClient *client, MumblePacket *packet)
 			lua_setfield(l, -2, "priority_speaker");
 		}
 		if (state->has_texture) {
-			user->texture = (char*) strndup((const char*)state->texture.data, state->texture.len);
+			SAFE_STRNDUP(user->texture, state->texture.data, state->texture.len);
 			lua_pushlstring(l, user->texture, state->texture.len);
 			lua_setfield(l, -2, "texture");
 		}
 		if (state->hash != NULL) {
-			user->hash = (char*) strdup((const char*)state->hash);
+			SAFE_STRDUP(user->hash, state->hash);
 			lua_pushstring(l, user->hash);
 			lua_setfield(l, -2, "hash");
 		}
 		if (state->has_comment_hash) {
-			user->comment_hash = (char*) strndup((const char*)state->comment_hash.data, state->comment_hash.len);
+			SAFE_STRNDUP(user->comment_hash, state->comment_hash.data, state->comment_hash.len);
 			user->comment_hash_len = state->comment_hash.len;
 
 			char* result;
@@ -693,7 +709,7 @@ void packet_user_state(lua_State *l, MumbleClient *client, MumblePacket *packet)
 			free(result);
 		}
 		if (state->has_texture_hash) {
-			user->texture_hash = (char*) strndup((const char*)state->texture_hash.data, state->texture_hash.len);
+			SAFE_STRNDUP(user->texture_hash, state->texture_hash.data, state->texture_hash.len);
 			user->texture_hash_len = state->texture_hash.len;
 
 			char* result;
