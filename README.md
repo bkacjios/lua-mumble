@@ -647,7 +647,7 @@ mumble.thread.controller = mumble.thread.controller:onMessage(Function callback(
 -- Sends a message to the worker thread.
 mumble.thread.controller = mumble.thread.controller:send([String message, mumble.buffer message])
 
--- Blocks until the thread completes.
+-- Blocks the main thread until the worker completes.
 mumble.thread.controller = mumble.thread.controller:join()
 ```
 
@@ -710,7 +710,6 @@ worker: hello 2
 thread finished mumble.thread.controller: 0x7ffff7b7bc70
 worker: hello 3
 worker: my work has completed
-
 ```
 
 ### mumble.voicetarget
