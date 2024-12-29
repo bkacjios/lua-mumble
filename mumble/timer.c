@@ -15,6 +15,7 @@ static void mumble_lua_timer_finish(lua_State *l, MumbleTimer *ltimer)
 		if (uv_is_active((uv_handle_t*) &ltimer->timer)) {
 			mumble_log(LOG_TRACE, "mumble.timer: %p stopping\n", ltimer);
 			uv_timer_stop(&ltimer->timer);
+			ltimer->count = 0;
 		}
 		// Cleanup all our references
 		mumble_log(LOG_TRACE, "mumble.timer: %p cleanup\n", ltimer);
@@ -54,10 +55,6 @@ static void mumble_lua_timer(uv_timer_t* handle)
 		// Timer is no longer active
 		// Finish and cleanup timer references to allow for garbage collection
 		mumble_lua_timer_finish(l, ltimer);
-	} else {
-		// Timer is still active, stop and go again incase we adjusted the values
-		uv_timer_stop(&ltimer->timer);
-		uv_timer_start(&ltimer->timer, mumble_lua_timer, ltimer->after, ltimer->repeat);
 	}
 
 	lua_stackguard_exit(l);
@@ -70,7 +67,6 @@ int mumble_timer_new(lua_State *l)
 	ltimer->l = l;
 	ltimer->running = false;
 	ltimer->after = 0;
-	ltimer->repeat = 0;
 	ltimer->self = MUMBLE_UNREFERENCED;
 	ltimer->callback = MUMBLE_UNREFERENCED;
 	ltimer->timer.data = ltimer;
@@ -91,7 +87,6 @@ static int timer_start(lua_State *l)
 	uint64_t repeat = (uint64_t) luaL_optnumber(l, 4, 0) * 1000;
 
 	ltimer->after = after;
-	ltimer->repeat = repeat;
 
 	if (!ltimer->running) {
 		ltimer->running = true;
@@ -111,7 +106,7 @@ static int timer_start(lua_State *l)
 	} else {
 		// Timer is already running, so stop and go again
 		uv_timer_stop(&ltimer->timer);
-		uv_timer_start(&ltimer->timer, mumble_lua_timer, ltimer->after, ltimer->repeat);
+		uv_timer_start(&ltimer->timer, mumble_lua_timer, after, repeat);
 	}
 	return 1;
 }
@@ -132,7 +127,7 @@ static int timer_set(lua_State *l)
 	double repeat = luaL_optnumber(l, 3, 0);
 
 	ltimer->after = after;
-	ltimer->repeat = repeat;
+	uv_timer_set_repeat(&ltimer->timer, luaL_checknumber(l, 2) * 1000);
 
 	// Return ourself
 	lua_settop(l, 1);
@@ -143,7 +138,7 @@ static int timer_get(lua_State *l)
 {
 	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	lua_pushnumber(l, ltimer->after);
-	lua_pushnumber(l, ltimer->repeat);
+	lua_pushnumber(l, (double) uv_timer_get_repeat(&ltimer->timer) / 1000);
 	return 2;
 }
 
@@ -151,7 +146,7 @@ static int timer_setDuration(lua_State *l)
 {
 	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 
-	ltimer->after = luaL_checknumber(l, 2);
+	ltimer->after = (uint64_t) luaL_checknumber(l, 2) * 1000;
 
 	// Return ourself
 	lua_settop(l, 1);
@@ -161,15 +156,15 @@ static int timer_setDuration(lua_State *l)
 static int timer_getDuration(lua_State *l)
 {
 	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
-	lua_pushnumber(l, ltimer->after);
+	lua_pushnumber(l, (double) ltimer->after / 1000);
 	return 1;
 }
 
 static int timer_setRepeat(lua_State *l)
 {
 	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
-	
-	ltimer->repeat = luaL_checknumber(l, 2);
+
+	uv_timer_set_repeat(&ltimer->timer, luaL_checknumber(l, 2) * 1000);
 
 	// Return ourself
 	lua_settop(l, 1);
@@ -179,7 +174,7 @@ static int timer_setRepeat(lua_State *l)
 static int timer_getRepeat(lua_State *l)
 {
 	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
-	lua_pushnumber(l, ltimer->repeat);
+	lua_pushnumber(l, (double) uv_timer_get_repeat(&ltimer->timer) / 1000);
 	return 1;
 }
 
@@ -190,12 +185,18 @@ static int timer_getCount(lua_State *l)
 	return 1;
 }
 
+static int timer_getRemain(lua_State *l)
+{
+	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	lua_pushinteger(l, (double) uv_timer_get_due_in(&ltimer->timer) / 1000);
+	return 1;
+}
+
 static int timer_again(lua_State *l)
 {
 	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 
-	uv_timer_stop(&ltimer->timer);
-	uv_timer_start(&ltimer->timer, mumble_lua_timer, ltimer->after, ltimer->repeat);
+	uv_timer_again(&ltimer->timer);
 
 	// Return ourself
 	lua_settop(l, 1);
@@ -233,6 +234,7 @@ const luaL_Reg mumble_timer[] = {
 	{"setRepeat", timer_setRepeat},
 	{"getRepeat", timer_getRepeat},
 	{"getCount", timer_getCount},
+	{"getRemain", timer_getRemain},
 	{"again", timer_again},
 	{"isActive", timer_isActive},
 	{"__tostring", timer_tostring},

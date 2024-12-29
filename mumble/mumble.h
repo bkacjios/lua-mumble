@@ -149,7 +149,6 @@ struct MumbleTimer {
 	int self;
 	int callback;
 	uint64_t after;
-	uint64_t repeat;
 };
 
 struct AudioFrame {
