@@ -48,8 +48,6 @@
 
 #include <sndfile.h>
 
-#include "buffer.h"
-
 #define MODULE_NAME "lua-mumble"
 
 // You can change this to simulate older clients.

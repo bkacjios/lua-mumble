@@ -1,6 +1,7 @@
 #include "mumble.h"
 
 #include "thread.h"
+#include "buffer.h"
 
 void mumble_thread_worker_message(uv_async_t *handle);
 

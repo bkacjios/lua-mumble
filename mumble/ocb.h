@@ -34,26 +34,26 @@ struct mumble_crypt {
 		bool bInit;
 };
 
-extern mumble_crypt* crypt_new();
-extern void crypt_free(mumble_crypt *crypt);
+mumble_crypt* crypt_new();
+void crypt_free(mumble_crypt *crypt);
 
-extern bool crypt_isValid(mumble_crypt *crypt);
-extern void crypt_genKey(mumble_crypt *crypt);
-extern bool crypt_setKey(mumble_crypt *crypt, ProtobufCBinaryData rkey, ProtobufCBinaryData eiv, ProtobufCBinaryData div);
-extern bool crypt_setRawKey(mumble_crypt *crypt, ProtobufCBinaryData rkey);
-extern bool crypt_setEncryptIV(mumble_crypt *crypt, ProtobufCBinaryData iv);
-extern bool crypt_setDecryptIV(mumble_crypt *crypt, ProtobufCBinaryData iv);
+bool crypt_isValid(mumble_crypt *crypt);
+void crypt_genKey(mumble_crypt *crypt);
+bool crypt_setKey(mumble_crypt *crypt, ProtobufCBinaryData rkey, ProtobufCBinaryData eiv, ProtobufCBinaryData div);
+bool crypt_setRawKey(mumble_crypt *crypt, ProtobufCBinaryData rkey);
+bool crypt_setEncryptIV(mumble_crypt *crypt, ProtobufCBinaryData iv);
+bool crypt_setDecryptIV(mumble_crypt *crypt, ProtobufCBinaryData iv);
 
-extern const unsigned char* crypt_getRawKey(mumble_crypt *crypt);
-extern const unsigned char* crypt_getEncryptIV(mumble_crypt *crypt);
-extern const unsigned char* crypt_getDecryptIV(mumble_crypt *crypt);
+const unsigned char* crypt_getRawKey(mumble_crypt *crypt);
+const unsigned char* crypt_getEncryptIV(mumble_crypt *crypt);
+const unsigned char* crypt_getDecryptIV(mumble_crypt *crypt);
 
-extern unsigned int crypt_getGood(mumble_crypt *crypt);
-extern unsigned int crypt_getLate(mumble_crypt *crypt);
-extern unsigned int crypt_getLost(mumble_crypt *crypt);
+unsigned int crypt_getGood(mumble_crypt *crypt);
+unsigned int crypt_getLate(mumble_crypt *crypt);
+unsigned int crypt_getLost(mumble_crypt *crypt);
 
-extern bool crypt_ocb_encrypt(mumble_crypt *crypt, const unsigned char* plain, unsigned char* encrypted, unsigned int len, const unsigned char* nonce, unsigned char* tag, bool modifyPlainOnXEXStarAttack);
-extern bool crypt_ocb_decrypt(mumble_crypt *crypt, const unsigned char* encrypted, unsigned char* plain, unsigned int len, const unsigned char* nonce, unsigned char* tag);
+bool crypt_ocb_encrypt(mumble_crypt *crypt, const unsigned char* plain, unsigned char* encrypted, unsigned int len, const unsigned char* nonce, unsigned char* tag, bool modifyPlainOnXEXStarAttack);
+bool crypt_ocb_decrypt(mumble_crypt *crypt, const unsigned char* encrypted, unsigned char* plain, unsigned int len, const unsigned char* nonce, unsigned char* tag);
 
-extern bool crypt_decrypt(mumble_crypt *crypt, const unsigned char* source, unsigned char* dst, unsigned int crypted_length);
-extern bool crypt_encrypt(mumble_crypt *crypt, const unsigned char* source, unsigned char* dst, unsigned int plain_length);
+bool crypt_decrypt(mumble_crypt *crypt, const unsigned char* source, unsigned char* dst, unsigned int crypted_length);
+bool crypt_encrypt(mumble_crypt *crypt, const unsigned char* source, unsigned char* dst, unsigned int plain_length);
