@@ -172,7 +172,10 @@ struct AudioStream {
 
 struct MumbleThreadWorker {
 	lua_State* l;
+	uv_loop_t loop;
 	MumbleThreadController* controller;
+	uv_async_t async_message;
+	int message;
 };
 
 struct QueueNode {
@@ -188,18 +191,21 @@ typedef struct LinkQueue {
 
 struct MumbleThreadController {
 	lua_State* l;
+	MumbleThreadWorker* worker;
 	uv_thread_t thread;
 	uv_async_t async_finish;
 	uv_async_t async_message;
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
+	bool started;
 	bool finished;
 	char *bytecode;
 	size_t bytecode_size;
 	int self;
 	int finish;
 	int message;
-	LinkQueue*	message_queue;
+	LinkQueue*	controller_message_queue;
+	LinkQueue*	worker_message_queue;
 };
 
 struct MumbleClient {
