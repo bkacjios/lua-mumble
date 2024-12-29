@@ -85,7 +85,8 @@ mumble.timer = mumble.timer()
 mumble.buffer = mumble.buffer([Number size, String data])
 
 -- A new thread controller object
-mumble.thread.controller = mumble.thread()
+-- The callback function will be ran in a separate thread.
+mumble.thread.controller = mumble.thread(Function callback(mumble.thread.worker worker))
 
 -- A new voicetarget object
 mumble.voicetarget = mumble.voicetarget()
@@ -637,12 +638,6 @@ Boolean value = buffer:readBool()
 ### mumble.thread.controller
 
 ```lua
--- Runs the callback function in another thread by compiling it to bytecode.
--- The inner scope of the function will be ran in another thread,
--- so you will be unable to access the scope of the controller thread from within.
--- The callback function will pass in a new mumble.thread.worker, which can be used to communicate back to the controller thread.
-mumble.thread.controller = mumble.thread.controller:run(Function callback(mumble.thread.worker))
-
 -- Sets a callback function that will be called when the worker is joined back into the controller thread.
 mumble.thread.controller = mumble.thread.controller:onFinish(Function callback(mumble.thread.controller))
 
@@ -651,6 +646,9 @@ mumble.thread.controller = mumble.thread.controller:onMessage(Function callback(
 
 -- Sends a message to the worker thread.
 mumble.thread.controller = mumble.thread.controller:send([String message, mumble.buffer message])
+
+-- Blocks until the thread completes.
+mumble.thread.controller = mumble.thread.controller:join()
 ```
 
 ### mumble.thread.worker

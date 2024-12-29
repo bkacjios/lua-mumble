@@ -175,6 +175,10 @@ struct MumbleThreadWorker {
 	uv_loop_t loop;
 	MumbleThreadController* controller;
 	uv_async_t async_message;
+	pthread_mutex_t mutex;
+	pthread_cond_t cond;
+	volatile bool finished;
+	LinkQueue*	message_queue;
 	int message;
 	int self;
 };
@@ -198,15 +202,13 @@ struct MumbleThreadController {
 	uv_async_t async_message;
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
-	bool started;
-	bool finished;
+	volatile bool started;
 	char *bytecode;
 	size_t bytecode_size;
 	int self;
 	int finish;
 	int message;
-	LinkQueue*	controller_message_queue;
-	LinkQueue*	worker_message_queue;
+	LinkQueue*	message_queue;
 };
 
 struct MumbleClient {
