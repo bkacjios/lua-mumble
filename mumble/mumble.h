@@ -176,6 +176,7 @@ struct MumbleThreadWorker {
 	MumbleThreadController* controller;
 	uv_async_t async_message;
 	int message;
+	int self;
 };
 
 struct QueueNode {

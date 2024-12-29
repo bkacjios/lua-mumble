@@ -643,8 +643,14 @@ Boolean value = buffer:readBool()
 -- The callback function will pass in a new mumble.thread.worker, which can be used to communicate back to the controller thread.
 mumble.thread.controller = mumble.thread.controller:run(Function callback(mumble.thread.worker))
 
--- Sets a callback function that will be called, when the worker is joined back into the controller thread.
+-- Sets a callback function that will be called when the worker is joined back into the controller thread.
 mumble.thread.controller = mumble.thread.controller:onFinish(Function callback(mumble.thread.controller))
+
+-- Sets a callback function that will be called when the controller receives a message from the worker.
+mumble.thread.controller = mumble.thread.controller:onMessage(Function callback(String message))
+
+-- Sends a message to the worker thread.
+mumble.thread.controller = mumble.thread.controller:send([String message, mumble.buffer message])
 ```
 
 ### mumble.thread.worker
@@ -660,10 +666,53 @@ mumble.thread.worker = mumble.thread.worker:loop()
 -- Signals the thread to exit its loop.
 mumble.thread.worker = mumble.thread.worker:stop()
 
--- A new buffer object.
+-- A new buffer object. (shortcut for mumble.buffer())
 -- Can be used to read/write raw binary data.
 -- Can be initialized with data or a given size.
-mumble.buffer = mumble.thread.worker.buffer([Number size, String data])
+mumble.buffer = mumble.thread.worker:buffer([Number size, String data])
+
+-- Sets a callback function that will be called when the worker receives a message from the controller.
+mumble.thread.controller = mumble.thread.controller:onMessage(Function callback(String message))
+
+-- Sends a message to the controller thread.
+mumble.thread.controller = mumble.thread.controller:send([String message, mumble.buffer message])
+```
+
+#### Thread examples
+
+```lua
+local outsideValue = "outside scope"
+
+mumble.thread(function(worker)
+	-- This function is ran in a separate thread and will not block.
+	-- The scope of this function starts here and can not access upvalues from the outer scope.
+	print("outsideValue", outsideValue) -- outsideValue is nil here.
+	worker:send("my work has begun")
+	for i=1,3 do
+		worker:sleep(1000)
+		worker:send("hello " .. i)
+	end
+	worker:send("my work has completed")
+end):onMessage(function(t, msg)
+	-- Use this to receive data from the worker thread.
+	print("worker: " ..  msg)
+end):onFinish(function(t)
+	-- Thread was joined back into our main thread.
+	print("thread finished", t)
+end)
+```
+
+Output
+
+```
+outsideValue    nil
+worker: my work has begun
+worker: hello 1
+worker: hello 2
+thread finished mumble.thread.controller: 0x7ffff7b7bc70
+worker: hello 3
+worker: my work has completed
+
 ```
 
 ### mumble.voicetarget

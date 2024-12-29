@@ -53,6 +53,9 @@ void mumble_thread_worker_start(void *arg)
 	worker->l = l;
 	worker->controller = controller;
 
+	lua_pushvalue(l, -1);
+	worker->self = mumble_registry_ref(l, MUMBLE_THREAD_REG);
+
 	uv_loop_init(&worker->loop);
 
 	worker->async_message.data = worker;
@@ -76,11 +79,6 @@ void mumble_thread_worker_start(void *arg)
 	// Pop the error handler
 	lua_pop(l, 1);
 
-	lua_stackguard_exit(l);
-
-	// Close state
-	lua_close(l);
-
 	uv_async_send(&controller->async_finish);
 
 	pthread_mutex_lock(&controller->mutex);
@@ -89,6 +87,13 @@ void mumble_thread_worker_start(void *arg)
 		pthread_cond_wait(&controller->cond, &controller->mutex);
 	}
 	pthread_mutex_unlock(&controller->mutex);
+
+	mumble_registry_unref(l, MUMBLE_THREAD_REG, worker->self);
+
+	lua_stackguard_exit(l);
+
+	// Close state
+	lua_close(l);
 }
 
 void mumble_thread_worker_finish(uv_async_t *handle)
@@ -110,7 +115,7 @@ void mumble_thread_worker_finish(uv_async_t *handle)
 
 		// Call the callback with our custom error handler function
 		if (lua_pcall(l, 1, 0, -3) != 0) {
-			mumble_log(LOG_ERROR, "%s: %s\n", METATABLE_THREAD_CONTROLLER, lua_tostring(l, -1));
+			mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
 			lua_pop(l, 1); // Pop the error
 		}
 
@@ -156,12 +161,15 @@ void mumble_thread_controller_message(uv_async_t *handle)
 			// Push the callback function from the registry
 			mumble_registry_pushref(l, MUMBLE_THREAD_REG, controller->message);
 
+			// Push ourself
+			mumble_registry_pushref(l, MUMBLE_THREAD_REG, controller->self);
+
 			// Push our message
 			lua_pushlstring(l, message->data, message->size);
 
 			// Call the callback with our custom error handler function
-			if (lua_pcall(l, 1, 0, -3) != 0) {
-				mumble_log(LOG_ERROR, "%s: %s\n", METATABLE_THREAD_CONTROLLER, lua_tostring(l, -1));
+			if (lua_pcall(l, 2, 0, -4) != 0) {
+				mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
 				lua_pop(l, 1); // Pop the error
 			}
 
@@ -198,11 +206,14 @@ void mumble_thread_worker_message(uv_async_t *handle)
 			// Push the callback function from the registry
 			mumble_registry_pushref(l, MUMBLE_THREAD_REG, worker->message);
 
+			// Push ourself
+			mumble_registry_pushref(l, MUMBLE_THREAD_REG, worker->self);
+
 			// Push our message
 			lua_pushlstring(l, message->data, message->size);
 
 			// Call the callback with our custom error handler function
-			if (lua_pcall(l, 1, 0, -3) != 0) {
+			if (lua_pcall(l, 2, 0, -4) != 0) {
 				mumble_log(LOG_ERROR, "%s: %s\n", METATABLE_THREAD_WORKER, lua_tostring(l, -1));
 				lua_pop(l, 1); // Pop the error
 			}
