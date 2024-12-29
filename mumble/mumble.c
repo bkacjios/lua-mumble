@@ -837,6 +837,7 @@ static void mumble_client_cleanup(MumbleClient *client) {
 			mumble_user_remove(client->l, client, current->index);
 			current = current->next;
 		}
+		list_clear(&client->user_list);
 	}
 
 	current = client->channel_list;
@@ -847,6 +848,7 @@ static void mumble_client_cleanup(MumbleClient *client) {
 			mumble_channel_remove(client->l, client, current->index);
 			current = current->next;
 		}
+		list_clear(&client->channel_list);
 	}
 
 	if (client->self > 0) {
