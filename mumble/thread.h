@@ -1,11 +1,9 @@
 #pragma once
 
-#define METATABLE_THREAD_SERVER		"mumble.thread.server"
-#define METATABLE_THREAD_CLIENT		"mumble.thread.client"
+#define METATABLE_THREAD_CONTROLLER		"mumble.thread.controller"
+#define METATABLE_THREAD_WORKER			"mumble.thread.worker"
 
 extern int mumble_thread_new(lua_State *l);
-int mumble_thread_exit(lua_State *l, MumbleThread *thread);
-extern void mumble_thread_join_all();
 
-extern const luaL_Reg mumble_thread_server[];
-extern const luaL_Reg mumble_thread_client[];
+extern const luaL_Reg mumble_thread_controller[];
+extern const luaL_Reg mumble_thread_worker[];

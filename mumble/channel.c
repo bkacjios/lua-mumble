@@ -234,13 +234,13 @@ static int channel_getLinks(lua_State *l)
 	LinkNode * current = channel->links;
 
 	// Add all linked channels to the table
-    while (current != NULL) {
+	while (current != NULL) {
 		lua_pushinteger(l, current->index);
 		mumble_channel_raw_get(l, channel->client, current->index);
 		lua_settable(l, -3);
 
-        current = current->next;
-    }
+		current = current->next;
+	}
 
 	return 1;
 }
@@ -407,6 +407,16 @@ static int channel_create(lua_State *l)
 static int channel_gc(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+	if (channel->name) {
+		free(channel->name);
+	}
+	if (channel->description) {
+		free(channel->description);
+	}
+	if (channel->description_hash) {
+		free(channel->description_hash);
+	}
+	list_clear(&channel->links);
 	mumble_unref(l, channel->data);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_CHAN, channel);
 	return 0;

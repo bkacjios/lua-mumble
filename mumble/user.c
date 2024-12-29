@@ -370,12 +370,12 @@ static int user_getListens(lua_State *l)
 	LinkNode * current = user->listens;
 
 	// Add all linked channels to the table
-    while (current != NULL) {
+	while (current != NULL) {
 		lua_pushinteger(l, current->index);
 		mumble_channel_raw_get(l, user->client, current->index);
 		lua_settable(l, -3);
-        current = current->next;
-    }
+		current = current->next;
+	}
 
 	return 1;
 }
@@ -451,6 +451,25 @@ static int user_requestCommentBlob(lua_State *l)
 static int user_gc(lua_State *l)
 {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+	if (user->name) {
+		free(user->name);
+	}
+	if (user->comment) {
+		free(user->comment);
+	}
+	if (user->texture) {
+		free(user->texture);
+	}
+	if (user->hash) {
+		free(user->hash);
+	}
+	if (user->comment_hash) {
+		free(user->comment_hash);
+	}
+	if (user->texture_hash) {
+		free(user->texture_hash);
+	}
+	list_clear(&user->listens);
 	mumble_unref(l, user->data);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_USER, user);
 	return 0;

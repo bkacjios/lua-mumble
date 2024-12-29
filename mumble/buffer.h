@@ -50,8 +50,11 @@ uint64_t buffer_read(ByteBuffer* buffer, void* output, uint64_t size);
 uint8_t buffer_writeByte(ByteBuffer* buffer, uint8_t value);
 uint8_t buffer_readByte(ByteBuffer* buffer, int8_t* output);
 
+buffer_rwh(UnsignedByte,uint8_t);
 buffer_rwh(Short,int16_t);
+buffer_rwh(UnsignedShort,uint16_t);
 buffer_rwh(Int,int32_t);
+buffer_rwh(UnsignedInt,uint32_t);
 buffer_rwh(Long,int64_t);
 buffer_rwh(Float,float);
 buffer_rwh(Double,double);

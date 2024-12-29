@@ -27,6 +27,7 @@ ByteBuffer* buffer_init_data(ByteBuffer* buffer, const char* data, uint64_t size
 	buffer = buffer_init(buffer, size);
 	if (buffer != NULL) {
 		buffer_write(buffer, data, size);
+		buffer_flip(buffer);
 	}
 	return buffer;
 }
@@ -115,8 +116,11 @@ uint8_t buffer_readByte(ByteBuffer* buffer, int8_t* output)
 	return 1;
 }
 
+buffer_rw(UnsignedByte,uint8_t);
 buffer_rw(Short,int16_t);
+buffer_rw(UnsignedShort,uint16_t);
 buffer_rw(Int,int32_t);
+buffer_rw(UnsignedInt,uint32_t);
 buffer_rw(Long,int64_t);
 buffer_rw(Float,float);
 buffer_rw(Double,double);
@@ -268,13 +272,6 @@ int mumble_buffer_new(lua_State *l)
 	lua_setmetatable(l, -2);
 
 	// Return the buffer metatable
-	return 1;
-}
-
-int luabuffer_data(lua_State *l)
-{
-	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
-	lua_pushlstring(l, buffer->data, buffer->limit);
 	return 1;
 }
 
@@ -517,7 +514,8 @@ int luabuffer_readBool(lua_State *l)
 
 int buffer_tostring(lua_State *l)
 {
-	lua_pushfstring(l, "%s: %p", METATABLE_BUFFER, lua_topointer(l, 1));
+	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
+	lua_pushlstring(l, buffer->data, buffer->limit);
 	return 1;
 }
 
@@ -530,8 +528,6 @@ int buffer_gc(lua_State *l)
 }
 
 const luaL_Reg mumble_buffer[] = {
-	{"data", luabuffer_data},
-	{"getData", luabuffer_data},
 	{"clear", luabuffer_clear},
 	{"compact", luabuffer_compact},
 	{"reset", luabuffer_reset},

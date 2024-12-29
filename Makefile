@@ -1,5 +1,5 @@
 # Change what version of Lua we want to compile for
-# lua5.1, lua5.2, lua5.3, luajit
+# lua5.1, lua5.2, luajit
 
 ifndef LUAVER
 LUAVER = luajit
@@ -11,9 +11,9 @@ ifndef LUALIB
 LUALIB = /usr/local/lib/lua/5.1
 endif
 
-DEPENDENCIES = libssl $(LUAVER) libprotobuf-c opus sndfile
+DEPENDENCIES = libssl $(LUAVER) libprotobuf-c opus sndfile libuv
 
-LIBRARIES = $(shell pkg-config --libs $(DEPENDENCIES)) -lev # libev doesn't have a pkg-config file..
+LIBRARIES = $(shell pkg-config --libs $(DEPENDENCIES))
 INCLUDES = $(shell pkg-config --cflags $(DEPENDENCIES))
 CFLAGS = -fPIC -I.
 

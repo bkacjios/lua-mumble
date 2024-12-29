@@ -161,16 +161,16 @@ void audio_transmission_unreference(lua_State*l, AudioStream *sound)
 {
 	mumble_registry_unref(l, sound->client->audio_streams, sound->refrence);
 	list_remove(&sound->client->stream_list, sound->refrence);
-	sound->refrence = -1;
+	sound->refrence = MUMBLE_UNREFERENCED;
 }
 
-void mumble_audio_timer(EV_P_ ev_timer *w_, int revents)
+void mumble_audio_timer(uv_timer_t* handle)
 {
-	my_timer *w = (my_timer *) w_;
-	MumbleClient *client = w->client;
+	MumbleClient* client = (MumbleClient*) handle->data;
+	lua_State *l = client->l;
 
 	if (client->connected) {
-		audio_transmission_event(w->l, client);
+		audio_transmission_event(l, client);
 	}
 }
 
@@ -258,8 +258,8 @@ static void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream
 			float right = output_buffer[idx1 * 2 + 1] * (1.0f - alpha) + output_buffer[idx2 * 2 + 1] * alpha;
 
 			// Interpolate left and right channels
-			client->audio_output[t].l += soft_clip(left);
-			client->audio_output[t].r += soft_clip(right);
+			client->audio_output[t].l = soft_clip(client->audio_output[t].l + left);
+			client->audio_output[t].r = soft_clip(client->audio_output[t].r + right);
 		}
 
 		// Update the number of samples processed
@@ -267,8 +267,8 @@ static void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream
 	} else {
 		// We don't need to resample, so just move it to our output buffer
 		for (int i = 0; i < read; i++) {
-			client->audio_output[i].l += soft_clip(output_buffer[i * 2]);
-			client->audio_output[i].r += soft_clip(output_buffer[i * 2 + 1]);
+			client->audio_output[i].l = soft_clip(client->audio_output[i].l + output_buffer[i * 2]);
+			client->audio_output[i].r = soft_clip(client->audio_output[i].r + output_buffer[i * 2 + 1]);
 		}
 	}
 
@@ -282,6 +282,20 @@ static void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream
 	}
 }
 
+static void audio_transmission_bitrate_warning(MumbleClient *client, size_t length) {
+	LinkNode* current = client->stream_list;
+
+	if (current) {
+		// Cleanup any active audio transmissions
+		while (current != NULL) {
+			audio_transmission_unreference(client->l, current->data);
+			current = current->next;
+		}
+	}
+
+	mumble_log(LOG_WARN, "Audio packet length %u greater than maximum of %u, stopping all audio streams. Try reducing the bitrate.\n", length, UDP_BUFFER_MAX);
+}
+
 static void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
 	uint32_t frame_header = encoded_len;
 	if (end_frame) {
@@ -289,14 +303,18 @@ static void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encod
 	}
 
 	VoicePacket packet;
-	uint8_t packet_buffer[UDP_BUFFER_MAX];
+	uint8_t packet_buffer[PCM_BUFFER];
 	voicepacket_init(&packet, packet_buffer);
 	voicepacket_setheader(&packet, LEGACY_UDP_OPUS, client->audio_target, client->audio_sequence);
 	voicepacket_setframe(&packet, LEGACY_UDP_OPUS, frame_header, encoded, encoded_len);
 
-	mumble_handle_speaking_hooks_legacy(l, client, packet_buffer + 1, LEGACY_UDP_OPUS, client->audio_target, client->session);
-
 	int len = voicepacket_getlength(&packet);
+
+	if (len > UDP_BUFFER_MAX) {
+		audio_transmission_bitrate_warning(client, len);
+		return;
+	}
+
 	if (client->tcp_udp_tunnel) {
 		mumble_log(LOG_TRACE, "[TCP] Sending legacy audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)\n",
 			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
@@ -306,6 +324,8 @@ static void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encod
 			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
 		packet_sendudp(client, packet_buffer, len);
 	}
+
+	mumble_handle_speaking_hooks_legacy(l, client, packet_buffer + 1, LEGACY_UDP_OPUS, client->audio_target, client->session);
 }
 
 static void send_protobuf_audio(lua_State *l, MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
@@ -318,11 +338,15 @@ static void send_protobuf_audio(lua_State *l, MumbleClient *client, uint8_t *enc
 	audio.target = client->audio_target;
 	audio.n_positional_data = 0;
 
-	uint8_t packet_buffer[UDP_BUFFER_MAX];
+	uint8_t packet_buffer[PCM_BUFFER];
 	packet_buffer[0] = PROTO_UDP_AUDIO;
 
-	mumble_handle_speaking_hooks_protobuf(l, client, &audio, client->session);
 	int len = 1 + mumble_udp__audio__pack(&audio, packet_buffer + 1);
+
+	if (len > UDP_BUFFER_MAX) {
+		audio_transmission_bitrate_warning(client, len);
+		return;
+	}
 
 	if (client->tcp_udp_tunnel) {
 		mumble_log(LOG_TRACE, "[TCP] Sending protobuf TCP audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)\n",
@@ -333,6 +357,8 @@ static void send_protobuf_audio(lua_State *l, MumbleClient *client, uint8_t *enc
 			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
 		packet_sendudp(client, packet_buffer, len);
 	}
+
+	mumble_handle_speaking_hooks_protobuf(l, client, &audio, client->session);
 }
 
 static void encode_and_send_audio(lua_State *l, MumbleClient *client, sf_count_t frame_size, bool end_frame) {
@@ -412,7 +438,7 @@ static int audiostream_play(lua_State *l)
 	if (!sound->playing) {
 		sound->playing = true;
 
-		if (sound->refrence < 0) {
+		if (sound->refrence <= MUMBLE_UNREFERENCED) {
 			// Push a copy of the audio stream and save a reference
 			lua_pushvalue(l, 1);
 			sound->refrence = mumble_registry_ref(l, sound->client->audio_streams);

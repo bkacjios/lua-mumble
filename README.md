@@ -6,14 +6,14 @@ A lua module to connect to a mumble server and interact with it
 
 ### Ubuntu
 ```bash
-sudo apt-get install libluajit-5.1-dev protobuf-c libprotobuf-c-dev libssl-dev libopus-dev libev-dev
+sudo apt-get install libluajit-5.1-dev protobuf-c libprotobuf-c-dev libssl-dev libopus-dev libuv1-dev 
 ```
 
 Note: `liblua5.1-0-dev` can be substituted with `libluajit-5.1-dev`, `liblua5.2-dev`, or `liblua5.3-dev` depending on your needs.
 
 ### Arch Linux
 ```bash
-sudo pacman -S luajit protobuf-c openssl libsndfile opus ev
+sudo pacman -S luajit protobuf-c openssl libsndfile opus libuv
 ```
 
 Note: `luajit` can be substituted with `lua5.1`, `lua5.2` or `lua5.3` depending on your needs.
@@ -73,12 +73,9 @@ mumble.user = mumble.client.me
 mumble.user = mumble.client:getMe()
 mumble.user = mumble.client:getSelf()
 
--- Run a script in a thread with its own separate Lua environment
-mumble.thread = mumble.thread("filename.lua")
-
 -- A new timer object
 -- The timer itself will do a best-effort at avoiding drift, that is, if you configure a timer to trigger every 10 seconds, then it will normally trigger at exactly 10 second intervals. If, however, your program cannot keep up with the timer (because it takes longer than those 10 seconds to do stuff) the timer will not fire more than once per event loop iteration.
--- Timers will keep the reference active until mumble.timer:close() is called.
+-- Timers will keep the reference active until mumble.timer:stop() is called, or the timer stops on its own.
 -- Timers will dereference themselves if the timer is stopped after the callback funciton call.
 mumble.timer = mumble.timer()
 
@@ -86,6 +83,10 @@ mumble.timer = mumble.timer()
 -- Can be used to read/write raw binary data
 -- Can be initialized with data or a given size
 mumble.buffer = mumble.buffer([Number size, String data])
+
+-- A new thread controller object
+-- The callback function will be ran in a separate thread.
+mumble.thread.controller = mumble.thread(Function callback(mumble.thread.worker worker))
 
 -- A new voicetarget object
 mumble.voicetarget = mumble.voicetarget()
@@ -546,8 +547,8 @@ mumble.timer:stop()
 ### mumble.buffer
 
 ``` lua
--- Get the written data, stored in the buffer, as a string
-String data = buffer:data()
+-- The buffers __tostring metamethod will return the written data as a string
+String data = tostring(buffer)
 
 -- Clears the buffer, wiping all data and setting the position and limit to 0
 buffer:clear()
@@ -632,6 +633,84 @@ Number written = buffer:writeBool(Boolean value)
 
 -- Reads a boolean value from the buffer (returns true or false)
 Boolean value = buffer:readBool()
+```
+
+### mumble.thread.controller
+
+```lua
+-- Sets a callback function that will be called when the worker is joined back into the controller thread.
+mumble.thread.controller = mumble.thread.controller:onFinish(Function callback(mumble.thread.controller))
+
+-- Sets a callback function that will be called when the controller receives a message from the worker.
+mumble.thread.controller = mumble.thread.controller:onMessage(Function callback(String message))
+
+-- Sends a message to the worker thread.
+mumble.thread.controller = mumble.thread.controller:send([String message, mumble.buffer message])
+
+-- Blocks until the thread completes.
+mumble.thread.controller = mumble.thread.controller:join()
+```
+
+### mumble.thread.worker
+
+```lua
+-- Sleep the worker thread for however many milliseconds.
+mumble.thread.worker = mumble.thread.worker:sleep(Number milliseconds)
+
+-- Keep the thread open until singnaled to close.
+-- Allows us to receive messages using mumble.worker.onMessage.
+mumble.thread.worker = mumble.thread.worker:loop()
+
+-- Signals the thread to exit its loop.
+mumble.thread.worker = mumble.thread.worker:stop()
+
+-- A new buffer object. (shortcut for mumble.buffer())
+-- Can be used to read/write raw binary data.
+-- Can be initialized with data or a given size.
+mumble.buffer = mumble.thread.worker:buffer([Number size, String data])
+
+-- Sets a callback function that will be called when the worker receives a message from the controller.
+mumble.thread.controller = mumble.thread.controller:onMessage(Function callback(String message))
+
+-- Sends a message to the controller thread.
+mumble.thread.controller = mumble.thread.controller:send([String message, mumble.buffer message])
+```
+
+#### Thread examples
+
+```lua
+local outsideValue = "outside scope"
+
+mumble.thread(function(worker)
+	-- This function is ran in a separate thread and will not block.
+	-- The scope of this function starts here and can not access upvalues from the outer scope.
+	print("outsideValue", outsideValue) -- outsideValue is nil here.
+	worker:send("my work has begun")
+	for i=1,3 do
+		worker:sleep(1000)
+		worker:send("hello " .. i)
+	end
+	worker:send("my work has completed")
+end):onMessage(function(t, msg)
+	-- Use this to receive data from the worker thread.
+	print("worker: " ..  msg)
+end):onFinish(function(t)
+	-- Thread was joined back into our main thread.
+	print("thread finished", t)
+end)
+```
+
+Output
+
+```
+outsideValue    nil
+worker: my work has begun
+worker: hello 1
+worker: hello 2
+thread finished mumble.thread.controller: 0x7ffff7b7bc70
+worker: hello 3
+worker: my work has completed
+
 ```
 
 ### mumble.voicetarget
@@ -736,6 +815,8 @@ String decoded = mumble.decoder:decode_float(String encoded)
 ### mumble.audiostream
 
 [Click here for a list of supported audio formats](https://libsndfile.github.io/libsndfile/formats.html)
+
+All audio will be resampled to 48000 Hz and remixed to stereo.
 
 ``` lua
 -- Returns if this audio stream is currently playing or not
