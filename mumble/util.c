@@ -283,6 +283,49 @@ int luaL_isudata(lua_State *L, int ud, const char *tname) {
 	return 0; // else false
 }
 
+// Function to create a new queue
+LinkQueue *queue_new() {
+	LinkQueue *queue = (LinkQueue*)malloc(sizeof(LinkQueue));
+	queue->front = NULL;
+	queue->rear = NULL;
+	return queue;
+}
+
+// Function to push a message into the queue
+void queue_push(LinkQueue* queue, char* data, size_t size) {
+	QueueNode* node = (QueueNode*)malloc(sizeof(QueueNode));
+	node->data = data;
+	node->size = size;
+
+	node->next = NULL;
+
+	if (queue->rear == NULL) { // Queue is empty
+		queue->front = node;
+		queue->rear = node;
+	} else {
+		queue->rear->next = node; // Add to the rear
+		queue->rear = node;
+	}
+}
+
+// Function to pop a message from the queue
+QueueNode* queue_pop(LinkQueue *queue) {
+	if (queue->front == NULL) {
+		return NULL;
+	}
+
+	QueueNode* node = queue->front;		// Get the front message
+
+	queue->front = queue->front->next;	// Move front to the next message
+
+	if (queue->front == NULL) {			// If the queue becomes empty
+		queue->rear = NULL;
+	}
+
+	// Return the node
+	return node;
+}
+
 /* Function to add a node at the beginning of Linked List. 
 	This function expects a pointer to the data to be added 
 	and size of the data type */

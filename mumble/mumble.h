@@ -138,7 +138,8 @@ typedef struct mumble_crypt mumble_crypt;
 typedef struct MumbleThreadWorker MumbleThreadWorker;
 typedef struct MumbleThreadController MumbleThreadController;
 typedef struct AudioTimer AudioTimer;
-typedef struct MumbleThreadMessage MumbleThreadMessage;
+typedef struct QueueNode QueueNode;
+typedef struct LinkQueue LinkQueue;
 
 struct MumbleTimer {
 	uv_timer_t timer;
@@ -174,10 +175,22 @@ struct MumbleThreadWorker {
 	MumbleThreadController* controller;
 };
 
+struct QueueNode {
+	char* data;
+	size_t size;
+	QueueNode* next;
+};
+
+typedef struct LinkQueue {
+	QueueNode* front;	// Pointer to the front (oldest message)
+	QueueNode* rear;	// Pointer to the rear (newest message)
+} MessageQueue;
+
 struct MumbleThreadController {
 	lua_State* l;
 	uv_thread_t thread;
-	uv_async_t async_finished;
+	uv_async_t async_finish;
+	uv_async_t async_message;
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
 	bool finished;
@@ -185,6 +198,8 @@ struct MumbleThreadController {
 	size_t bytecode_size;
 	int self;
 	int finish;
+	int message;
+	LinkQueue*	message_queue;
 };
 
 struct MumbleClient {
@@ -267,6 +282,10 @@ struct MumbleChannel {
 	float			volume_adjustment;
 };
 
+LinkQueue *queue_new();
+void queue_push(LinkQueue* queue, char* data, size_t size);
+QueueNode* queue_pop(LinkQueue *queue);
+
 void list_add(LinkNode** head_ref, uint32_t index, void *data);
 void list_remove(LinkNode **head_ref, uint32_t index);
 void list_clear(LinkNode** head_ref);
@@ -333,66 +352,65 @@ extern int MUMBLE_REGISTRY;
 extern int MUMBLE_TIMER_REG;
 extern int MUMBLE_THREAD_REG;
 
-extern void mumble_init(lua_State *l);
+void mumble_init(lua_State *l);
 extern int luaopen_mumble(lua_State *l);
 
-extern void mumble_log(int level, const char* fmt, ...);
+void mumble_log(int level, const char* fmt, ...);
 
-extern void mumble_audio_timer(uv_timer_t* handle);
-extern void mumble_ping_timer(uv_timer_t* handle);
-//extern void mumble_thread_event(struct ev_loop *loop, ev_io *w, int revents);
+void mumble_audio_timer(uv_timer_t* handle);
+void mumble_ping_timer(uv_timer_t* handle);
 
-extern double gettime(clockid_t mode);
+double gettime(clockid_t mode);
 
-extern void bin_to_strhex(char *bin, size_t binsz, char **result);
+void bin_to_strhex(char *bin, size_t binsz, char **result);
 
 #if (defined(LUA_VERSION_NUM) && LUA_VERSION_NUM < 502) && !defined(LUAJIT)
-extern void* luaL_testudata(lua_State* L, int index, const char* tname);
-extern void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level);
+void* luaL_testudata(lua_State* L, int index, const char* tname);
+void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level);
 #endif
 
-extern void luaL_debugstack(lua_State *l, const char* text);
-extern int luaL_typerror(lua_State *L, int narg, const char *tname);
-extern int luaL_typerror_table(lua_State *L, int narg, int nkey, int nvalue, const char *tname);
-extern int luaL_checkfunction(lua_State *L, int i);
-extern int luaL_checkboolean(lua_State *L, int i);
-extern int luaL_optboolean(lua_State *L, int i, int d);
-extern int luaL_isudata(lua_State *L, int ud, const char *tname);
+void luaL_debugstack(lua_State *l, const char* text);
+int luaL_typerror(lua_State *L, int narg, const char *tname);
+int luaL_typerror_table(lua_State *L, int narg, int nkey, int nvalue, const char *tname);
+int luaL_checkfunction(lua_State *L, int i);
+int luaL_checkboolean(lua_State *L, int i);
+int luaL_optboolean(lua_State *L, int i, int d);
+int luaL_isudata(lua_State *L, int ud, const char *tname);
 
-extern uint64_t util_get_varint(uint8_t buffer[], int *len);
+uint64_t util_get_varint(uint8_t buffer[], int *len);
 
-extern void mumble_ping(lua_State* l, MumbleClient* client);
+void mumble_ping(lua_State* l, MumbleClient* client);
 
-extern uint64_t mumble_adjust_audio_bandwidth(MumbleClient *client);
-extern void mumble_create_audio_timer(MumbleClient *client);
-extern int mumble_client_connect(lua_State *l);
-extern void mumble_disconnect(lua_State* l, MumbleClient *client, const char* reason, bool garbagecollected);
+uint64_t mumble_adjust_audio_bandwidth(MumbleClient *client);
+void mumble_create_audio_timer(MumbleClient *client);
+int mumble_client_connect(lua_State *l);
+void mumble_disconnect(lua_State* l, MumbleClient *client, const char* reason, bool garbagecollected);
 
-extern void mumble_client_raw_get(lua_State* l, MumbleClient* client);
-extern MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session);
-extern void mumble_user_raw_get(lua_State* l, MumbleClient* client, uint32_t session);
-extern void mumble_user_remove(lua_State* l, MumbleClient* client, uint32_t session);
+void mumble_client_raw_get(lua_State* l, MumbleClient* client);
+MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session);
+void mumble_user_raw_get(lua_State* l, MumbleClient* client, uint32_t session);
+void mumble_user_remove(lua_State* l, MumbleClient* client, uint32_t session);
 
-extern MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t channel_id);
-extern void mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t channel_id);
-extern void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_id);
+MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t channel_id);
+void mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t channel_id);
+void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_id);
 
-extern int mumble_push_address(lua_State* l, ProtobufCBinaryData address);
+int mumble_push_address(lua_State* l, ProtobufCBinaryData address);
 
-extern void mumble_handle_udp_packet(lua_State* l, MumbleClient* client, char* unencrypted, ssize_t size, bool udp);
-extern void mumble_handle_speaking_hooks_legacy(lua_State* l, MumbleClient* client, uint8_t buffer[], uint8_t codec, uint8_t target, uint32_t session);
-extern void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, MumbleUDP__Audio *audio, uint32_t session);
+void mumble_handle_udp_packet(lua_State* l, MumbleClient* client, char* unencrypted, ssize_t size, bool udp);
+void mumble_handle_speaking_hooks_legacy(lua_State* l, MumbleClient* client, uint8_t buffer[], uint8_t codec, uint8_t target, uint32_t session);
+void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, MumbleUDP__Audio *audio, uint32_t session);
 
-extern int mumble_traceback(lua_State *l);
-extern int mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs);
-extern int mumble_hook_call_ret(lua_State* l, MumbleClient *client, const char* hook, int nargs, int nresults);
+int mumble_traceback(lua_State *l);
+int mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs);
+int mumble_hook_call_ret(lua_State* l, MumbleClient *client, const char* hook, int nargs, int nresults);
 
-extern int mumble_immutable(lua_State *l);
-extern void mumble_weak_table(lua_State *l);
-extern int mumble_ref(lua_State *l);
-extern void mumble_pushref(lua_State *l, int ref);
-extern void mumble_unref(lua_State *l, int ref);
+int mumble_immutable(lua_State *l);
+void mumble_weak_table(lua_State *l);
+int mumble_ref(lua_State *l);
+void mumble_pushref(lua_State *l, int ref);
+void mumble_unref(lua_State *l, int ref);
 
-extern int mumble_registry_ref(lua_State *l, int t);
-extern void mumble_registry_pushref(lua_State *l, int t, int ref);
-extern void mumble_registry_unref(lua_State *l, int t, int ref);
+int mumble_registry_ref(lua_State *l, int t);
+void mumble_registry_pushref(lua_State *l, int t, int ref);
+void mumble_registry_unref(lua_State *l, int t, int ref);

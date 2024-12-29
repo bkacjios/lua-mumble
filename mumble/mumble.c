@@ -17,8 +17,8 @@
 
 #include <openssl/err.h>
 
-int MUMBLE_REGISTRY;
 int MUMBLE_CLIENTS;
+int MUMBLE_REGISTRY;
 int MUMBLE_TIMER_REG;
 int MUMBLE_THREAD_REG;
 
