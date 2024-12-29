@@ -237,10 +237,6 @@ int mumble_thread_new(lua_State *l)
 	controller->bytecode = NULL;
 	controller->bytecode_size = 0;
 	controller->started = false;
-	controller->message_queue = queue_new();
-
-	pthread_mutex_init(&controller->mutex, NULL);
-	pthread_cond_init(&controller->cond, NULL);
 
 	// Convert our worker function to bytecode, so we can use it in a new state
 	if (luaL_checkfunction(l, 2)) {
@@ -250,6 +246,11 @@ int mumble_thread_new(lua_State *l)
 		}
 		lua_pop(l, 1); // Pop our worker function
 	}
+	
+	controller->message_queue = queue_new();
+
+	pthread_mutex_init(&controller->mutex, NULL);
+	pthread_cond_init(&controller->cond, NULL);
 
 	lua_pushvalue(l, -1); // Reference a copy of our userdata to prevent garbage collection
 	controller->self = mumble_registry_ref(l, MUMBLE_THREAD_REG); // Pop it off as a reference
