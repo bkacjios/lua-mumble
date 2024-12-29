@@ -1,5 +1,8 @@
 #pragma once
 
+#include <lauxlib.h>
+#include <stdint.h>
+
 #define VOICEPACKET_NORMAL 0
 #define VOICEPACKET_OPUS 4
 

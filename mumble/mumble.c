@@ -14,8 +14,11 @@
 #include "thread.h"
 #include "packet.h"
 #include "ocb.h"
+#include "util.h"
 
+#include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <math.h>
 
 int MUMBLE_CLIENTS;
 int MUMBLE_REGISTRY;
@@ -1342,11 +1345,8 @@ const luaL_Reg mumble[] = {
 };
 
 int luaopen_mumble(lua_State *l)
-{
-	signal(SIGPIPE, SIG_IGN);
-	
+{	
 	mumble_init(l);
-
 	uv_signal_init(uv_default_loop(), &mumble_signal);
 	uv_signal_start(&mumble_signal, mumble_signal_event, SIGINT);
 	return 0;

@@ -1,6 +1,7 @@
 #include "mumble.h"
 
 #include "encoder.h"
+#include "util.h"
 
 int mumble_encoder_new(lua_State *l)
 {

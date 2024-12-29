@@ -2,6 +2,7 @@
 
 #include "channel.h"
 #include "packet.h"
+#include "util.h"
 
 /*--------------------------------
 	MUMBLE CHANNEL META METHODS

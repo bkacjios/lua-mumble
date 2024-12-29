@@ -1,6 +1,7 @@
 #include "mumble.h"
 
 #include "buffer.h"
+#include "util.h"
 
 #include <stdlib.h>
 #include <string.h>

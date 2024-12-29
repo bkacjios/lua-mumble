@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lauxlib.h>
+
 #define METATABLE_TIMER			"mumble.timer"
 
 extern int mumble_timer_new(lua_State *l);

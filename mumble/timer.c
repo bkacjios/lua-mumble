@@ -1,6 +1,7 @@
 #include "mumble.h"
 
 #include "timer.h"
+#include "util.h"
 
 static MumbleTimer* mumble_checktimer(lua_State *l, int index)
 {

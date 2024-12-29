@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lauxlib.h>
 #include <stdint.h>
 
 typedef struct

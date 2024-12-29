@@ -1,5 +1,7 @@
 #pragma once
 
+#include "client.h"
+
 #define NUM_PACKETS 27
 
 enum {

@@ -6,8 +6,11 @@
 #include "packet.h"
 #include "target.h"
 #include "user.h"
+#include "util.h"
 
 #include "gitversion.h"
+
+#include <sys/utsname.h>
 
 /*--------------------------------
 	MUMBLE CLIENT META METHODS

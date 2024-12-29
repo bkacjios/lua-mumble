@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lauxlib.h>
+
 #define METATABLE_DECODER		"mumble.decoder"
 
 extern int mumble_decoder_new(lua_State *l);

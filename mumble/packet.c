@@ -5,6 +5,10 @@
 
 #include "user.h"
 #include "client.h"
+#include "util.h"
+
+#include <openssl/ssl.h>
+#include <math.h>
 
 typedef struct {
 	uv_udp_send_t req;

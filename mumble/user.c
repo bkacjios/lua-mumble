@@ -3,6 +3,7 @@
 #include "channel.h"
 #include "user.h"
 #include "packet.h"
+#include "util.h"
 
 /*--------------------------------
 	MUMBLE USER META METHODS

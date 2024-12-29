@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lauxlib.h>
+
 #define METATABLE_THREAD_CONTROLLER		"mumble.thread.controller"
 #define METATABLE_THREAD_WORKER			"mumble.thread.worker"
 

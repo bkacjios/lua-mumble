@@ -2,6 +2,10 @@
 
 #include "thread.h"
 #include "buffer.h"
+#include "util.h"
+
+#include <lualib.h>
+#include <unistd.h>
 
 void mumble_thread_worker_message(uv_async_t *handle);
 

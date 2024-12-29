@@ -1,6 +1,9 @@
 #include "mumble.h"
 #include "packet.h"
 #include "audio.h"
+#include "util.h"
+
+#include <math.h>
 
 uint8_t util_set_varint(uint8_t buffer[], const uint64_t value)
 {
