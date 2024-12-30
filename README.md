@@ -82,11 +82,11 @@ mumble.timer = mumble.timer()
 -- A new buffer object
 -- Can be used to read/write raw binary data
 -- Can be initialized with data or a given size
-mumble.buffer = mumble.buffer([Number size, String data])
+mumble.buffer = mumble.buffer([Number size or String data])
 
 -- A new thread controller object
 -- The callback function will be ran in a separate thread.
-mumble.thread.controller = mumble.thread(Function callback(mumble.thread.worker worker))
+mumble.thread.controller = mumble.thread(String filename or Function callback(mumble.thread.worker worker))
 
 -- A new voicetarget object
 mumble.voicetarget = mumble.voicetarget()
@@ -679,9 +679,11 @@ mumble.thread.controller = mumble.thread.controller:send([String message, mumble
 #### Thread examples
 
 ```lua
+--local thread = mumble.thread("thread.lua")
+
 local outsideValue = "outside scope"
 
-mumble.thread(function(worker)
+local thread = mumble.thread(function(worker)
 	-- This function is ran in a separate thread and will not block.
 	-- The scope of this function starts here and can not access upvalues from the outer scope.
 	print("outsideValue", outsideValue) -- outsideValue is nil here.
@@ -710,6 +712,21 @@ worker: hello 2
 thread finished mumble.thread.controller: 0x7ffff7b7bc70
 worker: hello 3
 worker: my work has completed
+```
+
+thread.lua
+```lua
+-- When running a file in a thread, the worker will be passed in as arg[1]
+local worker = ...
+
+-- This function is ran in a separate thread and will not block.
+-- The scope of this function starts here and can not access upvalues from the outer scope.
+worker:send("my work has begun")
+for i=1,3 do
+	worker:sleep(1000)
+	worker:send("hello " .. i)
+end
+worker:send("my work has completed")
 ```
 
 ### mumble.voicetarget
