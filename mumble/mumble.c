@@ -362,44 +362,16 @@ void handle_ssl_read_error(MumbleClient* client, int ret) {
 	mumble_disconnect(client->l, client, mumble_ssl_error(ERR_get_error()), false);
 }
 
-void socket_read_write_event_tcp(uv_poll_t* handle, int status, int events) {
+void socket_read_event_tcp(uv_poll_t* handle, int status, int events) {
 	if (status < 0) {
-		mumble_log(LOG_ERROR, "tcp poll error: %s", uv_strerror(status));
+		mumble_log(LOG_ERROR, "tcp read event error: %s", uv_strerror(status));
 		return;
 	}
 
 	MumbleClient* client = (MumbleClient*) handle->data;
 	lua_State* l = client->l;
 
-	if (events & UV_WRITABLE && !client->connected) {
-		int ret = SSL_connect(client->ssl);
-		if (ret == 1 && SSL_is_init_finished(client->ssl)) {
-			client->connected = true;
-
-			// Log the connection info
-			char address[INET6_ADDRSTRLEN];
-			if (client->server_host_tcp->ai_family == AF_INET) {
-				inet_ntop(AF_INET, &(((struct sockaddr_in*)(client->server_host_tcp->ai_addr))->sin_addr), address, INET_ADDRSTRLEN);
-			} else {
-				inet_ntop(AF_INET6, &(((struct sockaddr_in6*)(client->server_host_tcp->ai_addr))->sin6_addr), address, INET6_ADDRSTRLEN);
-			}
-
-			mumble_log(LOG_INFO, "%s[%d] connected to server %s:%d", METATABLE_CLIENT, client->self, address, client->port);
-
-			// Set the connected flag and trigger any connection callback
-			mumble_hook_call(l, client, "OnConnect", 0);
-
-			uv_poll_stop(&client->ssl_poll);
-			uv_poll_start(&client->ssl_poll, UV_READABLE, socket_read_write_event_tcp);
-		} else {
-			int error = SSL_get_error(client->ssl, ret);
-			if (error != SSL_ERROR_WANT_READ && error != SSL_ERROR_WANT_WRITE) {
-				const char* message = (char*) mumble_ssl_error(error);
-				mumble_log(LOG_ERROR, "SSL handshake failed: %s", message);
-				mumble_client_cleanup(client);
-			}
-		}
-	} else if (events & UV_READABLE && client->connected) {
+	if (events & UV_READABLE && client->connected) {
 		// Static since this process might take a few iterations to complete
 		static MumblePacket packet;
 
@@ -477,6 +449,45 @@ void socket_read_write_event_tcp(uv_poll_t* handle, int status, int events) {
 	}
 }
 
+void socket_write_event_tcp(uv_poll_t* handle, int status, int events) {
+	if (status < 0) {
+		mumble_log(LOG_ERROR, "tcp write event error: %s", uv_strerror(status));
+		return;
+	}
+
+	MumbleClient* client = (MumbleClient*) handle->data;
+	lua_State* l = client->l;
+
+	if (events & UV_WRITABLE && !client->connected) {
+		int ret = SSL_connect(client->ssl);
+		if (ret == 1 && SSL_is_init_finished(client->ssl)) {
+			client->connected = true;
+
+			// Log the connection info
+			char address[INET6_ADDRSTRLEN];
+			if (client->server_host_tcp->ai_family == AF_INET) {
+				inet_ntop(AF_INET, &(((struct sockaddr_in*)(client->server_host_tcp->ai_addr))->sin_addr), address, INET_ADDRSTRLEN);
+			} else {
+				inet_ntop(AF_INET6, &(((struct sockaddr_in6*)(client->server_host_tcp->ai_addr))->sin6_addr), address, INET6_ADDRSTRLEN);
+			}
+
+			mumble_log(LOG_INFO, "%s[%d] connected to server %s:%d", METATABLE_CLIENT, client->self, address, client->port);
+
+			// Set the connected flag and trigger any connection callback
+			mumble_hook_call(l, client, "OnConnect", 0);
+
+			uv_poll_stop(&client->ssl_poll);
+			uv_poll_start(&client->ssl_poll, UV_READABLE, socket_read_event_tcp);
+		} else {
+			int error = SSL_get_error(client->ssl, ret);
+			if (error != SSL_ERROR_WANT_READ && error != SSL_ERROR_WANT_WRITE) {
+				const char* message = (char*) mumble_ssl_error(error);
+				mumble_log(LOG_ERROR, "SSL handshake failed: %s", message);
+				mumble_client_cleanup(client);
+			}
+		}
+	}
+}
 
 void mumble_connected_tcp(uv_connect_t *req, int status)
 {
@@ -492,8 +503,8 @@ void mumble_connected_tcp(uv_connect_t *req, int status)
 	uv_poll_init(uv_default_loop(), &client->ssl_poll, client->socket_tcp_fd);
 	client->ssl_poll.data = client;
 
-	// Start polling the socket for readability and writability for the handshake
-	uv_poll_start(&client->ssl_poll, UV_READABLE | UV_WRITABLE, socket_read_write_event_tcp);
+	// Start polling the socket for writability for the handshake
+	uv_poll_start(&client->ssl_poll, UV_WRITABLE, socket_write_event_tcp);
 }
 
 static int mumble_client_new(lua_State *l) {
