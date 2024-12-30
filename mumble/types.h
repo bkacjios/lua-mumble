@@ -91,7 +91,8 @@ struct MumbleThreadController {
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
 	volatile bool started;
-	char *bytecode;
+	char* bytecode;
+	const char* filename;
 	size_t bytecode_size;
 	int self;
 	int finish;

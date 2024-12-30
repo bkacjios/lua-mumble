@@ -253,13 +253,13 @@ int luaL_typerror_table(lua_State *L, int narg, int nkey, int nvalue, const char
 
 int luaL_checkfunction(lua_State *L, int i){
 	if(!lua_isfunction(L,i))
-		luaL_typerror(L,i,"function");
+		luaL_typerror(L,i,lua_typename(L,LUA_TFUNCTION));
 	return lua_isfunction(L,i);
 }
 
 int luaL_checkboolean(lua_State *L, int i){
 	if(!lua_isboolean(L,i))
-		luaL_typerror(L,i,"boolean");
+		luaL_typerror(L,i,lua_typename(L,LUA_TBOOLEAN));
 	return lua_toboolean(L,i);
 }
 

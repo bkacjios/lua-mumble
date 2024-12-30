@@ -44,8 +44,13 @@ void mumble_thread_worker_start(void *arg)
 	// Push our error handler
 	lua_pushcfunction(l, mumble_traceback);
 
-	// Load the bytecode in our thread
-	int err = luaL_loadbuffer(l, controller->bytecode, controller->bytecode_size, "thread");
+	int err;
+
+	if (controller->bytecode) {
+		err = luaL_loadbuffer(l, controller->bytecode, controller->bytecode_size, "thread");
+	} else {
+		err = luaL_loadfile(l, controller->filename);
+	}
 
 	if (err != 0) {
 		mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
@@ -59,6 +64,9 @@ void mumble_thread_worker_start(void *arg)
 	worker->controller = controller;
 	worker->finished = false;
 	worker->message_queue = queue_new();
+
+	luaL_getmetatable(l, METATABLE_THREAD_WORKER);
+	lua_setmetatable(l, -2);
 
 	pthread_mutex_init(&worker->mutex, NULL);
 	pthread_cond_init(&worker->cond, NULL);
@@ -76,9 +84,6 @@ void mumble_thread_worker_start(void *arg)
 	controller->started = true; // Mark work as started
 	pthread_cond_signal(&controller->cond); // Signal the waiting thread
 	pthread_mutex_unlock(&controller->mutex);
-
-	luaL_getmetatable(l, METATABLE_THREAD_WORKER);
-	lua_setmetatable(l, -2);
 
 	// Call the worker with our custom error handler function
 	if (lua_pcall(l, 1, 0, -3) != 0) {
@@ -239,17 +244,27 @@ int mumble_thread_new(lua_State *l)
 	controller->self = MUMBLE_UNREFERENCED;
 	controller->finish = MUMBLE_UNREFERENCED;
 	controller->message = MUMBLE_UNREFERENCED;
+	controller->filename = NULL;
 	controller->bytecode = NULL;
 	controller->bytecode_size = 0;
 	controller->started = false;
 
-	// Convert our worker function to bytecode, so we can use it in a new state
-	if (luaL_checkfunction(l, 2)) {
-		lua_pushvalue(l, 2); // Push a copy of our worker function
-		if (lua_dump(l, mumble_dump_controller, controller) != 0) {
-			return luaL_error(l, "unable to convert worker function into bytecode");
-		}
-		lua_pop(l, 1); // Pop our worker function
+	switch (lua_type(l, 2)) {
+		case LUA_TSTRING:
+			controller->filename = lua_tostring(l, 2);
+			break;
+		case LUA_TFUNCTION:
+			// Convert our worker function to bytecode, so we can use it in a new state
+			lua_pushvalue(l, 2); // Push a copy of our worker function
+			if (lua_dump(l, mumble_dump_controller, controller) != 0) {
+				return luaL_error(l, "unable to convert worker function into bytecode");
+			}
+			lua_pop(l, 1); // Pop our worker function
+			break;
+		default:
+			const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
+				lua_typename(l, LUA_TSTRING), lua_typename(l, LUA_TFUNCTION), luaL_typename(l, 2));
+			return luaL_argerror(l, 1, msg);
 	}
 	
 	controller->message_queue = queue_new();
