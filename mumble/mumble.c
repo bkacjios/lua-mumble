@@ -388,6 +388,9 @@ void socket_read_write_event_tcp(uv_poll_t* handle, int status, int events) {
 
 			// Set the connected flag and trigger any connection callback
 			mumble_hook_call(l, client, "OnConnect", 0);
+
+			uv_poll_stop(&client->ssl_poll);
+			uv_poll_start(&client->ssl_poll, UV_READABLE, socket_read_write_event_tcp);
 		} else {
 			int error = SSL_get_error(client->ssl, ret);
 			if (error != SSL_ERROR_WANT_READ && error != SSL_ERROR_WANT_WRITE) {
