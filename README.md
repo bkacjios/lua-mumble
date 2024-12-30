@@ -93,11 +93,13 @@ mumble.voicetarget = mumble.voicetarget()
 
 -- A new opus encoder object
 -- Sample rate defaults to 48000
-mumble.encoder = mumble.encoder(Number samplerate = 48000, Number channels)
+-- Channels defaults to 2
+mumble.encoder = mumble.encoder(Number samplerate = 48000, Number channels = 2)
 
 -- A new opus decoder object
 -- Sample rate defaults to 48000
-mumble.decoder = mumble.decoder(Number samplerate = 48000, Number channels)
+-- Channels defaults to 2
+mumble.decoder = mumble.decoder(Number samplerate = 48000, Number channels = 2)
 
 -- A timestamp in milliseconds
 Number time = mumble.getTime()
@@ -239,7 +241,7 @@ mumble.client:setVoiceTarget(Number id)
 -- Get the current voice target
 Number id = mumble.client:getVoiceTarget()
 
--- Get the encoder object that the internal audio system uses to play .ogg files
+-- Get the encoder object that the internal audio system uses to encode audio data
 mumble.encoder encoder = mumble.client:getEncoder()
 
 -- Get the average ping of the client

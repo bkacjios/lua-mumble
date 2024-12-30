@@ -116,7 +116,7 @@ struct MumbleClient {
 	bool				connected;
 	bool				synced;
 	bool				legacy;
-	const char*			host;
+	char*				host;
 	uint16_t			port;
 	int					hooks;
 	int					users;

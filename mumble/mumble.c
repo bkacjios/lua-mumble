@@ -512,7 +512,7 @@ static int mumble_client_new(lua_State *l) {
 	lua_newtable(l);
 	client->audio_streams = mumble_ref(l);
 
-	client->host = "";
+	client->host = NULL;
 	client->port = 0;
 	client->self = MUMBLE_UNREFERENCED;
 	client->session = 0;
@@ -554,7 +554,7 @@ int mumble_client_connect(lua_State *l) {
 	const char* certificate_file = luaL_checkstring(l, 4);
 	const char* key_file = luaL_checkstring(l, 5);
 
-	client->host = server_host_str;
+	client->host = strdup(server_host_str);
 	client->port = port;
 	client->time = gettime(CLOCK_MONOTONIC);
 
@@ -781,6 +781,11 @@ static int mumble_stop(lua_State *l)
 }
 
 static void mumble_client_free(MumbleClient *client) {
+	if (client->host) {
+		mumble_log(LOG_TRACE, "mumble.client: %p freeing client->host: %p\n", client, client->host);
+		free(client->host);
+	}
+
 	if (client->crypt) {
 		mumble_log(LOG_TRACE, "mumble.client: %p freeing client->crypt: %p\n", client, client->crypt);
 		crypt_free(client->crypt);

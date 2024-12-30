@@ -259,7 +259,7 @@ int mumble_thread_new(lua_State *l)
 			if (lua_dump(l, mumble_dump_controller, controller) != 0) {
 				return luaL_error(l, "unable to convert worker function into bytecode");
 			}
-			lua_pop(l, 1); // Pop our worker function
+			lua_pop(l, 1); // Pop our worker function copy
 			break;
 		default:
 			const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
