@@ -2,10 +2,10 @@
 
 #include "packet.h"
 #include "ocb.h"
-
 #include "user.h"
 #include "client.h"
 #include "util.h"
+#include "log.h"
 
 #include <openssl/ssl.h>
 #include <math.h>
@@ -38,9 +38,9 @@ void on_send(uv_udp_send_t* req, int status) {
 	context->is_done = 1;
 
 	if (status < 0) {
-		mumble_log(LOG_ERROR, "[UDP] Error sending UDP packet: %s\n", uv_strerror(status));
+		mumble_log(LOG_ERROR, "[UDP] Error sending UDP packet: %s", uv_strerror(status));
 	} else {
-		mumble_log(LOG_TRACE, "[UDP] Sent UDP packet successfully\n");
+		mumble_log(LOG_TRACE, "[UDP] Sent UDP packet successfully");
 	}
 	free(req);
 }
@@ -62,7 +62,7 @@ int packet_sendudp(MumbleClient* client, const void *message, const int length)
 		int ret = uv_udp_send(req, &client->socket_udp, &buf, 1, NULL, on_send);
 
 		if (ret < 0) {
-			mumble_log(LOG_ERROR, "[UDP] Unable to send UDP packet: %s\n", uv_strerror(ret));
+			mumble_log(LOG_ERROR, "[UDP] Unable to send UDP packet: %s", uv_strerror(ret));
 			free(req);
 			return 0;
 		}
@@ -72,7 +72,7 @@ int packet_sendudp(MumbleClient* client, const void *message, const int length)
 			uv_run(uv_default_loop(), UV_RUN_ONCE);
 		}
 	} else {
-		mumble_log(LOG_ERROR, "[UDP] Unable to encrypt UDP packet\n");
+		mumble_log(LOG_ERROR, "[UDP] Unable to encrypt UDP packet");
 	}
 }
 
@@ -143,7 +143,7 @@ int packet_sendex(MumbleClient* client, int type, const void *message, const Pro
 			payload_size = mumble_proto__plugin_data_transmission__get_packed_size(message);
 			break;
 		default:
-			mumble_log(LOG_WARN, "unable to get payload size for packet #%i\n", type);
+			mumble_log(LOG_WARN, "unable to get payload size for packet #%i", type);
 			return 1;
 	}
 	total_size = sizeof(uint16_t) + sizeof(uint32_t) + payload_size;
@@ -218,14 +218,14 @@ int packet_sendex(MumbleClient* client, int type, const void *message, const Pro
 				mumble_proto__plugin_data_transmission__pack(message, packet_out.body + 6);
 				break;
 			default:
-				mumble_log(LOG_WARN, "attempted to pack unspported packet #%i\n", type);
+				mumble_log(LOG_WARN, "attempted to pack unspported packet #%i", type);
 				break;
 		}
 	}
 	*(uint16_t *)packet_out.body = htons(type);
 	*(uint32_t *)(packet_out.body + 2) = htonl(payload_size);
 
-	mumble_log(LOG_TRACE, "[TCP] Sending %s: %p\n", base != NULL ? base->descriptor->name : "MumbleProto.UDPTunnel", message);
+	mumble_log(LOG_TRACE, "[TCP] Sending %s: %p", base != NULL ? base->descriptor->name : "MumbleProto.UDPTunnel", message);
 
 	int written = SSL_write(client->ssl, packet_out.body, total_size);
 
@@ -238,11 +238,11 @@ void packet_server_version(lua_State *l, MumbleClient *client, MumblePacket *pac
 {
 	MumbleProto__Version *version =  mumble_proto__version__unpack(NULL, packet->length, packet->body);
 	if (version == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking server version packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking server version packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", version->base.descriptor->name, version);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", version->base.descriptor->name, version);
 
 	lua_newtable(l);
 		if (version->has_version_v1) {
@@ -261,8 +261,8 @@ void packet_server_version(lua_State *l, MumbleClient *client, MumblePacket *pac
 		lua_setfield(l, -2, "os_version");
 	mumble_hook_call(l, client, "OnServerVersion", 1);
 
-	mumble_log(LOG_INFO, "%s[%d] server version: %s\n", METATABLE_CLIENT, client->self, version->release);
-	mumble_log(LOG_INFO, "%s[%d] server system : %s - %s\n", METATABLE_CLIENT, client->self, version->os, version->os_version);
+	mumble_log(LOG_INFO, "%s[%d] server version: %s", METATABLE_CLIENT, client->self, version->release);
+	mumble_log(LOG_INFO, "%s[%d] server system : %s - %s", METATABLE_CLIENT, client->self, version->os, version->os_version);
 
 	mumble_proto__version__free_unpacked(version, NULL);
 }
@@ -276,11 +276,11 @@ void packet_server_ping(lua_State *l, MumbleClient *client, MumblePacket *packet
 {
 	MumbleProto__Ping *ping = mumble_proto__ping__unpack(NULL, packet->length, packet->body);
 	if (ping == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking TCP ping packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking TCP ping packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", ping->base.descriptor->name, ping);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", ping->base.descriptor->name, ping);
 
 	lua_newtable(l);
 		if (ping->has_timestamp) {
@@ -350,13 +350,13 @@ void packet_server_reject(lua_State *l, MumbleClient *client, MumblePacket *pack
 {
 	MumbleProto__Reject *reject = mumble_proto__reject__unpack(NULL, packet->length, packet->body);
 	if (reject == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking server reject packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking server reject packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", reject->base.descriptor->name, reject);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", reject->base.descriptor->name, reject);
 
-	mumble_log(LOG_WARN, "%s[%d] server rejected connection: %s\n", METATABLE_CLIENT, client->self, reject->reason);
+	mumble_log(LOG_WARN, "%s[%d] server rejected connection: %s", METATABLE_CLIENT, client->self, reject->reason);
 
 	lua_newtable(l);
 		if (reject->has_type) {
@@ -374,11 +374,11 @@ void packet_server_sync(lua_State *l, MumbleClient *client, MumblePacket *packet
 {
 	MumbleProto__ServerSync *sync = mumble_proto__server_sync__unpack(NULL, packet->length, packet->body);
 	if (sync == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking server sync packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking server sync packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", sync->base.descriptor->name, sync);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", sync->base.descriptor->name, sync);
 
 	client->synced = true;
 	uv_timer_start(&client->ping_timer, mumble_ping_timer, PING_TIME, PING_TIME);
@@ -393,7 +393,7 @@ void packet_server_sync(lua_State *l, MumbleClient *client, MumblePacket *packet
 			lua_pushinteger(l, sync->max_bandwidth);
 			lua_setfield(l, -2, "max_bandwidth");
 
-			mumble_log(LOG_DEBUG, "Max server bandwidth: %u\n", sync->max_bandwidth);
+			mumble_log(LOG_DEBUG, "Max server bandwidth: %u", sync->max_bandwidth);
 			client->max_bandwidth = sync->max_bandwidth;
 
 			mumble_create_audio_timer(client);
@@ -418,11 +418,11 @@ void packet_channel_remove(lua_State *l, MumbleClient *client, MumblePacket *pac
 {
 	MumbleProto__ChannelRemove *channel = mumble_proto__channel_remove__unpack(NULL, packet->length, packet->body);
 	if (channel == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking channel remove packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking channel remove packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", channel->base.descriptor->name, channel);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", channel->base.descriptor->name, channel);
 
 	mumble_channel_raw_get(l, client, channel->channel_id);
 	mumble_hook_call(l, client, "OnChannelRemove", 1);
@@ -436,14 +436,14 @@ void packet_channel_state(lua_State *l, MumbleClient *client, MumblePacket *pack
 {
 	MumbleProto__ChannelState *state = mumble_proto__channel_state__unpack(NULL, packet->length, packet->body);
 	if (state == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking channel state packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking channel state packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", state->base.descriptor->name, state);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", state->base.descriptor->name, state);
 
 	if (!state->has_channel_id) {
-		mumble_log(LOG_WARN, "[TCP] Received a channel state packet without a channel id\n");
+		mumble_log(LOG_WARN, "[TCP] Received a channel state packet without a channel id");
 		mumble_proto__channel_state__free_unpacked(state, NULL);
 		return;
 	}
@@ -551,11 +551,11 @@ void packet_user_remove(lua_State *l, MumbleClient *client, MumblePacket *packet
 {
 	MumbleProto__UserRemove *user = mumble_proto__user_remove__unpack(NULL, packet->length, packet->body);
 	if (user == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking user remove packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking user remove packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", user->base.descriptor->name, user);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", user->base.descriptor->name, user);
 
 	lua_newtable(l);
 		mumble_user_raw_get(l, client, user->session);
@@ -584,10 +584,10 @@ void packet_user_remove(lua_State *l, MumbleClient *client, MumblePacket *packet
 		if (user->has_actor && user->has_ban) {
 			MumbleUser* actor = mumble_user_get(l, client, user->actor);
 			message = lua_pushfstring(l, "%s from server by %s (Reason \"%s\")", type, actor->name, reason);
-			mumble_log(LOG_INFO, "%s[%d] %s from server by %s [%d][\"%s\"] (Reason \"%s\")\n", METATABLE_CLIENT, client->self, type, METATABLE_USER, actor->session, actor->name, reason);
+			mumble_log(LOG_INFO, "%s[%d] %s from server by %s [%d][\"%s\"] (Reason \"%s\")", METATABLE_CLIENT, client->self, type, METATABLE_USER, actor->session, actor->name, reason);
 		} else {
 			message = lua_pushfstring(l, "%s from server (Reason \"%s\")", type, reason);
-			mumble_log(LOG_INFO, "%s[%d] %s from server (Reason \"%s\")\n", METATABLE_CLIENT, client->self, type, reason);
+			mumble_log(LOG_INFO, "%s[%d] %s from server (Reason \"%s\")", METATABLE_CLIENT, client->self, type, reason);
 		}
 		lua_pop(l, 1);
 		mumble_disconnect(l, client, message, false);
@@ -600,11 +600,11 @@ void packet_user_state(lua_State *l, MumbleClient *client, MumblePacket *packet)
 {
 	MumbleProto__UserState *state = mumble_proto__user_state__unpack(NULL, packet->length, packet->body);
 	if (state == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking user state packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking user state packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", state->base.descriptor->name, state);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", state->base.descriptor->name, state);
 
 	if (!state->has_session) {
 		mumble_proto__user_state__free_unpacked(state, NULL);
@@ -779,11 +779,11 @@ void packet_ban_list(lua_State *l, MumbleClient *client, MumblePacket *packet)
 {
 	MumbleProto__BanList *list = mumble_proto__ban_list__unpack(NULL, packet->length, packet->body);
 	if (list == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking ban list packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking ban list packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", list->base.descriptor->name, list);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", list->base.descriptor->name, list);
 
 	lua_newtable(l);
 	if (list->n_bans > 0) {
@@ -829,11 +829,11 @@ void packet_text_message(lua_State *l, MumbleClient *client, MumblePacket *packe
 {
 	MumbleProto__TextMessage *msg = mumble_proto__text_message__unpack(NULL, packet->length, packet->body);
 	if (msg == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking text message packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking text message packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", msg->base.descriptor->name, msg);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", msg->base.descriptor->name, msg);
 
 	lua_newtable(l);
 		if (msg->has_actor) {
@@ -871,11 +871,11 @@ void packet_permission_denied(lua_State *l, MumbleClient *client, MumblePacket *
 {
 	MumbleProto__PermissionDenied *proto = mumble_proto__permission_denied__unpack(NULL, packet->length, packet->body);
 	if (proto == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking permission denied packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking permission denied packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", proto->base.descriptor->name, proto);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", proto->base.descriptor->name, proto);
 
 	lua_newtable(l);
 		if (proto->has_type) {
@@ -911,11 +911,11 @@ void packet_acl(lua_State *l, MumbleClient *client, MumblePacket *packet)
 {
 	MumbleProto__ACL *acl = mumble_proto__acl__unpack(NULL, packet->length, packet->body);
 	if (acl == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking ACL packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking ACL packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", acl->base.descriptor->name, acl);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", acl->base.descriptor->name, acl);
 
 	lua_newtable(l);
 		mumble_channel_raw_get(l, client, acl->channel_id);
@@ -1024,11 +1024,11 @@ void packet_query_users(lua_State *l, MumbleClient *client, MumblePacket *packet
 {
 	MumbleProto__QueryUsers *users = mumble_proto__query_users__unpack(NULL, packet->length, packet->body);
 	if (users == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking query users packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking query users packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", users->base.descriptor->name, users);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", users->base.descriptor->name, users);
 
 	lua_newtable(l);
 	if(users->n_ids > 0 && users->n_ids == users->n_names)
@@ -1052,21 +1052,21 @@ void packet_crypt_setup(lua_State *l, MumbleClient *client, MumblePacket *packet
 {
 	MumbleProto__CryptSetup *crypt = mumble_proto__crypt_setup__unpack(NULL, packet->length, packet->body);
 	if (crypt == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking crypt setup packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking crypt setup packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", crypt->base.descriptor->name, crypt);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", crypt->base.descriptor->name, crypt);
 
 	lua_newtable(l);
 	if (crypt->has_key && crypt->has_client_nonce && crypt->has_server_nonce) {
 		if (!crypt_setKey(client->crypt, crypt->key, crypt->client_nonce, crypt->server_nonce)) {
-			mumble_log(LOG_ERROR, "\x1b[35;1mCryptState\x1b[0m: cipher resync failed (Invalid key/nonce from the server)\n");
+			mumble_log(LOG_ERROR, "\x1b[35;1mCryptState\x1b[0m: cipher resync failed (Invalid key/nonce from the server)");
 		}
 	} else if (crypt->has_server_nonce) {
 		client->resync++;
 		if (!crypt_setDecryptIV(client->crypt, crypt->server_nonce)) {
-			mumble_log(LOG_ERROR, "\x1b[35;1mCryptState\x1b[0m: cipher resync failed (Invalid nonce from the server)\n");
+			mumble_log(LOG_ERROR, "\x1b[35;1mCryptState\x1b[0m: cipher resync failed (Invalid nonce from the server)");
 		}
 	} else {
 		MumbleProto__CryptSetup msg = MUMBLE_PROTO__CRYPT_SETUP__INIT;
@@ -1074,13 +1074,13 @@ void packet_crypt_setup(lua_State *l, MumbleClient *client, MumblePacket *packet
 		msg.client_nonce.len = AES_BLOCK_SIZE;
 		msg.client_nonce.data = (uint8_t*) crypt_getEncryptIV(client->crypt);
 		packet_send(client, PACKET_CRYPTSETUP, &msg);
-		mumble_log(LOG_WARN, "\x1b[35;1mCryptState\x1b[0m: cipher disagreement, renegotiating with server\n");
+		mumble_log(LOG_WARN, "\x1b[35;1mCryptState\x1b[0m: cipher disagreement, renegotiating with server");
 	}
 
 	bool validCrypt = crypt_isValid(client->crypt);
 
 	if (validCrypt) {
-		mumble_log(LOG_INFO, "\x1b[35;1mCryptState\x1b[0m: handshake complete\n");
+		mumble_log(LOG_INFO, "\x1b[35;1mCryptState\x1b[0m: handshake complete");
 		mumble_ping(l, client);
 	}
 
@@ -1117,11 +1117,11 @@ void packet_user_list(lua_State *l, MumbleClient *client, MumblePacket *packet)
 {
 	MumbleProto__UserList *list = mumble_proto__user_list__unpack(NULL, packet->length, packet->body);
 	if (list == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking user list packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking user list packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", list->base.descriptor->name, list);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", list->base.descriptor->name, list);
 
 	lua_newtable(l);
 	if (list->n_users > 0) {
@@ -1155,11 +1155,11 @@ void packet_permission_query(lua_State *l, MumbleClient *client, MumblePacket *p
 {
 	MumbleProto__PermissionQuery *query = mumble_proto__permission_query__unpack(NULL, packet->length, packet->body);
 	if (query == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking permission query packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking permission query packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", query->base.descriptor->name, query);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", query->base.descriptor->name, query);
 
 	if (query->has_channel_id && query->has_permissions) {
 		MumbleChannel* chan = mumble_channel_get(l, client, query->channel_id);
@@ -1200,11 +1200,11 @@ void packet_codec_version(lua_State *l, MumbleClient *client, MumblePacket *pack
 {
 	MumbleProto__CodecVersion *codec = mumble_proto__codec_version__unpack(NULL, packet->length, packet->body);
 	if (codec == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking codec version packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking codec version packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", codec->base.descriptor->name, codec);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", codec->base.descriptor->name, codec);
 
 	lua_newtable(l);
 		lua_pushinteger(l, codec->alpha);
@@ -1226,11 +1226,11 @@ void packet_user_stats(lua_State *l, MumbleClient *client, MumblePacket *packet)
 {
 	MumbleProto__UserStats *stats = mumble_proto__user_stats__unpack(NULL, packet->length, packet->body);
 	if (stats == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking user stats packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking user stats packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", stats->base.descriptor->name, stats);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", stats->base.descriptor->name, stats);
 
 	lua_newtable(l);
 		if (stats->has_session) {
@@ -1385,11 +1385,11 @@ void packet_server_config(lua_State *l, MumbleClient *client, MumblePacket *pack
 {
 	MumbleProto__ServerConfig *config = mumble_proto__server_config__unpack(NULL, packet->length, packet->body);
 	if (config == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking server config packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking server config packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", config->base.descriptor->name, config);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", config->base.descriptor->name, config);
 
 	lua_newtable(l);
 		if (config->has_max_bandwidth) {
@@ -1427,11 +1427,11 @@ void packet_suggest_config(lua_State *l, MumbleClient *client, MumblePacket *pac
 {
 	MumbleProto__SuggestConfig *config = mumble_proto__suggest_config__unpack(NULL, packet->length, packet->body);
 	if (config == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking suggested config packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking suggested config packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", config->base.descriptor->name, config);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", config->base.descriptor->name, config);
 
 	lua_newtable(l);
 		if (config->has_version_v1) {
@@ -1442,12 +1442,12 @@ void packet_suggest_config(lua_State *l, MumbleClient *client, MumblePacket *pac
 			lua_setfield(l, -2, "version");
 		}
 		if (config->has_positional) {
-			mumble_log(LOG_WARN, "%s[%d] server recommends posisional audio\n", METATABLE_CLIENT, client->self);
+			mumble_log(LOG_WARN, "%s[%d] server recommends posisional audio", METATABLE_CLIENT, client->self);
 			lua_pushboolean(l, config->positional);
 			lua_setfield(l, -2, "positional");
 		}
 		if (config->has_push_to_talk) {
-			mumble_log(LOG_WARN, "%s[%d] server recommends push-to-talk\n", METATABLE_CLIENT, client->self);
+			mumble_log(LOG_WARN, "%s[%d] server recommends push-to-talk", METATABLE_CLIENT, client->self);
 			lua_pushboolean(l, config->push_to_talk);
 			lua_setfield(l, -2, "push_to_talk");
 		}
@@ -1460,11 +1460,11 @@ void packet_plugin_data(lua_State *l, MumbleClient *client, MumblePacket *packet
 {
 	MumbleProto__PluginDataTransmission *transmission = mumble_proto__plugin_data_transmission__unpack(NULL, packet->length, packet->body);
 	if (transmission == NULL) {
-		mumble_log(LOG_WARN, "[TCP] Error unpacking data transmission packet\n");
+		mumble_log(LOG_WARN, "[TCP] Error unpacking data transmission packet");
 		return;
 	}
 
-	mumble_log(LOG_TRACE, "[TCP] Received %s: %p\n", transmission->base.descriptor->name, transmission);
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", transmission->base.descriptor->name, transmission);
 
 	lua_newtable(l);
 		if (transmission->has_sendersession) {

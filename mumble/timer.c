@@ -2,6 +2,7 @@
 
 #include "timer.h"
 #include "util.h"
+#include "log.h"
 
 static MumbleTimer* mumble_checktimer(lua_State *l, int index)
 {
@@ -14,12 +15,12 @@ static void mumble_lua_timer_finish(lua_State *l, MumbleTimer *ltimer)
 {
 	if (ltimer->running) {
 		if (uv_is_active((uv_handle_t*) &ltimer->timer)) {
-			mumble_log(LOG_TRACE, "mumble.timer: %p stopping\n", ltimer);
+			mumble_log(LOG_TRACE, "mumble.timer: %p stopping", ltimer);
 			uv_timer_stop(&ltimer->timer);
 			ltimer->count = 0;
 		}
 		// Cleanup all our references
-		mumble_log(LOG_TRACE, "mumble.timer: %p cleanup\n", ltimer);
+		mumble_log(LOG_TRACE, "mumble.timer: %p cleanup", ltimer);
 		mumble_registry_unref(l, MUMBLE_TIMER_REG, ltimer->self);
 		mumble_registry_unref(l, MUMBLE_TIMER_REG, ltimer->callback);
 		ltimer->running = false;
@@ -45,7 +46,7 @@ static void mumble_lua_timer(uv_timer_t* handle)
 
 	// Call the callback with our custom error handler function
 	if (lua_pcall(l, 1, 0, -3) != 0) {
-		mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
+		mumble_log(LOG_ERROR, "%s", lua_tostring(l, -1));
 		lua_pop(l, 1); // Pop the error
 	}
 
@@ -215,7 +216,7 @@ static int timer_gc(lua_State *l)
 {
 	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	mumble_lua_timer_finish(l, ltimer);
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_TIMER, ltimer);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_TIMER, ltimer);
 	return 0;
 }
 

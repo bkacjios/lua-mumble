@@ -3,6 +3,7 @@
 #include "thread.h"
 #include "buffer.h"
 #include "util.h"
+#include "log.h"
 
 #include <lualib.h>
 #include <unistd.h>
@@ -53,7 +54,7 @@ void mumble_thread_worker_start(void *arg)
 	}
 
 	if (err != 0) {
-		mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
+		mumble_log(LOG_ERROR, "%s", lua_tostring(l, -1));
 		lua_pop(l, 1); // Pop the error
 		return;
 	}
@@ -87,7 +88,7 @@ void mumble_thread_worker_start(void *arg)
 
 	// Call the worker with our custom error handler function
 	if (lua_pcall(l, 1, 0, -3) != 0) {
-		mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
+		mumble_log(LOG_ERROR, "%s", lua_tostring(l, -1));
 		lua_pop(l, 1); // Pop the error
 	}
 
@@ -128,7 +129,7 @@ void mumble_thread_worker_finish(uv_async_t *handle)
 
 		// Call the callback with our custom error handler function
 		if (lua_pcall(l, 1, 0, -3) != 0) {
-			mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
+			mumble_log(LOG_ERROR, "%s", lua_tostring(l, -1));
 			lua_pop(l, 1); // Pop the error
 		}
 
@@ -177,7 +178,7 @@ void mumble_thread_controller_message(uv_async_t *handle)
 
 			// Call the callback with our custom error handler function
 			if (lua_pcall(l, 2, 0, -4) != 0) {
-				mumble_log(LOG_ERROR, "%s\n", lua_tostring(l, -1));
+				mumble_log(LOG_ERROR, "%s", lua_tostring(l, -1));
 				lua_pop(l, 1); // Pop the error
 			}
 
@@ -223,7 +224,7 @@ void mumble_thread_worker_message(uv_async_t *handle)
 
 			// Call the callback with our custom error handler function
 			if (lua_pcall(l, 2, 0, -4) != 0) {
-				mumble_log(LOG_ERROR, "%s: %s\n", METATABLE_THREAD_WORKER, lua_tostring(l, -1));
+				mumble_log(LOG_ERROR, "%s: %s", METATABLE_THREAD_WORKER, lua_tostring(l, -1));
 				lua_pop(l, 1); // Pop the error
 			}
 
@@ -409,7 +410,7 @@ static int thread_controller_gc(lua_State *l)
 	if (controller->message_queue) {
 		free(controller->message_queue);
 	}
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_THREAD_CONTROLLER, controller);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_THREAD_CONTROLLER, controller);
 	return 0;
 }
 
@@ -520,7 +521,7 @@ static int thread_worker_gc(lua_State *l)
 	}
 	pthread_mutex_destroy(&worker->mutex);
 	pthread_cond_destroy(&worker->cond);
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_THREAD_WORKER, worker);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_THREAD_WORKER, worker);
 	return 0;
 }
 

@@ -4,6 +4,7 @@
 #include "user.h"
 #include "packet.h"
 #include "util.h"
+#include "log.h"
 
 /*--------------------------------
 	MUMBLE USER META METHODS
@@ -472,7 +473,7 @@ static int user_gc(lua_State *l)
 	}
 	list_clear(&user->listens);
 	mumble_unref(l, user->data);
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_USER, user);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_USER, user);
 	return 0;
 }
 

@@ -2,6 +2,7 @@
 
 #include "buffer.h"
 #include "util.h"
+#include "log.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -43,10 +44,10 @@ static void buffer_adjust(ByteBuffer* buffer, uint64_t size)
 		}
 		buffer->data = realloc(buffer->data, new_capacity);
 		if (buffer->data != NULL) {
-			mumble_log(LOG_DEBUG, "%s: %p resizing from %llu to %llu bytes\n", METATABLE_BUFFER, buffer, buffer->capacity, new_capacity);
+			mumble_log(LOG_DEBUG, "%s: %p resizing from %llu to %llu bytes", METATABLE_BUFFER, buffer, buffer->capacity, new_capacity);
 			buffer->capacity = new_capacity;
 		} else {
-			mumble_log(LOG_ERROR, "%s: %p failed to resize buffer\n", METATABLE_BUFFER, buffer);
+			mumble_log(LOG_ERROR, "%s: %p failed to resize buffer", METATABLE_BUFFER, buffer);
 		}
 	}
 }
@@ -524,7 +525,7 @@ int buffer_gc(lua_State *l)
 {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
 	free(buffer->data);
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_BUFFER, buffer);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_BUFFER, buffer);
 	return 0;
 }
 

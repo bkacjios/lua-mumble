@@ -1,4 +1,6 @@
 #include "mumble.h"
+#include "log.h"
+
 #include <ctype.h>
 
 double gettime(clockid_t mode)
@@ -26,55 +28,6 @@ void bin_to_strhex(char *bin, size_t binsz, char **result)
 	}
 }
 
-static void mumble_print(int level, const char* fmt, va_list va)
-{
-	char* lcolor;
-	char* llevel;
-	FILE *out = stdout;
-
-	// Determine log level and associated color
-	switch (level) {
-		case LOG_INFO:
-			llevel = " INFO";
-			lcolor = "\x1b[32;1m";
-			break;
-		case LOG_WARN:
-			llevel = " WARN";
-			lcolor = "\x1b[33;1m";
-			break;
-		case LOG_ERROR:
-			llevel = "ERROR";
-			lcolor = "\x1b[31;1m";
-			out = stderr;
-			break;
-		case LOG_DEBUG:
-			llevel = "DEBUG";
-			lcolor = "\x1b[35;1m";
-			break;
-		case LOG_TRACE:
-			llevel = "TRACE";
-			lcolor = "\x1b[36;1m";
-			break;
-		default:
-			llevel = "UNKWN";
-			lcolor = "\x1b[0m";
-			break;
-	}
-	// Print the log type and color information
-	fprintf(out, "[\x1b[34;1mMUMBLE\x1b[0m - %s%s\x1b[0m] ", lcolor, llevel);
-	// Print our formatted message
-	vfprintf(out, fmt, va);
-}
-
-void mumble_log(int level, const char* fmt, ...)
-{
-	if (level > LOG_LEVEL) return;
-	va_list va;
-	va_start(va,fmt);
-	mumble_print(level, fmt, va);
-	va_end(va);
-}
-
 static void iterate_and_print(lua_State *L, int index)
 {
 	// Push another reference to the table on top of the stack (so we know
@@ -92,7 +45,7 @@ static void iterate_and_print(lua_State *L, int index)
 		// stack now contains: -1 => key; -2 => value; -3 => key; -4 => table
 		const char *key = lua_tostring(L, -1);
 		const char *value = lua_tostring(L, -2);
-		printf("%s => %s\n", key, value);
+		printf("%s => %s" NEWLINE, key, value);
 		// pop value + copy of key, leaving original key
 		lua_pop(L, 2);
 		// stack now contains: -1 => key; -2 => table
@@ -159,10 +112,10 @@ void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level) {
 
 	if (msg) {
 		luaL_addstring(&b, msg);
-		luaL_addstring(&b, "\n");
+		luaL_addstring(&b, NEWLINE);
 	}
 
-	luaL_addstring(&b, "stack traceback:\n");
+	luaL_addstring(&b, "stack traceback:" NEWLINE);
 
 	// Start traversing the call stack from the specified level
 	while (lua_getstack(L1, level++, &ar)) {
@@ -200,7 +153,7 @@ void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level) {
 				luaL_addstring(&b, ">");
 			}
 
-			luaL_addstring(&b, "\n");
+			luaL_addstring(&b, NEWLINE);
 			lua_pop(L1, 1); // Pop the function pushed by "f" from the stack
 		}
 	}
@@ -211,7 +164,7 @@ void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level) {
 
 void luaL_debugstack(lua_State *l, const char* text)
 {
-	mumble_log(LOG_DEBUG, "%s stack dump\n", text);
+	mumble_log(LOG_DEBUG, "%s stack dump", text);
 	for (int i=1; i<=lua_gettop(l); i++)
 	{
 		int t = lua_type(l, i);
@@ -223,19 +176,17 @@ void luaL_debugstack(lua_State *l, const char* text)
 				const char* str = lua_tolstring(l, i, &len);
 				printf("\t%d - %s[\"", i, tname);
 				print_unescaped(str, len);
-				printf("\"]\n", i, tname, lua_tostring(l, i));
+				printf("\"]" NEWLINE, i, tname, lua_tostring(l, i));
 				break;
 			}
 			case LUA_TBOOLEAN:  /* booleans */
-				printf("\t%d - %s[%s]\n", i, tname, lua_toboolean(l, i) ? "true" : "false");
+				printf("\t%d - %s[%s]" NEWLINE, i, tname, lua_toboolean(l, i) ? "true" : "false");
 				break;
-
 			case LUA_TNUMBER:  /* numbers */
-				printf("\t%d - %s[%g]\n", i, tname, lua_tonumber(l, i));
+				printf("\t%d - %s[%g]" NEWLINE, i, tname, lua_tonumber(l, i));
 				break;
-
 			default:  /* other values */
-				printf("\t%d - %s[%p]\n", i, tname, lua_topointer(l, i));
+				printf("\t%d - %s[%p]" NEWLINE, i, tname, lua_topointer(l, i));
 				break;
 		}
 	}

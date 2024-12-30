@@ -7,6 +7,7 @@
 #include "target.h"
 #include "user.h"
 #include "util.h"
+#include "log.h"
 
 #include "gitversion.h"
 
@@ -937,7 +938,7 @@ static int client_gc(lua_State *l)
 	mumble_unref(l, client->audio_streams);
 	mumble_unref(l, client->encoder_ref);
 	
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_CLIENT, client);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_CLIENT, client);
 	return 0;
 }
 

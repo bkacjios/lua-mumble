@@ -4,6 +4,7 @@ proto/*.h
 config/
 *.so
 *.lua
+*.log
 *.pem
 *.d
 *.ogg

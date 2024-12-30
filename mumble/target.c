@@ -4,6 +4,7 @@
 #include "user.h"
 #include "target.h"
 #include "util.h"
+#include "log.h"
 
 int mumble_target_new(lua_State *l)
 {
@@ -116,7 +117,7 @@ static int target_gc(lua_State *l)
 {
 	MumbleProto__VoiceTarget__Target *target = luaL_checkudata(l, 1, METATABLE_VOICETARGET);
 	free(target->session);
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_VOICETARGET, target);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_VOICETARGET, target);
 	return 0;
 }
 

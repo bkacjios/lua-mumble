@@ -1,13 +1,11 @@
 #pragma once
 
 #include <lua.h>
-#include <sys/types.h>
+#include "types.h"
 
 double gettime(clockid_t mode);
 
 void bin_to_strhex(char *bin, size_t binsz, char **result);
-
-void mumble_log(int level, const char* fmt, ...);
 
 #if (defined(LUA_VERSION_NUM) && LUA_VERSION_NUM < 502) && !defined(LUAJIT)
 void* luaL_testudata(lua_State* L, int index, const char* tname);

@@ -2,6 +2,7 @@
 #include "packet.h"
 #include "audio.h"
 #include "util.h"
+#include "log.h"
 
 #include <math.h>
 
@@ -296,7 +297,7 @@ static void audio_transmission_bitrate_warning(MumbleClient *client, size_t leng
 		}
 	}
 
-	mumble_log(LOG_WARN, "Audio packet length %u greater than maximum of %u, stopping all audio streams. Try reducing the bitrate.\n", length, UDP_BUFFER_MAX);
+	mumble_log(LOG_WARN, "Audio packet length %u greater than maximum of %u, stopping all audio streams. Try reducing the bitrate.", length, UDP_BUFFER_MAX);
 }
 
 static void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
@@ -319,11 +320,11 @@ static void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encod
 	}
 
 	if (client->tcp_udp_tunnel) {
-		mumble_log(LOG_TRACE, "[TCP] Sending legacy audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)\n",
+		mumble_log(LOG_TRACE, "[TCP] Sending legacy audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)",
 			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
 		packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, NULL, len);
 	} else {
-		mumble_log(LOG_TRACE, "[UDP] Sending legacy audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)\n",
+		mumble_log(LOG_TRACE, "[UDP] Sending legacy audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)",
 			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
 		packet_sendudp(client, packet_buffer, len);
 	}
@@ -352,11 +353,11 @@ static void send_protobuf_audio(lua_State *l, MumbleClient *client, uint8_t *enc
 	}
 
 	if (client->tcp_udp_tunnel) {
-		mumble_log(LOG_TRACE, "[TCP] Sending protobuf TCP audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)\n",
+		mumble_log(LOG_TRACE, "[TCP] Sending protobuf TCP audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)",
 			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
 		packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, NULL, len);
 	} else {
-		mumble_log(LOG_TRACE, "[UDP] Sending protobuf UDP audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)\n",
+		mumble_log(LOG_TRACE, "[UDP] Sending protobuf UDP audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)",
 			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
 		packet_sendudp(client, packet_buffer, len);
 	}
@@ -625,7 +626,7 @@ static int audiostream_gc(lua_State *l)
 {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	sf_close(sound->file);
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_AUDIOSTREAM, sound);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_AUDIOSTREAM, sound);
 	return 0;
 }
 

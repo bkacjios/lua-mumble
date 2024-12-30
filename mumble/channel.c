@@ -3,6 +3,7 @@
 #include "channel.h"
 #include "packet.h"
 #include "util.h"
+#include "log.h"
 
 /*--------------------------------
 	MUMBLE CHANNEL META METHODS
@@ -419,7 +420,7 @@ static int channel_gc(lua_State *l)
 	}
 	list_clear(&channel->links);
 	mumble_unref(l, channel->data);
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected\n", METATABLE_CHAN, channel);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_CHAN, channel);
 	return 0;
 }
 
