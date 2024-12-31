@@ -10,6 +10,7 @@
 
 #include <stdbool.h>
 
+#include "buffer.h"
 #include "defines.h"
 
 /*
@@ -57,8 +58,8 @@ struct AudioStream {
 	int loop_count;
 	bool looping;
 	bool fade_stop;
-	uint64_t fade_frames;
-	uint64_t fade_frames_left;
+	sf_count_t fade_frames;
+	sf_count_t fade_frames_left;
 	float fade_volume;
 	float fade_from_volume;
 	float fade_to_volume;
@@ -145,6 +146,8 @@ struct MumbleClient {
 	AudioFrame			audio_output[PCM_BUFFER];
 	uint32_t			audio_sequence;
 	uint32_t			audio_frames;
+	ByteBuffer*			audio_pipe;
+	uint32_t			audio_pipe_ref;
 
 	OpusEncoder*		encoder;
 	int					encoder_ref;

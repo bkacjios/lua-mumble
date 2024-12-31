@@ -418,6 +418,31 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 		process_audio_stream(l, client, sound, frame_size, &biggest_read, &didLoop);
 	}
 
+	// Hook allows for feeding raw PCM data into our output stream, mixing it into other playing audio
+	ByteBuffer* buffer = client->audio_pipe;
+
+	mumble_pushref(l, client->audio_pipe_ref);
+	lua_pushinteger(l, AUDIO_SAMPLE_RATE);
+	lua_pushinteger(l, AUDIO_PLAYBACK_CHANNELS);
+	lua_pushinteger(l, frame_size);
+	mumble_hook_call(l, client, "OnAudioStream", 4);
+
+	buffer_flip(buffer);
+
+	float* stream = (float*) buffer->data;
+	size_t streamed_samples = buffer->limit / sizeof(stream);
+
+	if (buffer->limit > 0 && streamed_samples <= PCM_BUFFER) {
+		for (int i = 0; i < streamed_samples; i++) {
+			client->audio_output[i].l = soft_clip(client->audio_output[i].l + stream[i * 2] * client->volume);
+			client->audio_output[i].r = soft_clip(client->audio_output[i].r + stream[i * 2 + 1] * client->volume);
+		}
+
+		if (streamed_samples > biggest_read) {
+			biggest_read = streamed_samples;
+		}
+	}
+
 	if (biggest_read > 0) {
 		bool end_frame = !didLoop && biggest_read < frame_size;
 		encode_and_send_audio(l, client, frame_size, end_frame);

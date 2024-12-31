@@ -539,6 +539,11 @@ static int mumble_client_new(lua_State *l) {
 	client->audio_sequence = 0;
 	client->audio_target = 0;
 	client->audio_frames = AUDIO_DEFAULT_FRAMES;
+	client->audio_pipe = lua_newuserdata(l, sizeof(ByteBuffer));
+	luaL_getmetatable(l, METATABLE_BUFFER);
+	lua_setmetatable(l, -2);
+	buffer_init(client->audio_pipe, PCM_BUFFER);
+	client->audio_pipe_ref = mumble_ref(l);
 
 	client->tcp_packets = 0;
 	client->tcp_ping_avg = 0;

@@ -244,6 +244,9 @@ int mumble_buffer_new(lua_State *l)
 	int type = lua_type(l, 2);
 
 	ByteBuffer *buffer = lua_newuserdata(l, sizeof(ByteBuffer));
+	buffer->data = NULL;
+	luaL_getmetatable(l, METATABLE_BUFFER);
+	lua_setmetatable(l, -2);
 
 	if(buffer == NULL) return luaL_error(l, "error creating buffer: %s", strerror(errno));
 
@@ -269,9 +272,6 @@ int mumble_buffer_new(lua_State *l)
 	}
 
 	if(buffer == NULL) return luaL_error(l, "error initializing buffer: %s", strerror(errno));
-
-	luaL_getmetatable(l, METATABLE_BUFFER);
-	lua_setmetatable(l, -2);
 
 	// Return the buffer metatable
 	return 1;
@@ -524,7 +524,9 @@ int buffer_tostring(lua_State *l)
 int buffer_gc(lua_State *l)
 {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
-	free(buffer->data);
+	if (buffer->data) {
+		free(buffer->data);
+	}
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_BUFFER, buffer);
 	return 0;
 }

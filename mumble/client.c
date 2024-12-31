@@ -950,6 +950,7 @@ static int client_gc(lua_State *l)
 	mumble_unref(l, client->channels);
 	mumble_unref(l, client->audio_streams);
 	mumble_unref(l, client->encoder_ref);
+	mumble_unref(l, client->audio_pipe_ref);
 	
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_CLIENT, client);
 	return 0;

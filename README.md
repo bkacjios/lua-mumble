@@ -1519,6 +1519,29 @@ Table event = {
 	["timestamp"]		= Number timestamp,
 }
 ```
+
+___
+
+### `OnAudioStream (mumble.client client, mumble.buffer output, Number samplerate, Number channels, Number frames`
+
+```lua
+local samples = 0
+local time = 0
+client:hook("OnAudioStream", function(client, output, samplerate, channels, frames)
+	-- The client is about to encode and stream x amount of frames
+	-- Samplerate will always be 48000
+	-- Channels will always be 2
+	for i=1,frames do
+		samples = samples + 1
+		time = samples / samplerate
+		for c=1,channels do
+			-- Write a 600hz tone to both channels for this frame
+			-- Whatever is written to the output buffer will be mixed with any playing mumble.audiostream
+			output:writeFloat(math.sin(2 * math.pi * 600 * time))
+		end
+	end
+end)
+```
 ___
 
 ### `OnAudioStreamEnd (mumble.client client, mumble.audiostream stream)`
