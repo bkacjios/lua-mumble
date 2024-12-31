@@ -754,7 +754,7 @@ void packet_user_state(lua_State *l, MumbleClient *client, MumblePacket *packet)
 				lua_settable(l, -3);
 
 				MumbleChannel* chan = mumble_channel_get(l, client, channel_id);
-				chan->volume_adjustment = volume_adjustment;
+				chan->listening_volume_adjustment = volume_adjustment;
 			}
 			lua_setfield(l , -2, "listening_volume_adjustment");
 		}

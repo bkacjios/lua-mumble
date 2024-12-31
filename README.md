@@ -400,10 +400,12 @@ String hash = mumble.user:getHash()
 mumble.user:setTexure(String bytes)
 
 -- Adds a channel to the list of channels the user is listening to
-mumble.user:listen(mumble.channel ...)
+-- Channel list can be a table of channels or varargs
+mumble.user:listen([Table {mumble.channel ..}, mumble.channel ..])
 
 -- Removes a channel from the list of channels the user is listening to
-mumble.user:unlisten(mumble.channel ...)
+-- Channel list can be a table of channels or varargs
+mumble.user:unlisten([Table {mumble.channel ..}, mumble.channel ..])
 
 -- Returns if the user is listening to this channel or not
 Boolean isListening = mumble.user:isListening(mumble.channel channel)
@@ -499,10 +501,12 @@ Number max = mumble.channel:getMaxUsers()
 Number linked = mumble.channel:getLinked()
 
 -- Attempts to link channel(s)
-mumble.channel:link(mumble.channel ...)
+-- Channel list can be a table of channels or varargs
+mumble.channel:link([Table {mumble.channel ..}, mumble.channel ..])
 
 -- Attempts to unlink channel(s)
-mumble.channel:unlink(mumble.channel ...)
+-- Channel list can be a table of channels or varargs
+mumble.channel:unlink([Table {mumble.channel ..}, mumble.channel ..])
 
 -- Returns if the client is restricted from entering the channel
 -- NOTE: *Will only work in mumble version 1.4+*
@@ -874,6 +878,12 @@ mumble.audiostream:play()
 -- Pauses the audio AND resets playback to the beginning
 -- Will remove the stream from the mumble.client:getAudioStreams() table
 mumble.audiostream:stop()
+
+-- Fade the volume to the specified volume over the duration.
+mumble.audiostream:fadeTo(Number volume, Number duration = 1)
+
+-- Fade the volume to 0 over the duration and stop playing.
+mumble.audiostream:fadeOut(Number duration = 1)
 
 -- Will attempt to seek to a given position via sample numbers
 -- Returns the offset that it has seeked to

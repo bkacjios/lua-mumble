@@ -166,6 +166,12 @@ void audio_transmission_unreference(lua_State*l, AudioStream *sound)
 	mumble_registry_unref(l, sound->client->audio_streams, sound->refrence);
 	list_remove(&sound->client->stream_list, sound->refrence);
 	sound->refrence = MUMBLE_UNREFERENCED;
+	sound->playing = false;
+	sound->fade_volume = 1.0f,
+	sound->fade_frames = 0;
+	sound->fade_frames_left = 0;
+	sound->fade_stop = false;
+	sf_seek(sound->file, 0, SEEK_SET);
 }
 
 void mumble_audio_timer(uv_timer_t* handle)
@@ -186,7 +192,6 @@ static void handle_audio_stream_end(lua_State *l, MumbleClient *client, AudioStr
 		*didLoop = true;
 		sound->loop_count--;
 	} else {
-		sound->playing = false;
 		mumble_registry_pushref(l, client->audio_streams, sound->refrence);
 		mumble_hook_call(l, client, "OnAudioStreamEnd", 1);
 		audio_transmission_unreference(l, sound);
@@ -273,6 +278,22 @@ static void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream
 		for (int i = 0; i < read; i++) {
 			client->audio_output[i].l = soft_clip(client->audio_output[i].l + output_buffer[i * 2]);
 			client->audio_output[i].r = soft_clip(client->audio_output[i].r + output_buffer[i * 2 + 1]);
+		}
+	}
+
+	if (sound->fade_frames > 0) {
+		for (int i = 0; i < read; i++) {
+			if (sound->fade_frames_left > 0) {
+				sound->fade_frames_left = sound->fade_frames_left - 1;
+				sound->fade_volume = sound->fade_to_volume + (sound->fade_from_volume - sound->fade_to_volume) * ((float) sound->fade_frames_left / sound->fade_frames);
+			} else if (sound->fade_stop) {
+				// Fake end of stream
+				read = 0;
+				sound->fade_volume = 0.0f;
+			}
+
+			client->audio_output[i].l = soft_clip(client->audio_output[i].l * sound->fade_volume);
+			client->audio_output[i].r = soft_clip(client->audio_output[i].r * sound->fade_volume);
 		}
 	}
 
@@ -460,8 +481,6 @@ static int audiostream_stop(lua_State *l)
 {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	if (sound->playing) {
-		sound->playing = false;
-		sf_seek(sound->file, 0, SEEK_SET);
 		audio_transmission_unreference(l, sound);
 	}
 	return 0;
@@ -622,6 +641,30 @@ static int audiostream_getLoopCount(lua_State *l)
 	return 1;
 }
 
+static int audiostream_fadeTo(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	float volume = luaL_checknumber(l, 2);
+	float time = luaL_optnumber(l, 3, 1);
+	sound->fade_frames = AUDIO_SAMPLE_RATE * time;
+	sound->fade_frames_left = sound->fade_frames;
+	sound->fade_from_volume = sound->fade_volume;
+	sound->fade_to_volume = volume;
+	return 0;
+}
+
+static int audiostream_fadeOut(lua_State *l)
+{
+	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
+	float time = luaL_optnumber(l, 2, 1);
+	sound->fade_frames = AUDIO_SAMPLE_RATE * time;
+	sound->fade_frames_left = sound->fade_frames;
+	sound->fade_from_volume = sound->fade_volume;
+	sound->fade_to_volume = 0;
+	sound->fade_stop = true;
+	return 0;
+}
+
 static int audiostream_gc(lua_State *l)
 {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
@@ -655,6 +698,8 @@ const luaL_Reg mumble_audiostream[] = {
 	{"setLooping", audiostream_setLooping},
 	{"isLooping", audiostream_isLooping},
 	{"getLoopCount", audiostream_getLoopCount},
+	{"fadeTo", audiostream_fadeTo},
+	{"fadeOut", audiostream_fadeOut},
 	{"__gc", audiostream_gc},
 	{"__tostring", audiostream_tostring},
 	{NULL, NULL}

@@ -56,6 +56,12 @@ struct AudioStream {
 	int refrence;
 	int loop_count;
 	bool looping;
+	bool fade_stop;
+	uint64_t fade_frames;
+	uint64_t fade_frames_left;
+	float fade_volume;
+	float fade_from_volume;
+	float fade_to_volume;
 };
 
 struct MumbleThreadWorker {
@@ -103,15 +109,19 @@ struct MumbleThreadController {
 struct MumbleClient {
 	lua_State*			l;
 	int					self;
+
 	uv_connect_t		tcp_connect_req;
 	uv_tcp_t			socket_tcp;
 	uv_os_fd_t			socket_tcp_fd;
 	uv_udp_t			socket_udp;
 	uv_poll_t			ssl_poll;
+
 	struct addrinfo*	server_host_udp;
 	struct addrinfo*	server_host_tcp;
+
 	SSL_CTX				*ssl_context;
 	SSL					*ssl;
+
 	bool				connecting;
 	bool				connected;
 	bool				synced;
@@ -125,14 +135,20 @@ struct MumbleClient {
 	uint32_t			max_bandwidth;
 	double				time;
 	uint32_t			session;
-	float				volume;
+	double				volume;
+	bool				ducking;
+	double				ducking_volume;
+
 	uv_timer_t			audio_timer;
 	uv_timer_t			ping_timer;
+
 	AudioFrame			audio_output[PCM_BUFFER];
 	uint32_t			audio_sequence;
 	uint32_t			audio_frames;
+
 	OpusEncoder*		encoder;
 	int					encoder_ref;
+
 	uint8_t				audio_target;
 
 	uint32_t			tcp_packets;
@@ -177,7 +193,7 @@ struct MumbleChannel {
 	bool			is_enter_restricted;
 	bool			can_enter;
 	uint32_t		permissions;
-	float			volume_adjustment;
+	float			listening_volume_adjustment;
 };
 
 struct MumbleUser

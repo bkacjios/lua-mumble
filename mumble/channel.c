@@ -176,18 +176,55 @@ static int channel_link(lua_State *l)
 	msg.has_channel_id = true;
 	msg.channel_id = channel->channel_id;
 
-	// Get the number of channels we want to link
-	msg.n_links_add = lua_gettop(l) - 1;
-	msg.links_add = malloc(sizeof(uint32_t) * msg.n_links_add);
-	
-	if (msg.links_add == NULL)
-		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+	size_t n_links_add = 0;
+	uint32_t *links_add = NULL;
 
-	// Loop through each argument and add the channel_id to the array
-	for (int i = 0; i < msg.n_links_add; i++) {
-		MumbleChannel *link = luaL_checkudata(l, i+2, METATABLE_CHAN);
-		msg.links_add[i] = link->channel_id;
+	// Check if the 2nd argument is a table (a list of userdata)
+	if (lua_istable(l, 2)) {
+		// If it's a table, get the length of the table
+		n_links_add = lua_objlen(l, 2);
+		links_add = malloc(sizeof(uint32_t) * n_links_add);
+		if (!links_add)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
+		// Iterate over the table and extract the channel->channel_id
+		lua_pushvalue(l, 2); // Push the table onto the stack
+		lua_pushnil(l);
+		int i = 0;
+		while (lua_next(l, -2)) { // Iterate over the table
+			if (luaL_isudata(l, -1, METATABLE_CHAN)) {
+				MumbleChannel *channel = lua_touserdata(l, -1);
+				links_add[i++] = channel->channel_id;
+			} else {
+				// If not userdata of the expected type, return an error
+				free(links_add);
+				return luaL_typerror_table(l, 2, -2, -1, METATABLE_CHAN);
+			}
+			lua_pop(l, 1);  // Pop the value, keep the key
+		}
+		lua_pop(l, 1);  // Pop the table
+	} else {
+		// Otherwise, process varargs (userdata arguments)
+		int top = lua_gettop(l);
+		n_links_add = top - 1;  // Subtract first parameter (user)
+		links_add = malloc(sizeof(uint32_t) * n_links_add);
+		if (!links_add)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
+		// Extract channel->channel_id from each userdata vararg
+		for (int i = 0; i < n_links_add; ++i) {
+			if (luaL_isudata(l, 2 + i, METATABLE_CHAN)) {
+				MumbleChannel *channel = lua_touserdata(l, -1);
+				links_add[i] = channel->channel_id;
+			} else {
+				free(links_add);
+				return luaL_typerror(l, 2 + i, METATABLE_CHAN);
+			}
+		}
 	}
+
+	msg.links_add = links_add;
+	msg.n_links_add = n_links_add;
 
 	packet_send(channel->client, PACKET_CHANNELSTATE, &msg);
 	free(msg.links_add);
@@ -203,17 +240,55 @@ static int channel_unlink(lua_State *l)
 	msg.has_channel_id = true;
 	msg.channel_id = channel->channel_id;
 
-	// Get the number of channels we want to unlink
-	msg.n_links_remove = lua_gettop(l) - 1;
-	msg.links_remove = malloc(sizeof(uint32_t) * msg.n_links_remove);
-	
-	if (msg.links_remove == NULL)
-		return luaL_error(l, "failed to malloc: %s", strerror(errno));
+	size_t n_links_remove = 0;
+	uint32_t *links_remove = NULL;
 
-	for (int i = 0; i < msg.n_links_remove; i++) {
-		MumbleChannel *link = luaL_checkudata(l, i+2, METATABLE_CHAN);
-		msg.links_remove[i] = link->channel_id;
+	// Check if the 2nd argument is a table (a list of userdata)
+	if (lua_istable(l, 2)) {
+		// If it's a table, get the length of the table
+		n_links_remove = lua_objlen(l, 2);
+		links_remove = malloc(sizeof(uint32_t) * n_links_remove);
+		if (!links_remove)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
+		// Iterate over the table and extract the channel->channel_id
+		lua_pushvalue(l, 2); // Push the table onto the stack
+		lua_pushnil(l);
+		int i = 0;
+		while (lua_next(l, -2)) { // Iterate over the table
+			if (luaL_isudata(l, -1, METATABLE_CHAN)) {
+				MumbleChannel *channel = lua_touserdata(l, -1);
+				links_remove[i++] = channel->channel_id;
+			} else {
+				// If not userdata of the expected type, return an error
+				free(links_remove);
+				return luaL_typerror_table(l, 2, -2, -1, METATABLE_CHAN);
+			}
+			lua_pop(l, 1);  // Pop the value, keep the key
+		}
+		lua_pop(l, 1);  // Pop the table
+	} else {
+		// Otherwise, process varargs (userdata arguments)
+		int top = lua_gettop(l);
+		n_links_remove = top - 1;  // Subtract first parameter (user)
+		links_remove = malloc(sizeof(uint32_t) * n_links_remove);
+		if (!links_remove)
+			return luaL_error(l, "failed to malloc: %s", strerror(errno));
+
+		// Extract channel->channel_id from each userdata vararg
+		for (int i = 0; i < n_links_remove; ++i) {
+			if (luaL_isudata(l, 2 + i, METATABLE_CHAN)) {
+				MumbleChannel *channel = lua_touserdata(l, -1);
+				links_remove[i] = channel->channel_id;
+			} else {
+				free(links_remove);
+				return luaL_typerror(l, 2 + i, METATABLE_CHAN);
+			}
+		}
 	}
+
+	msg.links_remove = links_remove;
+	msg.n_links_remove = n_links_remove;
 
 	packet_send(channel->client, PACKET_CHANNELSTATE, &msg);
 	free(msg.links_remove);
@@ -293,7 +368,7 @@ static int channel_hasPermission(lua_State *l)
 	return 1;
 }
 
-static int channel_setVolumeAdjustment(lua_State *l)
+static int channel_setListeningVolumeAdjustment(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
@@ -308,10 +383,10 @@ static int channel_setVolumeAdjustment(lua_State *l)
 	return 0;
 }
 
-static int channel_getVolumeAdjustment(lua_State *l)
+static int channel_getListeningVolumeAdjustment(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
-	lua_pushnumber(l, channel->volume_adjustment);
+	lua_pushnumber(l, channel->listening_volume_adjustment);
 	return 1;
 }
 
@@ -470,8 +545,8 @@ const luaL_Reg mumble_channel[] = {
 	{"getPermissions", channel_getPermissions},
 	{"hasPermission", channel_hasPermission},
 	{"hasPermissions", channel_hasPermission},
-	{"setVolumeAdjustment", channel_setVolumeAdjustment},
-	{"getVolumeAdjustment", channel_getVolumeAdjustment},
+	{"setListeningVolumeAdjustment", channel_setListeningVolumeAdjustment},
+	{"getListeningVolumeAdjustment", channel_getListeningVolumeAdjustment},
 	{"requestDescriptionBlob", channel_requestDescriptionBlob},
 	{"create", channel_create},
 
