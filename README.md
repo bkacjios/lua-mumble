@@ -263,7 +263,19 @@ Table users = {
 	...
 }
 
-mumble.channel channel = mumble.client:getChannel(String path)
+-- Allows you to lookup a channel using a file path syntax.
+-- Will default to "." for the root channel.
+-- "." for current channel
+-- ".." for parent channel
+-- "/" for seperator
+-- "name" for channel name
+-- If the channel name doesn't exist, it will return nil
+mumble.channel channel = mumble.client:getChannel([String path = "."])
+
+-- Examples
+local root = mumble.client:getChannel()
+local testing = mumble.client:getChannel("Testing")
+local root = mumble.client:getChannel("Testing/..")
 
 -- Returns a table of all mumble.channels
 Table channels = mumble.client:getChannels()
@@ -393,6 +405,9 @@ mumble.user:listen(mumble.channel ...)
 -- Removes a channel from the list of channels the user is listening to
 mumble.user:unlisten(mumble.channel ...)
 
+-- Returns if the user is listening to this channel or not
+Boolean isListening = mumble.user:isListening(mumble.channel channel)
+
 -- Returns a table of all channels the user is currently listening to
 Table listens = mumble.user:getListens()
 
@@ -424,6 +439,8 @@ mumble.user:requestCommentBlob()
 ``` lua
 -- Gets a channel relative to the current
 mumble.channel channel = mumble.channel(String path)
+mumble.channel parents_parent = mumble.channel("../..")
+mumble.channel child = mumble.channel("Child")
 
 -- Sends a text message to the entire channel
 mumble.channel:message(String message)
@@ -1234,7 +1251,8 @@ Table event = {
 	["actor"]		= mumble.user actor,
 	["message"]		= String message,
 	["users"]		= Table users,
-	["channels"]	= Table channels -- will be nil when receiving a direct message
+	["channels"]	= Table channels, -- will be nil when receiving a direct message
+	["direct"]		= Boolean direct
 }
 ```
 ___

@@ -861,6 +861,9 @@ void packet_text_message(lua_State *l, MumbleClient *client, MumblePacket *packe
 				lua_settable(l, -3);
 			}
 			lua_setfield(l, -2, "channels");
+		} else {
+			lua_pushboolean(l, true);
+			lua_setfield(l, -2, "direct");
 		}
 	mumble_hook_call(l, client, "OnMessage", 1);
 

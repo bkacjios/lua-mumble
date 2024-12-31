@@ -93,41 +93,34 @@ static int channel_getParent(lua_State *l)
 static int channel_getChildren(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+	LinkNode* current = channel->client->channel_list;
 
 	lua_newtable(l);
+	int i = 1;
 
-	mumble_pushref(l, channel->client->channels);
-	lua_pushnil(l);
-
-	while (lua_next(l, -2)) {
-		if (lua_isuserdata(l, -1)) {
-			MumbleChannel *chan = lua_touserdata(l, -1);
-			if (chan->channel_id != chan->parent && chan->parent == channel->channel_id) {
-				lua_pushinteger(l, chan->channel_id);
-				lua_pushvalue(l, -2);
-				lua_settable(l, -6);
-			}
+	while (current != NULL) {
+		MumbleChannel *chan = current->data;
+		if (chan->channel_id != chan->parent && chan->parent == channel->channel_id) {
+			lua_pushinteger(l, i++);
+			mumble_channel_raw_get(l, channel->client, current->index);
+			lua_settable(l, -3);
 		}
-		lua_pop(l, 1);
+		current = current->next;
 	}
-
-	lua_pop(l, 1);
 	return 1;
 }
 
 static int channel_getUsers(lua_State *l)
 {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
-
 	LinkNode* current = channel->client->user_list;
 
 	lua_newtable(l);
 	int i = 1;
 
-	while (current != NULL)
-	{
+	while (current != NULL) {
 		if (current->index == channel->channel_id) {
-			lua_pushnumber(l, i++);
+			lua_pushinteger(l, i++);
 			mumble_user_raw_get(l, channel->client, current->index);
 			lua_settable(l, -3);
 		}
@@ -324,10 +317,9 @@ static int channel_getVolumeAdjustment(lua_State *l)
 
 int channel_call(lua_State *l)
 {
-	MumbleChannel *self = luaL_checkudata(l, 1, METATABLE_CHAN);
-	char* path = (char*) luaL_checkstring(l, 2);
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+	char* path = (char*) luaL_optstring(l, 2, ".");
 
-	MumbleChannel *channel = self;
 	char *pch = strtok(path, "/\\");
 
 	while (pch != NULL)
@@ -341,20 +333,14 @@ int channel_call(lua_State *l)
 			current = lua_touserdata(l, -1);
 			lua_remove(l, -2);
 		} else {
-			mumble_pushref(l, self->client->channels);
-			lua_pushnil(l);
-
-			while (lua_next(l, -2)) {
-				if (lua_isuserdata(l, -1)) {
-					MumbleChannel *chan = lua_touserdata(l, -1);
-					if (chan->channel_id != chan->parent && chan->parent == channel->channel_id && strcmp(pch, chan->name) == 0) {
-						current = chan;
-					}
+			LinkNode* next_channel = channel->client->channel_list;
+			while (next_channel != NULL) {
+				MumbleChannel *chan = next_channel->data;
+				if (chan->channel_id != chan->parent && chan->parent == channel->channel_id && strcmp(pch, chan->name) == 0) {
+					current = chan;
 				}
-				lua_pop(l, 1);
+				next_channel = next_channel->next;
 			}
-
-			lua_pop(l, 1);
 		}
 
 		if (current == NULL) {

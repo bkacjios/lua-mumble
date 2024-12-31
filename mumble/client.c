@@ -521,8 +521,6 @@ static int client_getHooks(lua_State *l)
 static int client_getUsers(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	lua_newtable(l);
-
 	LinkNode* current = client->user_list;
 
 	lua_newtable(l);
@@ -530,7 +528,7 @@ static int client_getUsers(lua_State *l)
 
 	while (current != NULL)
 	{
-		lua_pushnumber(l, i++);
+		lua_pushinteger(l, i++);
 		mumble_user_raw_get(l, client, current->index);
 		lua_settable(l, -3);
 		current = current->next;
@@ -541,7 +539,18 @@ static int client_getUsers(lua_State *l)
 static int client_getChannels(lua_State *l)
 {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	mumble_pushref(l, client->channels);
+	LinkNode* current = client->channel_list;
+
+	lua_newtable(l);
+	int i = 1;
+
+	while (current != NULL)
+	{
+		lua_pushinteger(l, i++);
+		mumble_channel_raw_get(l, client, current->index);
+		lua_settable(l, -3);
+		current = current->next;
+	}
 	return 1;
 }
 

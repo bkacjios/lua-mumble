@@ -363,6 +363,25 @@ static int user_unlisten(lua_State *l)
 	return 0;
 }
 
+static int user_isListening(lua_State *l)
+{
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+	MumbleChannel *channel = luaL_checkudata(l, 2, METATABLE_CHAN);
+
+	LinkNode * current = user->listens;
+
+	while (current != NULL) {
+		if (current->index == channel->channel_id) {
+			lua_pushboolean(l, true);
+			return 1;
+		}
+		current = current->next;
+	}
+
+	lua_pushboolean(l, false);
+	return 1;
+}
+
 static int user_getListens(lua_State *l)
 {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
@@ -541,7 +560,9 @@ const luaL_Reg mumble_user[] = {
 	{"setTexture", user_setTexture},
 	{"listen", user_listen},
 	{"unlisten", user_unlisten},
+	{"isListening", user_isListening},
 	{"getListens", user_getListens},
+	{"getListening", user_getListens},
 	{"sendPluginData", user_sendPluginData},
 	{"requestTextureBlob", user_requestTextureBlob},
 	{"requestCommentBlob", user_requestCommentBlob},
