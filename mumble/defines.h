@@ -36,9 +36,11 @@
 // The sample rate in which all audio files should be encoded to
 #define AUDIO_SAMPLE_RATE 48000
 
-// The size of the PCM buffer
+// The max amount of PCM frames we will ever have
+#define MAX_PCM_FRAMES AUDIO_FRAME_SIZE_LARGE * AUDIO_SAMPLE_RATE / 1000
+// The max buffer size we will ever need for handling raw bytes
 // FRAMESIZE * SAMPLERATE * CHANNELS / 1000
-#define PCM_BUFFER 60 * 48000 * 2 / 1000
+#define PCM_BUFFER MAX_PCM_FRAMES * AUDIO_PLAYBACK_CHANNELS
 
 #define PAYLOAD_SIZE_MAX (1024 * 8 - 1)
 

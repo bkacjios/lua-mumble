@@ -421,6 +421,8 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 	// Hook allows for feeding raw PCM data into our output stream, mixing it into other playing audio
 	ByteBuffer* buffer = client->audio_pipe;
 
+	buffer_clear(buffer);
+
 	mumble_pushref(l, client->audio_pipe_ref);
 	lua_pushinteger(l, AUDIO_SAMPLE_RATE);
 	lua_pushinteger(l, AUDIO_PLAYBACK_CHANNELS);
@@ -430,7 +432,7 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 	buffer_flip(buffer);
 
 	float* stream = (float*) buffer->data;
-	size_t streamed_samples = buffer->limit / sizeof(stream);
+	size_t streamed_samples = buffer->limit / sizeof(float) / AUDIO_PLAYBACK_CHANNELS;
 
 	if (buffer->limit > 0 && streamed_samples <= PCM_BUFFER) {
 		for (int i = 0; i < streamed_samples; i++) {

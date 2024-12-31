@@ -60,7 +60,7 @@ void buffer_free(ByteBuffer* buffer)
 
 void buffer_clear(ByteBuffer* buffer)
 {
-	memset(buffer->data, 0, buffer->capacity);
+	//memset(buffer->data, 0, buffer->capacity);
 	buffer->position = 0;
 	buffer->limit = 0;
 }
@@ -342,7 +342,7 @@ int luabuffer_read(lua_State *l)
 	char read[size];
 
 	if (!buffer_read(buffer, &read, size)) {
-		return luaL_error(l, "attempt to read beyond buffer limit ");
+		return luaL_error(l, "attempt to read beyond buffer limit");
 	}
 
 	lua_pushlstring(l, read, size);
@@ -362,7 +362,7 @@ int luabuffer_readByte(lua_State *l)
 	uint8_t value;
 
 	if (!buffer_readByte(buffer, &value)) {
-		return luaL_error(l, "attempt to read beyond buffer limit ");
+		return luaL_error(l, "attempt to read beyond buffer limit");
 	}
 
 	lua_pushinteger(l, value);
@@ -382,7 +382,7 @@ int luabuffer_readShort(lua_State *l)
 	uint16_t value;
 
 	if (!buffer_readShort(buffer, &value)) {
-		return luaL_error(l, "attempt to read beyond buffer limit ");
+		return luaL_error(l, "attempt to read beyond buffer limit");
 	}
 
 	lua_pushinteger(l, value);
@@ -402,7 +402,7 @@ int luabuffer_readInt(lua_State *l)
 	int32_t value;
 
 	if (!buffer_readInt(buffer, &value)) {
-		return luaL_error(l, "attempt to read beyond buffer limit ");
+		return luaL_error(l, "attempt to read beyond buffer limit");
 	}
 
 	lua_pushinteger(l, value);
@@ -422,7 +422,7 @@ int luabuffer_readVarInt(lua_State *l)
 	uint64_t value;
 
 	if (!buffer_readVarInt(buffer, &value)) {
-		return luaL_error(l, "attempt to read beyond buffer limit ");
+		return luaL_error(l, "attempt to read beyond buffer limit");
 	}
 
 	lua_pushinteger(l, value);
@@ -442,7 +442,7 @@ int luabuffer_readFloat(lua_State *l)
 	float value;
 
 	if (!buffer_readFloat(buffer, &value)) {
-		return luaL_error(l, "attempt to read beyond buffer limit ");
+		return luaL_error(l, "attempt to read beyond buffer limit");
 	}
 
 	lua_pushnumber(l, value);
@@ -462,7 +462,7 @@ int luabuffer_readDouble(lua_State *l)
 	double value;
 
 	if (!buffer_readDouble(buffer, &value)) {
-		return luaL_error(l, "attempt to read beyond buffer limit ");
+		return luaL_error(l, "attempt to read beyond buffer limit");
 	}
 
 	lua_pushnumber(l, value);
@@ -487,7 +487,7 @@ int luabuffer_readString(lua_State *l)
 	char string[size+1];
 
 	if (!buffer_read(buffer, string, size)) {
-		return luaL_error(l, "attempt to read beyond buffer limit ");
+		return luaL_error(l, "attempt to read beyond buffer limit");
 	}
 
 	lua_pushlstring(l, string, size);
@@ -507,7 +507,7 @@ int luabuffer_readBool(lua_State *l)
 	uint8_t value;
 
 	if (!buffer_readByte(buffer, &value)) {
-		return luaL_error(l, "attempt to read beyond buffer limit ");
+		return luaL_error(l, "attempt to read beyond buffer limit");
 	}
 
 	lua_pushboolean(l, value);

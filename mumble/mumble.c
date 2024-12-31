@@ -542,7 +542,7 @@ static int mumble_client_new(lua_State *l) {
 	client->audio_pipe = lua_newuserdata(l, sizeof(ByteBuffer));
 	luaL_getmetatable(l, METATABLE_BUFFER);
 	lua_setmetatable(l, -2);
-	buffer_init(client->audio_pipe, PCM_BUFFER);
+	buffer_init(client->audio_pipe, PCM_BUFFER * sizeof(float));
 	client->audio_pipe_ref = mumble_ref(l);
 
 	client->tcp_packets = 0;

@@ -573,7 +573,7 @@ mumble.timer:stop()
 -- The buffers __tostring metamethod will return the written data as a string
 String data = tostring(buffer)
 
--- Clears the buffer, wiping all data and setting the position and limit to 0
+-- Clears the buffer by setting the position and limit to 0
 buffer:clear()
 
 -- Compacts the buffer, optimizing its storage by removing any unused space
@@ -1522,7 +1522,7 @@ Table event = {
 
 ___
 
-### `OnAudioStream (mumble.client client, mumble.buffer output, Number samplerate, Number channels, Number frames`
+### `OnAudioStream (mumble.client client, mumble.buffer output, Number samplerate, Number channels, Number frames)`
 
 ```lua
 local samples = 0
@@ -1531,6 +1531,7 @@ client:hook("OnAudioStream", function(client, output, samplerate, channels, fram
 	-- The client is about to encode and stream x amount of frames
 	-- Samplerate will always be 48000
 	-- Channels will always be 2
+	-- Frames will be based off the audio packet size
 	for i=1,frames do
 		samples = samples + 1
 		time = samples / samplerate
@@ -1547,4 +1548,4 @@ ___
 ### `OnAudioStreamEnd (mumble.client client, mumble.audiostream stream)`
 
 Called when a sound file has finished playing.
-Passes the number of the audio stream that finished.
+Passes the the audio stream that finished.
