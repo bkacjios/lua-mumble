@@ -164,6 +164,11 @@ mumble.client:transmit(Number codec, String encoded_audio_packet, Boolean speaki
 -- If audiostream = nil, it will pass along an error string as to why it couldn't open the file
 mumble.audiostream audiostream, [ String error ] = mumble.client:openAudio(String audio file path, Number volume = 1.0)
 
+-- Gets a buffer that you can write raw 32bit, float, PCM data that will be output by the client as soon as it can.
+-- You can write to this buffer whenever you want, allowing you to queue up data preemptively.
+-- You should only ever use buffer:writeFloat(), but the other buffer methods are always available for whatever reason.
+mumble.buffer audiostreambuffer = mumble.client:getAudioStreamBuffer()
+
 -- Gets a table of all currently playing audio streams
 Table audiostreams = mumble.client:getAudioStreams()
 
@@ -579,14 +584,24 @@ buffer:clear()
 -- Compacts the buffer, optimizing its storage by removing any unused space
 buffer:compact()
 
+-- Packs the buffer, taking all unread data and moving it to the head
+buffer:pack()
+
 -- Resets the buffer, setting the position to 0 and the limit to the capacity
 buffer:reset()
 
 -- Flips the buffer, preparing it for reading by setting the limit to the current position and the position to 0
 buffer:flip()
 
+-- Get the length of the buffer
+Number length = buffer.length
+Number length = #buffer
+
+-- Get a byte from the buffer without reading
+String byte = buffer[Number index]
+
 -- Returns the capacity of the buffer, which is the total amount of space allocated
-Number capacity = buffer:capacity()
+Number capacity = buffer.capacity
 
 -- Returns the current position of the buffer, which indicates where the next read or write operation will occur
 Number position = buffer:position()
@@ -630,7 +645,7 @@ Number written = buffer:writeVarInt(Number value)
 Number value = buffer:readVarInt()
 
 -- Write a float to the buffer
--- Returns how many bytes were written to the buffer
+-- Returns how many bytes were written to the bufferbuffer
 Number written = buffer:writeFloat(Number value)
 
 -- Reads a float from the buffer and returns it
@@ -1220,9 +1235,12 @@ Table event = {
 	["codec"]			= Number codec,
 	["target"]			= Number target,
 	["sequence"]		= Number sequence,
-	["data"]			= String encoded_opus_packet,
-	["frame_header"]	= Number frame_header, -- The frame header usually contains a length and terminator bit
-	["speaking"]		= Boolean speaking,
+	["data"]			= String encoded_opus_packet,	-- Raw encoded audio data
+	["frame_header"]	= Number frame_header,			-- The frame header usually contains a length and terminator bit
+	["speaking"]		= Boolean speaking,				-- Is false when this is the last audio packet for the speaking user.
+	["channels"]		= Number channels,				-- How many channels were detected in this opus packet.
+	["bandwidth"]		= Number bandwidth,				-- How much bandwidth this opus packet uses.
+	["samples_per_frame"] = Number samples_per_frame,	-- How many samples per frame this opus packet has.
 }
 ```
 ___
@@ -1522,12 +1540,26 @@ Table event = {
 
 ___
 
-### `OnAudioStream (mumble.client client, mumble.buffer output, Number samplerate, Number channels, Number frames)`
+### `OnAudioStream (mumble.client client, Number samplerate, Number channels, Number frames)`
+
+Audio loopback example
+
+```lua
+local audiostream = client:getAudioStreamBuffer()
+
+client:hook("OnUserSpeak", function(client, event)
+	if client.me == event.user then return end
+	-- Loopback whatever anyone says
+	audiostream:write(decoder:decode_float(event.data))
+end)
+```
+
+Sinwave tone
 
 ```lua
 local samples = 0
 local time = 0
-client:hook("OnAudioStream", function(client, output, samplerate, channels, frames)
+client:hook("OnAudioStream", function(client, samplerate, channels, frames)
 	-- The client is about to encode and stream x amount of frames
 	-- Samplerate will always be 48000
 	-- Channels will always be 2
@@ -1538,7 +1570,7 @@ client:hook("OnAudioStream", function(client, output, samplerate, channels, fram
 		for c=1,channels do
 			-- Write a 600hz tone to both channels for this frame
 			-- Whatever is written to the output buffer will be mixed with any playing mumble.audiostream
-			output:writeFloat(math.sin(2 * math.pi * 600 * time))
+			client:getAudioStreamBuffer():writeFloat(math.sin(2 * math.pi * 600 * time))
 		end
 	end
 end)

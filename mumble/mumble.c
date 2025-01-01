@@ -539,9 +539,7 @@ static int mumble_client_new(lua_State *l) {
 	client->audio_sequence = 0;
 	client->audio_target = 0;
 	client->audio_frames = AUDIO_DEFAULT_FRAMES;
-	client->audio_pipe = lua_newuserdata(l, sizeof(ByteBuffer));
-	luaL_getmetatable(l, METATABLE_BUFFER);
-	lua_setmetatable(l, -2);
+	client->audio_pipe = luabuffer_new(l);
 	buffer_init(client->audio_pipe, PCM_BUFFER * sizeof(float));
 	client->audio_pipe_ref = mumble_ref(l);
 
@@ -1289,6 +1287,12 @@ void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, M
 		lua_setfield(l, -2, "data");
 		lua_pushinteger(l, audio->context);
 		lua_setfield(l, -2, "context");
+		lua_pushinteger(l, opus_packet_get_nb_channels(audio->opus_data.data));
+		lua_setfield(l, -2, "channels");
+		lua_pushinteger(l, opus_packet_get_nb_channels(audio->opus_data.data));
+		lua_setfield(l, -2, "bandwidth");
+		lua_pushinteger(l, opus_packet_get_samples_per_frame(audio->opus_data.data, AUDIO_SAMPLE_RATE));
+		lua_setfield(l, -2, "samples_per_frame");
 	mumble_hook_call(l, client, "OnUserSpeak", 1);
 
 	if (one_frame || state_change && !speaking) {
@@ -1348,6 +1352,12 @@ void mumble_handle_speaking_hooks_legacy(lua_State* l, MumbleClient* client, uin
 		lua_setfield(l, -2, "speaking");
 		lua_pushlstring(l, buffer + read, payload_len);
 		lua_setfield(l, -2, "data");
+		lua_pushinteger(l, opus_packet_get_nb_channels(buffer + read));
+		lua_setfield(l, -2, "channels");
+		lua_pushinteger(l, opus_packet_get_nb_channels(buffer + read));
+		lua_setfield(l, -2, "bandwidth");
+		lua_pushinteger(l, opus_packet_get_samples_per_frame(buffer + read, AUDIO_SAMPLE_RATE));
+		lua_setfield(l, -2, "samples_per_frame");
 	mumble_hook_call(l, client, "OnUserSpeak", 1);
 
 	if (one_frame || state_change && !speaking) {

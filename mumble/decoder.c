@@ -4,8 +4,7 @@
 #include "util.h"
 #include "log.h"
 
-int mumble_decoder_new(lua_State *l)
-{
+int mumble_decoder_new(lua_State *l) {
 	// Argument 1 = mumble.decoder table
 	opus_int32 samplerate = luaL_optinteger(l, 2, AUDIO_SAMPLE_RATE);
 	int channels = luaL_optinteger(l, 3, AUDIO_PLAYBACK_CHANNELS);
@@ -21,21 +20,21 @@ int mumble_decoder_new(lua_State *l)
 		lua_pushfstring(l, "could not initialize opus decoder: %s", opus_strerror(error));
 		return 2;
 	}
+	
+	opus_decoder_ctl(decoder, OPUS_SET_PHASE_INVERSION_DISABLED(1));
 
 	return 1;
 }
 
 /* GENERIC CTLS */
 
-static int decoder_reset(lua_State *l)
-{
+static int decoder_reset(lua_State *l) {
 	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);
 	opus_decoder_ctl(decoder, OPUS_RESET_STATE);
 	return 0;
 }
 
-static int decoder_getFinalRange(lua_State *l)
-{
+static int decoder_getFinalRange(lua_State *l) {
 	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);
 	opus_uint32 range;
 	opus_decoder_ctl(decoder, OPUS_GET_FINAL_RANGE(&range));
@@ -43,8 +42,7 @@ static int decoder_getFinalRange(lua_State *l)
 	return 1;
 }
 
-static int decoder_getBandwidth(lua_State *l)
-{
+static int decoder_getBandwidth(lua_State *l) {
 	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);
 	opus_int32 width;
 	opus_decoder_ctl(decoder, OPUS_GET_BANDWIDTH(&width));
@@ -52,8 +50,7 @@ static int decoder_getBandwidth(lua_State *l)
 	return 1;
 }
 
-static int decoder_getSampleRate(lua_State *l)
-{
+static int decoder_getSampleRate(lua_State *l) {
 	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);
 	opus_int32 rate;
 	opus_decoder_ctl(decoder, OPUS_GET_SAMPLE_RATE(&rate));
@@ -63,46 +60,60 @@ static int decoder_getSampleRate(lua_State *l)
 
 /* DECODER CTLS */
 
-static int decoder_decode(lua_State *l)
-{
+static int decoder_decode(lua_State *l) {
 	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);
 
 	size_t encoded_len;
 	const unsigned char* encoded = (unsigned char*) luaL_checklstring(l, 2, &encoded_len);
 
-	const uint32_t pcm_size = AUDIO_SAMPLE_RATE * 60 / 1000;
+	int samples = opus_decoder_get_nb_samples(decoder, encoded, encoded_len) * AUDIO_PLAYBACK_CHANNELS;
 
-	opus_int16 pcm[pcm_size];
-	opus_int32 pcmlen = opus_decode(decoder, encoded, encoded_len, pcm, pcm_size, 0);
+	opus_int16 pcm[samples];
+	opus_int32 pcmlen = opus_decode(decoder, encoded, encoded_len, pcm, samples, 0);
 
-	lua_pushlstring(l, (const char *) pcm, pcmlen);
+	if (pcmlen < 0) {
+		return luaL_error(l, "opus decoding error: %s", opus_strerror(pcmlen));
+	}
+
+	size_t outputlen = pcmlen * AUDIO_PLAYBACK_CHANNELS * sizeof(opus_int16);
+
+	char byte_data[outputlen];
+	memcpy(byte_data, pcm, outputlen);
+
+	lua_pushlstring(l, byte_data, outputlen);
 	return 1;
 }
 
-static int decoder_decode_float(lua_State *l)
-{
+static int decoder_decode_float(lua_State *l) {
 	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);
 
 	size_t encoded_len;
 	const unsigned char* encoded = (unsigned char*) luaL_checklstring(l, 2, &encoded_len);
 
-	const uint32_t pcm_size = AUDIO_SAMPLE_RATE * 60 / 1000;
+	int samples = opus_decoder_get_nb_samples(decoder, encoded, encoded_len) * AUDIO_PLAYBACK_CHANNELS;
 
-	float pcm[pcm_size];
-	opus_int32 pcmlen = opus_decode_float(decoder, encoded, encoded_len, pcm, pcm_size, 0);
+	float pcm[samples];
+	opus_int32 pcmlen = opus_decode_float(decoder, encoded, encoded_len, pcm, samples, 0);
 
-	lua_pushlstring(l, (const char *) pcm, pcmlen);
+	if (pcmlen < 0) {
+		return luaL_error(l, "opus decoding error: %s", opus_strerror(pcmlen));
+	}
+
+	size_t outputlen = pcmlen * AUDIO_PLAYBACK_CHANNELS * sizeof(float);
+
+	char byte_data[outputlen];
+	memcpy(byte_data, pcm, outputlen);
+
+	lua_pushlstring(l, byte_data, outputlen);
 	return 1;
 }
 
-static int decoder_tostring(lua_State *l)
-{
+static int decoder_tostring(lua_State *l) {
 	lua_pushfstring(l, "%s: %p", METATABLE_DECODER, lua_topointer(l, 1));
 	return 1;
 }
 
-static int decoder_gc(lua_State *l)
-{
+static int decoder_gc(lua_State *l) {
 	OpusDecoder *decoder = luaL_checkudata(l, 1, METATABLE_DECODER);
 	// no need to destroy since we allocated ourselves via lua_newuserdata and used opus_decoder_init
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_DECODER, decoder);

@@ -117,6 +117,10 @@ client:hook("OnSuggestConfig", function(client, event)
 	print("OnSuggestConfig", event)
 end)
 
+client:hook("OnAudioStream", function(client, samplerate, channels, frames)
+	print("OnAudioStream", samplerate, channels, frames)
+end)
+
 client:hook("OnAudioStreamEnd", function(client, stream)
 	print("OnAudioStreamEnd", stream)
 end)

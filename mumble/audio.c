@@ -6,8 +6,7 @@
 
 #include <math.h>
 
-uint8_t util_set_varint(uint8_t buffer[], const uint64_t value)
-{
+uint8_t util_set_varint(uint8_t buffer[], const uint64_t value) {
 	if (value < 0x80) {
 		buffer[0] = value;
 		return 1;
@@ -48,8 +47,7 @@ uint8_t util_set_varint(uint8_t buffer[], const uint64_t value)
 	return 0;
 }
 
-uint64_t util_get_varint(uint8_t buffer[], int *len)
-{
+uint64_t util_get_varint(uint8_t buffer[], int *len) {
 	uint8_t v = buffer[0];
 	uint64_t i = 0;
 
@@ -61,41 +59,40 @@ uint64_t util_get_varint(uint8_t buffer[], int *len)
 		*len += 2;
 	} else if ((v & 0xF0) == 0xF0) {
 		switch (v & 0xFC) {
-			case 0xF0:
-				i = buffer[1] << 24 | buffer[2] << 16 | buffer[3] << 8 | buffer[4];
-				*len += 5;
-				break;
-			case 0xF4:
-				i = (uint64_t)buffer[1] << 56 | (uint64_t)buffer[2] << 48 | (uint64_t)buffer[3] << 40 | (uint64_t)buffer[4] << 32 | buffer[5] << 24 | buffer[6] << 16 | buffer[7] << 8 | buffer[8];
-				*len += 9;
-				break;
-			case 0xF8:
-				i = ~i;
-				*len += 1;
-				break;
-			case 0xFC:
-				i = v & 0x03;
-				i = ~i;
-				*len += 1;
-				break;
-			default:
-				i = 0;
-				*len += 1;
-				break;
+		case 0xF0:
+			i = buffer[1] << 24 | buffer[2] << 16 | buffer[3] << 8 | buffer[4];
+			*len += 5;
+			break;
+		case 0xF4:
+			i = (uint64_t)buffer[1] << 56 | (uint64_t)buffer[2] << 48 | (uint64_t)buffer[3] << 40 | (uint64_t)buffer[4] << 32 | buffer[5] << 24 | buffer[6] << 16 | buffer[7] << 8 | buffer[8];
+			*len += 9;
+			break;
+		case 0xF8:
+			i = ~i;
+			*len += 1;
+			break;
+		case 0xFC:
+			i = v & 0x03;
+			i = ~i;
+			*len += 1;
+			break;
+		default:
+			i = 0;
+			*len += 1;
+			break;
 		}
 	} else if ((v & 0xF0) == 0xE0) {
-		i=(v & 0x0F) << 24 | buffer[1] << 16 | buffer[2] << 8 | buffer[3];
+		i = (v & 0x0F) << 24 | buffer[1] << 16 | buffer[2] << 8 | buffer[3];
 		*len += 4;
 	} else if ((v & 0xE0) == 0xC0) {
-		i=(v & 0x1F) << 16 | buffer[1] << 8 | buffer[2];
+		i = (v & 0x1F) << 16 | buffer[1] << 8 | buffer[2];
 		*len += 3;
 	}
 
 	return i;
 }
 
-VoicePacket * voicepacket_init(VoicePacket *packet, uint8_t *buffer)
-{
+VoicePacket * voicepacket_init(VoicePacket *packet, uint8_t *buffer) {
 	if (packet == NULL || buffer == NULL) {
 		return NULL;
 	}
@@ -105,8 +102,7 @@ VoicePacket * voicepacket_init(VoicePacket *packet, uint8_t *buffer)
 	return packet;
 }
 
-int voicepacket_setheader(VoicePacket *packet, const uint8_t type, const uint8_t target, const uint32_t sequence)
-{
+int voicepacket_setheader(VoicePacket *packet, const uint8_t type, const uint8_t target, const uint32_t sequence) {
 	int offset;
 	if (packet == NULL) {
 		return -1;
@@ -120,8 +116,7 @@ int voicepacket_setheader(VoicePacket *packet, const uint8_t type, const uint8_t
 	return 1;
 }
 
-int voicepacket_setframe(VoicePacket *packet, const uint8_t type, const uint16_t frame_header, uint8_t *buffer, size_t buffer_len)
-{
+int voicepacket_setframe(VoicePacket *packet, const uint8_t type, const uint16_t frame_header, uint8_t *buffer, size_t buffer_len) {
 	int offset;
 
 	if (packet == NULL || buffer == NULL || buffer_len <= 0 || buffer_len >= 0x2000) {
@@ -139,7 +134,7 @@ int voicepacket_setframe(VoicePacket *packet, const uint8_t type, const uint16_t
 		offset += 1;
 		packet->buffer[packet->header_length] = frame_header;
 	}
-	
+
 	if (offset <= 0) {
 		return -3;
 	}
@@ -148,8 +143,7 @@ int voicepacket_setframe(VoicePacket *packet, const uint8_t type, const uint16_t
 	return 1;
 }
 
-int voicepacket_getlength(const VoicePacket *packet)
-{
+int voicepacket_getlength(const VoicePacket *packet) {
 	if (packet == NULL) {
 		return -1;
 	}
@@ -161,21 +155,19 @@ static void audio_transmission_reference(lua_State *l, AudioStream *sound) {
 	list_add(&sound->client->stream_list, sound->refrence, sound);
 }
 
-void audio_transmission_unreference(lua_State*l, AudioStream *sound)
-{
+void audio_transmission_unreference(lua_State*l, AudioStream *sound) {
 	mumble_registry_unref(l, sound->client->audio_streams, sound->refrence);
 	list_remove(&sound->client->stream_list, sound->refrence);
 	sound->refrence = MUMBLE_UNREFERENCED;
 	sound->playing = false;
 	sound->fade_volume = 1.0f,
-	sound->fade_frames = 0;
+	       sound->fade_frames = 0;
 	sound->fade_frames_left = 0;
 	sound->fade_stop = false;
 	sf_seek(sound->file, 0, SEEK_SET);
 }
 
-void mumble_audio_timer(uv_timer_t* handle)
-{
+void mumble_audio_timer(uv_timer_t* handle) {
 	MumbleClient* client = (MumbleClient*) handle->data;
 	lua_State *l = client->l;
 
@@ -230,7 +222,7 @@ static void process_audio_stream(lua_State *l, MumbleClient *client, AudioStream
 
 	const int channels = sound->info.channels;
 	const sf_count_t source_rate = sound->info.samplerate;
-	
+
 	sf_count_t sample_size = client->audio_frames * source_rate / 1000;
 
 	if (sample_size > PCM_BUFFER) {
@@ -342,11 +334,11 @@ static void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encod
 
 	if (client->tcp_udp_tunnel) {
 		mumble_log(LOG_TRACE, "[TCP] Sending legacy audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)",
-			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
+		           len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
 		packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, NULL, len);
 	} else {
 		mumble_log(LOG_TRACE, "[UDP] Sending legacy audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)",
-			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
+		           len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
 		packet_sendudp(client, packet_buffer, len);
 	}
 
@@ -375,11 +367,11 @@ static void send_protobuf_audio(lua_State *l, MumbleClient *client, uint8_t *enc
 
 	if (client->tcp_udp_tunnel) {
 		mumble_log(LOG_TRACE, "[TCP] Sending protobuf TCP audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)",
-			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
+		           len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
 		packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, NULL, len);
 	} else {
 		mumble_log(LOG_TRACE, "[UDP] Sending protobuf UDP audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)",
-			len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
+		           len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
 		packet_sendudp(client, packet_buffer, len);
 	}
 
@@ -421,27 +413,34 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 	// Hook allows for feeding raw PCM data into our output stream, mixing it into other playing audio
 	ByteBuffer* buffer = client->audio_pipe;
 
-	buffer_clear(buffer);
-
-	mumble_pushref(l, client->audio_pipe_ref);
 	lua_pushinteger(l, AUDIO_SAMPLE_RATE);
 	lua_pushinteger(l, AUDIO_PLAYBACK_CHANNELS);
 	lua_pushinteger(l, frame_size);
-	mumble_hook_call(l, client, "OnAudioStream", 4);
+	mumble_hook_call(l, client, "OnAudioStream", 3);
 
+	// Prepare for read
 	buffer_flip(buffer);
 
-	float* stream = (float*) buffer->data;
-	size_t streamed_samples = buffer->limit / sizeof(float) / AUDIO_PLAYBACK_CHANNELS;
+	size_t length = buffer_length(buffer);
+	size_t total_frames = length / sizeof(float) / AUDIO_PLAYBACK_CHANNELS;
+	size_t streamed_frames = total_frames > frame_size ? frame_size : total_frames;
 
-	if (buffer->limit > 0 && streamed_samples <= PCM_BUFFER) {
-		for (int i = 0; i < streamed_samples; i++) {
-			client->audio_output[i].l = soft_clip(client->audio_output[i].l + stream[i * 2] * client->volume);
-			client->audio_output[i].r = soft_clip(client->audio_output[i].r + stream[i * 2 + 1] * client->volume);
+	if (streamed_frames > 0) {
+		double now = gettime(CLOCK_MONOTONIC);
+		for (int i = 0; i < streamed_frames; i++) {
+			float left;
+			float right;
+			buffer_readFloat(buffer, &left);
+			buffer_readFloat(buffer, &right);
+			client->audio_output[i].l = soft_clip(client->audio_output[i].l + left * client->volume);
+			client->audio_output[i].r = soft_clip(client->audio_output[i].r + right * client->volume);
 		}
 
-		if (streamed_samples > biggest_read) {
-			biggest_read = streamed_samples;
+		// Move any remaining audio data to the front
+		buffer_pack(buffer);
+
+		if (streamed_frames > biggest_read) {
+			biggest_read = streamed_frames;
 		}
 	}
 
@@ -455,37 +454,32 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 	lua_stackguard_exit(l);
 }
 
-static int audiostream_isPlaying(lua_State *l)
-{
+static int audiostream_isPlaying(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	lua_pushboolean(l, sound->playing);
 	return 1;
 }
 
-static int audiostream_setVolume(lua_State *l)
-{
+static int audiostream_setVolume(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	sound->volume = luaL_checknumber(l, 2);
 	lua_pushvalue(l, 1);
 	return 1;
 }
 
-static int audiostream_getVolume(lua_State *l)
-{
+static int audiostream_getVolume(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	lua_pushnumber(l, sound->volume);
 	return 1;
 }
 
-static int audiostream_pause(lua_State *l)
-{
+static int audiostream_pause(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	sound->playing = false;
 	return 0;
 }
 
-static int audiostream_play(lua_State *l)
-{
+static int audiostream_play(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	if (!sound->playing) {
 		sound->playing = true;
@@ -504,8 +498,7 @@ static int audiostream_play(lua_State *l)
 	return 0;
 }
 
-static int audiostream_stop(lua_State *l)
-{
+static int audiostream_stop(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	if (sound->playing) {
 		audio_transmission_unreference(l, sound);
@@ -513,8 +506,7 @@ static int audiostream_stop(lua_State *l)
 	return 0;
 }
 
-static int audiostream_seek(lua_State *l)
-{
+static int audiostream_seek(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 
 	enum what {START, CUR, END};
@@ -526,51 +518,46 @@ static int audiostream_seek(lua_State *l)
 	sf_count_t position;
 
 	switch (option) {
-		case START:
-			position = sf_seek(sound->file, offset, SEEK_SET);
-			break;
-		case CUR:
-			position = sf_seek(sound->file, offset, SEEK_CUR);
-			break;
-		case END:
-			position = sf_seek(sound->file, offset, SEEK_END);
-			break;
+	case START:
+		position = sf_seek(sound->file, offset, SEEK_SET);
+		break;
+	case CUR:
+		position = sf_seek(sound->file, offset, SEEK_CUR);
+		break;
+	case END:
+		position = sf_seek(sound->file, offset, SEEK_END);
+		break;
 	}
 
 	lua_pushinteger(l, position);
 	return 1;
 }
 
-static int audiostream_getLength(lua_State *l)
-{
+static int audiostream_getLength(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 
 	enum what {SAMPLES, FRAMES, SECONDS};
 	static const char * op[] = {"samples", "frames", "seconds", NULL};
 
 	switch (luaL_checkoption(l, 2, NULL, op)) {
-		case SAMPLES:
-		{
-			lua_pushinteger(l, sound->info.frames * sound->info.channels);
-			return 1;
-		}
-		case FRAMES:
-		{
-			lua_pushinteger(l, sound->info.frames);
-			return 1;
-		}
-		case SECONDS:
-		{
-			lua_pushnumber(l, (double) sound->info.frames / sound->info.samplerate);
-			return 1;
-		}
+	case SAMPLES: {
+		lua_pushinteger(l, sound->info.frames * sound->info.channels);
+		return 1;
+	}
+	case FRAMES: {
+		lua_pushinteger(l, sound->info.frames);
+		return 1;
+	}
+	case SECONDS: {
+		lua_pushnumber(l, (double) sound->info.frames / sound->info.samplerate);
+		return 1;
+	}
 	}
 
 	return 0;
 }
 
-static int audiostream_getInfo(lua_State *l)
-{
+static int audiostream_getInfo(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 
 	lua_newtable(l);
@@ -591,73 +578,65 @@ static int audiostream_getInfo(lua_State *l)
 	return 1;
 }
 
-static int audiostream_getTitle(lua_State *l)
-{
+static int audiostream_getTitle(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	lua_pushstring(l, sf_get_string(sound->file, SF_STR_TITLE));
 	return 1;
 }
 
-static int audiostream_getArtist(lua_State *l)
-{
+static int audiostream_getArtist(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	lua_pushstring(l, sf_get_string(sound->file, SF_STR_ARTIST));
 	return 1;
 }
 
-static int audiostream_getCopyright(lua_State *l)
-{
+static int audiostream_getCopyright(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	lua_pushstring(l, sf_get_string(sound->file, SF_STR_COPYRIGHT));
 	return 1;
 }
 
-static int audiostream_getSoftware(lua_State *l)
-{
+static int audiostream_getSoftware(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	lua_pushstring(l, sf_get_string(sound->file, SF_STR_SOFTWARE));
 	return 1;
 }
 
-static int audiostream_getComments(lua_State *l)
-{
+static int audiostream_getComments(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	lua_pushstring(l, sf_get_string(sound->file, SF_STR_COMMENT));
 	return 1;
 }
 
-static int audiostream_setLooping(lua_State *l)
-{
+static int audiostream_setLooping(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
-	
+
 	switch (lua_type(l, 2)) {
-		case LUA_TNUMBER:
-			sound->looping = false;
-			sound->loop_count = luaL_checkinteger(l, 2);
-			break;
-		case LUA_TBOOLEAN:
-			sound->looping = luaL_checkboolean(l, 2);
-			sound->loop_count = 0;
-			break;
-		default:
-			const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
-				lua_typename(l, LUA_TNUMBER), lua_typename(l, LUA_TBOOLEAN), luaL_typename(l, 2));
-			return luaL_argerror(l, 2, msg);
+	case LUA_TNUMBER:
+		sound->looping = false;
+		sound->loop_count = luaL_checkinteger(l, 2);
+		break;
+	case LUA_TBOOLEAN:
+		sound->looping = luaL_checkboolean(l, 2);
+		sound->loop_count = 0;
+		break;
+	default:
+		const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
+		                                  lua_typename(l, LUA_TNUMBER), lua_typename(l, LUA_TBOOLEAN), luaL_typename(l, 2));
+		return luaL_argerror(l, 2, msg);
 	}
 
 	lua_pushvalue(l, 1);
 	return 1;
 }
 
-static int audiostream_isLooping(lua_State *l)
-{
+static int audiostream_isLooping(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	lua_pushboolean(l, sound->looping || sound->loop_count > 0);
 	return 1;
 }
 
-static int audiostream_getLoopCount(lua_State *l)
-{
+static int audiostream_getLoopCount(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	if (sound->looping) {
 		// push math.huge (inf)
@@ -668,8 +647,7 @@ static int audiostream_getLoopCount(lua_State *l)
 	return 1;
 }
 
-static int audiostream_fadeTo(lua_State *l)
-{
+static int audiostream_fadeTo(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	float volume = luaL_checknumber(l, 2);
 	float time = luaL_optnumber(l, 3, 1);
@@ -680,8 +658,7 @@ static int audiostream_fadeTo(lua_State *l)
 	return 0;
 }
 
-static int audiostream_fadeOut(lua_State *l)
-{
+static int audiostream_fadeOut(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	float time = luaL_optnumber(l, 2, 1);
 	sound->fade_frames = AUDIO_SAMPLE_RATE * time;
@@ -692,16 +669,14 @@ static int audiostream_fadeOut(lua_State *l)
 	return 0;
 }
 
-static int audiostream_gc(lua_State *l)
-{
+static int audiostream_gc(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	sf_close(sound->file);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_AUDIOSTREAM, sound);
 	return 0;
 }
 
-static int audiostream_tostring(lua_State *l)
-{
+static int audiostream_tostring(lua_State *l) {
 	lua_pushfstring(l, "%s: %p", METATABLE_AUDIOSTREAM, lua_topointer(l, 1));
 	return 1;
 }

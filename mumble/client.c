@@ -29,15 +29,13 @@ static void mumble_client_check(lua_State *l, bool connected, const char *status
 	}
 }
 
-static MumbleClient* mumble_client_connecting(lua_State *l, int index)
-{
+static MumbleClient* mumble_client_connecting(lua_State *l, int index) {
 	MumbleClient *client = luaL_checkudata(l, index, METATABLE_CLIENT);
 	mumble_client_check(l, client->connecting, "connecting");
 	return client;
 }
 
-static MumbleClient* mumble_client_connected(lua_State *l, int index)
-{
+static MumbleClient* mumble_client_connected(lua_State *l, int index) {
 	MumbleClient *client = luaL_checkudata(l, index, METATABLE_CLIENT);
 
 	const char* status;
@@ -52,8 +50,7 @@ static MumbleClient* mumble_client_connected(lua_State *l, int index)
 	return client;
 }
 
-static int client_auth(lua_State *l)
-{
+static int client_auth(lua_State *l) {
 	MumbleClient *client = mumble_client_connected(l, 1);
 
 	MumbleProto__Version version = MUMBLE_PROTO__VERSION__INIT;
@@ -79,7 +76,7 @@ static int client_auth(lua_State *l)
 		int i = 0;
 		auth.n_tokens = lua_objlen(l, 4);
 		auth.tokens = malloc(sizeof(char*) * auth.n_tokens);
-		
+
 		if (auth.tokens == NULL)
 			return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
@@ -113,8 +110,7 @@ static int client_auth(lua_State *l)
 	return 0;
 }
 
-static int client_setTokens(lua_State *l)
-{
+static int client_setTokens(lua_State *l) {
 	MumbleClient *client = mumble_client_connected(l, 1);
 
 	MumbleProto__Authenticate auth = MUMBLE_PROTO__AUTHENTICATE__INIT;
@@ -127,7 +123,7 @@ static int client_setTokens(lua_State *l)
 	int i = 0;
 	auth.n_tokens = lua_objlen(l, 2);
 	auth.tokens = malloc(sizeof(char*) * auth.n_tokens);
-	
+
 	if (auth.tokens == NULL)
 		return luaL_error(l, "failed to malloc: %s", strerror(errno));
 
@@ -144,29 +140,25 @@ static int client_setTokens(lua_State *l)
 	return 0;
 }
 
-static int client_disconnect(lua_State *l)
-{
+static int client_disconnect(lua_State *l) {
 	MumbleClient *client = mumble_client_connecting(l, 1);
 	mumble_disconnect(l, client, "connection closed by client", false);
 	return 0;
 }
 
-static int client_isConnected(lua_State *l)
-{
+static int client_isConnected(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_pushboolean(l, client->connected);
 	return 1;
 }
 
-static int client_isSynced(lua_State *l)
-{
+static int client_isSynced(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_pushboolean(l, client->synced);
 	return 1;
 }
 
-static int client_requestBanList(lua_State *l)
-{
+static int client_requestBanList(lua_State *l) {
 	MumbleClient *client = mumble_client_connected(l, 1);
 
 	MumbleProto__BanList list = MUMBLE_PROTO__BAN_LIST__INIT;
@@ -176,8 +168,7 @@ static int client_requestBanList(lua_State *l)
 	return 0;
 }
 
-static int client_requestUserList(lua_State *l)
-{
+static int client_requestUserList(lua_State *l) {
 	MumbleClient *client = mumble_client_connected(l, 1);
 
 	MumbleProto__UserList list = MUMBLE_PROTO__USER_LIST__INIT;
@@ -185,8 +176,7 @@ static int client_requestUserList(lua_State *l)
 	return 0;
 }
 
-static int client_sendPluginData(lua_State *l)
-{
+static int client_sendPluginData(lua_State *l) {
 	MumbleClient *client = mumble_client_connected(l, 1);
 
 	// Initialize the data to be sent
@@ -324,8 +314,7 @@ static int client_transmit(lua_State *l) {
 	return 0;
 }
 
-static int client_openAudio(lua_State *l)
-{
+static int client_openAudio(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	const char* filepath	= luaL_checkstring(l, 2);
 	float volume			= (float) luaL_optnumber(l, 3, 1);
@@ -342,7 +331,7 @@ static int client_openAudio(lua_State *l)
 	sound->loop_count = 0;
 	sound->volume = volume;
 	sound->fade_volume = 1.0f,
-	sound->fade_frames = 0;
+	       sound->fade_frames = 0;
 	sound->fade_frames_left = 0;
 	sound->fade_stop = false;
 
@@ -355,8 +344,7 @@ static int client_openAudio(lua_State *l)
 	return 1;
 }
 
-static int client_getAudioStreams(lua_State *l)
-{
+static int client_getAudioStreams(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	mumble_pushref(l, client->audio_streams);
 	return 1;
@@ -370,20 +358,20 @@ static int client_setAudioPacketSize(lua_State *l) {
 	int frames;
 
 	switch (size) {
-		case AUDIO_FRAME_SIZE_TINY:
-			frames = AUDIO_FRAME_SIZE_TINY;
-			break;
-		case AUDIO_FRAME_SIZE_SMALL:
-			frames = AUDIO_FRAME_SIZE_SMALL;
-			break;
-		case AUDIO_FRAME_SIZE_MEDIUM:
-			frames = AUDIO_FRAME_SIZE_MEDIUM;
-			break;
-		case AUDIO_FRAME_SIZE_LARGE:
-			frames = AUDIO_FRAME_SIZE_LARGE;
-			break;
-		default:
-			return luaL_error(l, "invalid value \"%d\" (must be one the following values: 10, 20, 40, 60)", size);
+	case AUDIO_FRAME_SIZE_TINY:
+		frames = AUDIO_FRAME_SIZE_TINY;
+		break;
+	case AUDIO_FRAME_SIZE_SMALL:
+		frames = AUDIO_FRAME_SIZE_SMALL;
+		break;
+	case AUDIO_FRAME_SIZE_MEDIUM:
+		frames = AUDIO_FRAME_SIZE_MEDIUM;
+		break;
+	case AUDIO_FRAME_SIZE_LARGE:
+		frames = AUDIO_FRAME_SIZE_LARGE;
+		break;
+	default:
+		return luaL_error(l, "invalid value \"%d\" (must be one the following values: 10, 20, 40, 60)", size);
 	}
 
 	client->audio_frames = frames;
@@ -402,24 +390,21 @@ static int client_getAudioPacketSize(lua_State *l) {
 	return 1;
 }
 
-static int client_setVolume(lua_State *l)
-{
+static int client_setVolume(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	client->volume = luaL_checknumber(l, 2);
 	return 0;
 }
 
-static int client_getVolume(lua_State *l)
-{
+static int client_getVolume(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_pushnumber(l, client->volume);
 	return 1;
 }
 
-static int client_setComment(lua_State *l)
-{
+static int client_setComment(lua_State *l) {
 	MumbleClient *client = mumble_client_connected(l, 1);
-	
+
 	MumbleProto__UserState msg = MUMBLE_PROTO__USER_STATE__INIT;
 
 	msg.has_session = true;
@@ -431,19 +416,18 @@ static int client_setComment(lua_State *l)
 	return 0;
 }
 
-static int client_hook(lua_State *l)
-{
+static int client_hook(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
-	const char* hook = luaL_checkstring(l,2);
+	const char* hook = luaL_checkstring(l, 2);
 	const char* name = "hook";
 
 	int funcIndex = 3;
 
 	if (lua_isfunction(l, 3) == 0) {
 		// If the callback isn't in argument #3, assume that this is the custom hook name instead
-		hook = luaL_checkstring(l,2);
-		name = lua_tostring(l,3);
+		hook = luaL_checkstring(l, 2);
+		name = lua_tostring(l, 3);
 		funcIndex = 4;
 	}
 
@@ -471,8 +455,7 @@ static int client_hook(lua_State *l)
 	return 0;
 }
 
-static int client_unhook(lua_State *l)
-{
+static int client_unhook(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
 	const char *hook = luaL_checkstring(l, 2);
@@ -507,31 +490,27 @@ static int client_unhook(lua_State *l)
 	return 0;
 }
 
-static int client_call(lua_State *l)
-{
+static int client_call(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	const char* hook = luaL_checkstring(l, 2);
 	int nargs = lua_gettop(l) - 2;
 	return mumble_hook_call_ret(l, client, hook, nargs, LUA_MULTRET);
 }
 
-static int client_getHooks(lua_State *l)
-{
+static int client_getHooks(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	mumble_pushref(l, client->hooks);
 	return 1;
 }
 
-static int client_getUsers(lua_State *l)
-{
+static int client_getUsers(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	LinkNode* current = client->user_list;
 
 	lua_newtable(l);
 	int i = 1;
 
-	while (current != NULL)
-	{
+	while (current != NULL) {
 		lua_pushinteger(l, i++);
 		mumble_user_raw_get(l, client, current->index);
 		lua_settable(l, -3);
@@ -540,16 +519,14 @@ static int client_getUsers(lua_State *l)
 	return 1;
 }
 
-static int client_getChannels(lua_State *l)
-{
+static int client_getChannels(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	LinkNode* current = client->channel_list;
 
 	lua_newtable(l);
 	int i = 1;
 
-	while (current != NULL)
-	{
+	while (current != NULL) {
 		lua_pushinteger(l, i++);
 		mumble_channel_raw_get(l, client, current->index);
 		lua_settable(l, -3);
@@ -558,8 +535,7 @@ static int client_getChannels(lua_State *l)
 	return 1;
 }
 
-static int client_getChannel(lua_State *l)
-{
+static int client_getChannel(lua_State *l) {
 	MumbleClient *client = mumble_client_connecting(l, 1);
 	//char* path = (char*) luaL_checkstring(l, 2);
 
@@ -584,7 +560,7 @@ static int client_getChannel(lua_State *l)
 		local root = channels[0]						-- lua_gettable(l, -2);
 
 		channels = nil									-- lua_remove(l, -2)
-		
+
 		if root ~= nil then								-- if (lua_isnoneornil(l, -1) == 0) {
 			client = root								-- 	lua_replace(l, 1);
 			return channel_call(client, path)			-- 	return channel_call(l);
@@ -595,8 +571,7 @@ static int client_getChannel(lua_State *l)
 	return 0;
 }
 
-static int client_registerVoiceTarget(lua_State *l)
-{
+static int client_registerVoiceTarget(lua_State *l) {
 	MumbleClient *client = mumble_client_connected(l, 1);
 
 	MumbleProto__VoiceTarget msg = MUMBLE_PROTO__VOICE_TARGET__INIT;
@@ -659,57 +634,49 @@ static int client_registerVoiceTarget(lua_State *l)
 }
 
 
-static int client_setVoiceTarget(lua_State *l)
-{
+static int client_setVoiceTarget(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	client->audio_target = luaL_optinteger(l, 2, 0);
 	return 0;
 }
 
-static int client_getVoiceTarget(lua_State *l)
-{
+static int client_getVoiceTarget(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_pushinteger(l, client->audio_target);
 	return 1;
 }
 
-static int client_getEncoder(lua_State *l)
-{
+static int client_getEncoder(lua_State *l) {
 	MumbleClient *client = mumble_client_connecting(l, 1);
 	mumble_pushref(l, client->encoder_ref);
 	return 1;
 }
 
-static int client_getPing(lua_State *l)
-{
+static int client_getPing(lua_State *l) {
 	MumbleClient *client = mumble_client_connecting(l, 1);
 	lua_pushnumber(l, client->tcp_ping_avg);
 	return 1;
 }
 
-static int client_getUpTime(lua_State *l)
-{
+static int client_getUpTime(lua_State *l) {
 	MumbleClient *client = mumble_client_connecting(l, 1);
 	lua_pushnumber(l, gettime(CLOCK_MONOTONIC) - client->time);
 	return 1;
 }
 
-static int client_getHost(lua_State *l)
-{
+static int client_getHost(lua_State *l) {
 	MumbleClient *client = mumble_client_connecting(l, 1);
 	lua_pushstring(l, client->host);
 	return 1;
 }
 
-static int client_getPort(lua_State *l)
-{
+static int client_getPort(lua_State *l) {
 	MumbleClient *client = mumble_client_connecting(l, 1);
 	lua_pushinteger(l, client->port);
 	return 1;
 }
 
-static int client_getAddress(lua_State *l)
-{
+static int client_getAddress(lua_State *l) {
 	MumbleClient *client = mumble_client_connecting(l, 1);
 
 	char address[INET6_ADDRSTRLEN];
@@ -724,8 +691,7 @@ static int client_getAddress(lua_State *l)
 	return 1;
 }
 
-static int client_requestTextureBlob(lua_State *l)
-{
+static int client_requestTextureBlob(lua_State *l) {
 	MumbleClient *client = mumble_client_connected(l, 1);
 
 	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
@@ -785,8 +751,7 @@ static int client_requestTextureBlob(lua_State *l)
 	return 0;
 }
 
-static int client_requestCommentBlob(lua_State *l)
-{
+static int client_requestCommentBlob(lua_State *l) {
 	MumbleClient *client = mumble_client_connected(l, 1);
 	luaL_checktype(l, 2, LUA_TTABLE);
 
@@ -847,8 +812,7 @@ static int client_requestCommentBlob(lua_State *l)
 	return 0;
 }
 
-static int client_requestDescriptionBlob(lua_State *l)
-{
+static int client_requestDescriptionBlob(lua_State *l) {
 	MumbleClient *client = mumble_client_connected(l, 1);
 	luaL_checktype(l, 2, LUA_TTABLE);
 
@@ -909,8 +873,7 @@ static int client_requestDescriptionBlob(lua_State *l)
 	return 0;
 }
 
-static int client_createChannel(lua_State *l)
-{
+static int client_createChannel(lua_State *l) {
 	MumbleClient *client = mumble_client_connected(l, 1);
 
 	MumbleProto__ChannelState msg = MUMBLE_PROTO__CHANNEL_STATE__INIT;
@@ -926,22 +889,25 @@ static int client_createChannel(lua_State *l)
 	return 0;
 }
 
-static int client_getMe(lua_State *l)
-{
+static int client_getAudioStreamBuffer(lua_State *l) {
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	mumble_pushref(l, client->audio_pipe_ref);
+	return 1;
+}
+
+static int client_getMe(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	mumble_user_raw_get(l, client, client->session);
 	return 1;
 }
 
-static int client_isTunnelingUDP(lua_State *l)
-{
+static int client_isTunnelingUDP(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	lua_pushboolean(l, client->tcp_udp_tunnel);
 	return 1;
 }
 
-static int client_gc(lua_State *l)
-{
+static int client_gc(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	mumble_disconnect(l, client, "garbage collected", true);
 
@@ -951,13 +917,12 @@ static int client_gc(lua_State *l)
 	mumble_unref(l, client->audio_streams);
 	mumble_unref(l, client->encoder_ref);
 	mumble_unref(l, client->audio_pipe_ref);
-	
+
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_CLIENT, client);
 	return 0;
 }
 
-static int client_tostring(lua_State *l)
-{
+static int client_tostring(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	if (client->connecting) {
 		lua_pushfstring(l, "%s [%d][\"%s:%d\"] %p", METATABLE_CLIENT, client->self, client->host, client->port, client);
@@ -967,8 +932,7 @@ static int client_tostring(lua_State *l)
 	return 1;
 }
 
-static int client_index(lua_State *l)
-{
+static int client_index(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 
 	if (strcmp(lua_tostring(l, 2), "me") == 0 && client->session) {
@@ -1027,6 +991,7 @@ const luaL_Reg mumble_client[] = {
 	{"requestCommentBlob", client_requestCommentBlob},
 	{"requestDescriptionBlob", client_requestDescriptionBlob},
 	{"createChannel", client_createChannel},
+	{"getAudioStreamBuffer", client_getAudioStreamBuffer},
 	{"getMe", client_getMe},
 	{"getSelf", client_getMe},
 	{"isTunnelingUDP", client_isTunnelingUDP},

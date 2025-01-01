@@ -355,7 +355,8 @@ static int thread_controller_send(lua_State *l)
 		case LUA_TUSERDATA:
 			ByteBuffer *buffer = luaL_checkudata(l, 2, METATABLE_BUFFER);
 			pthread_mutex_lock(&worker->mutex);
-			queue_push(worker->message_queue, strndup(buffer->data, buffer->limit), buffer->limit);
+			size_t length = buffer_length(buffer);;
+			queue_push(worker->message_queue, strndup(buffer->data + buffer->read_head, length), length);
 			pthread_mutex_unlock(&worker->mutex);
 			break;
 		default:
@@ -441,7 +442,8 @@ static int thread_worker_send(lua_State *l)
 		case LUA_TUSERDATA:
 			ByteBuffer *buffer = luaL_checkudata(l, 2, METATABLE_BUFFER);
 			pthread_mutex_lock(&controller->mutex);
-			queue_push(controller->message_queue, strndup(buffer->data, buffer->limit), buffer->limit);
+			size_t length = buffer_length(buffer);
+			queue_push(controller->message_queue, strndup(buffer->data + buffer->read_head, length), length);
 			pthread_mutex_unlock(&controller->mutex);
 			break;
 		default:
