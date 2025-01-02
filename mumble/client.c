@@ -323,7 +323,7 @@ static int client_openAudio(lua_State *l) {
 	luaL_getmetatable(l, METATABLE_AUDIOSTREAM);
 	lua_setmetatable(l, -2);
 
-	sound->file = sf_open(filepath, SFM_READ, &sound->info);;
+	sound->file = sf_open(filepath, SFM_READ, &sound->info);
 	sound->client = client;
 	sound->playing = false;
 	sound->looping = false;

@@ -853,12 +853,6 @@ Number bandwidth = mumble.decoder:getBandwidth()
 -- Equivalent to OPUS_GET_SAMPLE_RATE
 Number samplerate = mumble.decoder:getSamplerate()
 
--- Set the bitrate that the decoder will use
-mumble.decoder:setBitRate(Number bitrate)
-
--- Get the bitrate that the decoder is using
-Number bitrate = mumble.decoder:getBitRate()
-
 -- Decode an opus audio packet into raw PCM data
 String decoded = mumble.decoder:decode(String encoded)
 
@@ -1243,6 +1237,48 @@ Table event = {
 	["samples_per_frame"] = Number samples_per_frame,	-- How many samples per frame this opus packet has.
 }
 ```
+
+Audio loopback example
+
+```lua
+local audiostream = client:getAudioStreamBuffer()
+local decoder = mumble.decoder()
+local echoing
+local option = 1
+
+client:hook("OnUserSpeak", function(client, event)
+	-- Ignore ourself
+	if client.me == event.user then return end
+
+	-- Only one person can be echoed at a time, so first come first serve
+	if not echoing then
+		-- We have two ways to echo voice data back
+
+		if option == 1 then
+
+			-- Option 1
+			-- Decode the audio data and write it to our audiostream.
+			-- This will be properly mixed with any audio streams that are playing. (via client:openAudio("sound.mp3"):play())
+			-- You could theretically add support for multiple people with this,
+			-- but you would have to mix the decoded PCM data together before writing.
+			local decoded = decoder:decodeFloat(event.data)
+			audiostream:write(decoded)
+
+		else if option == 2 then
+
+			-- Option 2
+			-- Transmit the encoded data back directly.
+			-- This will not sound right if any audio streams are playing. (via client:openAudio("sound.mp3"):play())
+			client:transmit(event.codec, event.data, event.speaking)
+
+		end
+
+		-- Keep echoing until the user stops speaking
+		echoing = speaking and event.user or nil
+	end
+end)
+```
+
 ___
 
 ### `OnBanList (mumble.client client, Table banlist)`
@@ -1542,19 +1578,9 @@ ___
 
 ### `OnAudioStream (mumble.client client, Number samplerate, Number channels, Number frames)`
 
-Audio loopback example
+Called just before any playing audio streams are encoded and transmitted.
 
-```lua
-local audiostream = client:getAudioStreamBuffer()
-
-client:hook("OnUserSpeak", function(client, event)
-	if client.me == event.user then return end
-	-- Loopback whatever anyone says
-	audiostream:write(decoder:decode_float(event.data))
-end)
-```
-
-Sinwave tone
+Sinwave tone example
 
 ```lua
 local samples = 0

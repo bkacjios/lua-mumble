@@ -1,5 +1,6 @@
 #pragma once
 
+#include "types.h"
 #include <lauxlib.h>
 #include <stdint.h>
 

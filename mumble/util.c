@@ -3,16 +3,14 @@
 
 #include <ctype.h>
 
-double gettime(clockid_t mode)
-{
+double gettime(clockid_t mode) {
 	struct timespec time;
 	clock_gettime(mode, &time);
 	return time.tv_sec + time.tv_nsec / 1.0e9;
 }
 
-void bin_to_strhex(char *bin, size_t binsz, char **result)
-{
-	char hex_str[]= "0123456789abcdef";
+void bin_to_strhex(char *bin, size_t binsz, char **result) {
+	char hex_str[] = "0123456789abcdef";
 	size_t i;
 
 	*result = (char *)malloc(binsz * 2 + 1);
@@ -21,15 +19,13 @@ void bin_to_strhex(char *bin, size_t binsz, char **result)
 	if (!binsz)
 		return;
 
-	for (i = 0; i < binsz; i++)
-	{
+	for (i = 0; i < binsz; i++) {
 		(*result)[i * 2 + 0] = hex_str[(bin[i] >> 4) & 0x0F];
 		(*result)[i * 2 + 1] = hex_str[(bin[i]     ) & 0x0F];
 	}
 }
 
-static void iterate_and_print(lua_State *L, int index)
-{
+static void iterate_and_print(lua_State *L, int index) {
 	// Push another reference to the table on top of the stack (so we know
 	// where it is, and this function can work for negative, positive and
 	// pseudo indices
@@ -37,8 +33,7 @@ static void iterate_and_print(lua_State *L, int index)
 	// stack now contains: -1 => table
 	lua_pushnil(L);
 	// stack now contains: -1 => nil; -2 => table
-	while (lua_next(L, -2))
-	{
+	while (lua_next(L, -2)) {
 		// stack now contains: -1 => value; -2 => key; -3 => table
 		// copy the key so that lua_tostring does not modify the original
 		lua_pushvalue(L, -2);
@@ -61,21 +56,21 @@ void print_unescaped(const char* ptr, int len) {
 	if (!ptr) return;
 	for (int i = 0; i < len; i++, ptr++) {
 		switch (*ptr) {
-			case '\0': printf("\\0");  break;
-			case '\a': printf("\\a");  break;
-			case '\b': printf("\\b");  break;
-			case '\f': printf("\\f");  break;
-			case '\n': printf("\\n");  break;
-			case '\r': printf("\\r");  break;
-			case '\t': printf("\\t");  break;
-			case '\v': printf("\\v");  break;
-			case '\\': printf("\\\\"); break;
-			case '\?': printf("\\\?"); break;
-			case '\'': printf("\\\'"); break;
-			case '\"': printf("\\\""); break;
-			default:
-				if (isprint(*ptr)) printf("%c",     *ptr);
-				else               printf("\\%03o", *ptr);
+		case '\0': printf("\\0");  break;
+		case '\a': printf("\\a");  break;
+		case '\b': printf("\\b");  break;
+		case '\f': printf("\\f");  break;
+		case '\n': printf("\\n");  break;
+		case '\r': printf("\\r");  break;
+		case '\t': printf("\\t");  break;
+		case '\v': printf("\\v");  break;
+		case '\\': printf("\\\\"); break;
+		case '\?': printf("\\\?"); break;
+		case '\'': printf("\\\'"); break;
+		case '\"': printf("\\\""); break;
+		default:
+			if (isprint(*ptr)) printf("%c",     *ptr);
+			else               printf("\\%03o", *ptr);
 		}
 	}
 }
@@ -162,32 +157,29 @@ void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level) {
 }
 #endif
 
-void luaL_debugstack(lua_State *l, const char* text)
-{
+void luaL_debugstack(lua_State *l, const char* text) {
 	mumble_log(LOG_DEBUG, "%s stack dump", text);
-	for (int i=1; i<=lua_gettop(l); i++)
-	{
+	for (int i = 1; i <= lua_gettop(l); i++) {
 		int t = lua_type(l, i);
 		size_t len;
 		const char* tname = lua_typename(l, t);
 		switch (t) {
-			case LUA_TSTRING:  /* strings */
-			{
-				const char* str = lua_tolstring(l, i, &len);
-				printf("\t%d - %s[\"", i, tname);
-				print_unescaped(str, len);
-				printf("\"]" NEWLINE, i, tname, lua_tostring(l, i));
-				break;
-			}
-			case LUA_TBOOLEAN:  /* booleans */
-				printf("\t%d - %s[%s]" NEWLINE, i, tname, lua_toboolean(l, i) ? "true" : "false");
-				break;
-			case LUA_TNUMBER:  /* numbers */
-				printf("\t%d - %s[%g]" NEWLINE, i, tname, lua_tonumber(l, i));
-				break;
-			default:  /* other values */
-				printf("\t%d - %s[%p]" NEWLINE, i, tname, lua_topointer(l, i));
-				break;
+		case LUA_TSTRING: { /* strings */
+			const char* str = lua_tolstring(l, i, &len);
+			printf("\t%d - %s[\"", i, tname);
+			print_unescaped(str, len);
+			printf("\"]" NEWLINE, i, tname, lua_tostring(l, i));
+			break;
+		}
+		case LUA_TBOOLEAN:  /* booleans */
+			printf("\t%d - %s[%s]" NEWLINE, i, tname, lua_toboolean(l, i) ? "true" : "false");
+			break;
+		case LUA_TNUMBER:  /* numbers */
+			printf("\t%d - %s[%g]" NEWLINE, i, tname, lua_tonumber(l, i));
+			break;
+		default:  /* other values */
+			printf("\t%d - %s[%p]" NEWLINE, i, tname, lua_topointer(l, i));
+			break;
 		}
 	}
 }
@@ -202,20 +194,20 @@ int luaL_typerror_table(lua_State *L, int narg, int nkey, int nvalue, const char
 	return luaL_argerror(L, narg, msg);
 }
 
-int luaL_checkfunction(lua_State *L, int i){
-	if(!lua_isfunction(L,i))
-		luaL_typerror(L,i,lua_typename(L,LUA_TFUNCTION));
-	return lua_isfunction(L,i);
+int luaL_checkfunction(lua_State *L, int i) {
+	if (!lua_isfunction(L, i))
+		luaL_typerror(L, i, lua_typename(L, LUA_TFUNCTION));
+	return lua_isfunction(L, i);
 }
 
-int luaL_checkboolean(lua_State *L, int i){
-	if(!lua_isboolean(L,i))
-		luaL_typerror(L,i,lua_typename(L,LUA_TBOOLEAN));
-	return lua_toboolean(L,i);
+int luaL_checkboolean(lua_State *L, int i) {
+	if (!lua_isboolean(L, i))
+		luaL_typerror(L, i, lua_typename(L, LUA_TBOOLEAN));
+	return lua_toboolean(L, i);
 }
 
-int luaL_optboolean(lua_State *L, int i, int d){
-	if(lua_type(L, i) < 1)
+int luaL_optboolean(lua_State *L, int i, int d) {
+	if (lua_type(L, i) < 1)
 		return d;
 	else
 		return luaL_checkboolean(L, i);
@@ -277,12 +269,11 @@ QueueNode* queue_pop(LinkQueue *queue) {
 	return node;
 }
 
-/* Function to add a node at the beginning of Linked List. 
-	This function expects a pointer to the data to be added 
+/* Function to add a node at the beginning of Linked List.
+	This function expects a pointer to the data to be added
 	and size of the data type */
 
-void list_add(LinkNode** head_ref, uint32_t index, void *data)
-{
+void list_add(LinkNode** head_ref, uint32_t index, void *data) {
 	LinkNode* new_node = malloc(sizeof(LinkNode));
 
 	new_node->index = index;
@@ -292,13 +283,11 @@ void list_add(LinkNode** head_ref, uint32_t index, void *data)
 	(*head_ref) = new_node;
 }
 
-void list_remove(LinkNode **head_ref, uint32_t index)
-{
+void list_remove(LinkNode **head_ref, uint32_t index) {
 	LinkNode* temp = *head_ref, *prev;
 
 	// If head node itself holds the key to be deleted
-	if (temp != NULL && temp->index == index)
-	{
+	if (temp != NULL && temp->index == index) {
 		*head_ref = temp->next;   // Changed head
 		free(temp);               // free old head
 		return;
@@ -306,29 +295,26 @@ void list_remove(LinkNode **head_ref, uint32_t index)
 
 	// Search for the key to be deleted, keep track of the
 	// previous node as we need to change 'prev->next'
-	while (temp != NULL && temp->index != index)
-	{
+	while (temp != NULL && temp->index != index) {
 		prev = temp;
 		temp = temp->next;
 	}
 
-	// If key was not present in linked list 
+	// If key was not present in linked list
 	if (temp == NULL) return;
 
-	// Unlink the node from linked list 
+	// Unlink the node from linked list
 	prev->next = temp->next;
 
 	free(temp);               // free old head
 }
 
-void list_clear(LinkNode** head_ref)
-{
+void list_clear(LinkNode** head_ref) {
 	/* deref head_ref to get the real head */
 	LinkNode* current = *head_ref;
 	LinkNode* next;
 
-	while (current != NULL)
-	{
+	while (current != NULL) {
 		next = current->next;
 		free(current);
 		current = next;
@@ -339,14 +325,12 @@ void list_clear(LinkNode** head_ref)
 	*head_ref = NULL;
 }
 
-size_t list_count(LinkNode** head_ref)
-{
+size_t list_count(LinkNode** head_ref) {
 	size_t count = 0;
 
 	LinkNode* current = *head_ref;
 
-	while (current != NULL)
-	{
+	while (current != NULL) {
 		count++;
 		current = current->next;
 	}

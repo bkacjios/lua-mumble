@@ -10,14 +10,13 @@
 	MUMBLE USER META METHODS
 --------------------------------*/
 
-static int user_message(lua_State *l)
-{
+static int user_message(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
 	MumbleProto__TextMessage msg = MUMBLE_PROTO__TEXT_MESSAGE__INIT;
 
 	msg.message = (char*) luaL_checkstring(l, 2);
-	
+
 	msg.n_session = 1;
 	msg.session = malloc(sizeof(uint32_t) * msg.n_session);
 
@@ -31,8 +30,7 @@ static int user_message(lua_State *l)
 	return 0;
 }
 
-static int user_kick(lua_State *l)
-{
+static int user_kick(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
 	MumbleProto__UserRemove msg = MUMBLE_PROTO__USER_REMOVE__INIT;
@@ -47,8 +45,7 @@ static int user_kick(lua_State *l)
 	return 0;
 }
 
-static int user_ban(lua_State *l)
-{
+static int user_ban(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
 	MumbleProto__UserRemove msg = MUMBLE_PROTO__USER_REMOVE__INIT;
@@ -66,8 +63,7 @@ static int user_ban(lua_State *l)
 	return 0;
 }
 
-static int user_move(lua_State *l)
-{
+static int user_move(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	MumbleChannel *channel = luaL_checkudata(l, 2, METATABLE_CHAN);
 
@@ -75,7 +71,7 @@ static int user_move(lua_State *l)
 
 	msg.has_session = true;
 	msg.session = user->session;
-	
+
 	msg.has_channel_id = true;
 	msg.channel_id = channel->channel_id;
 
@@ -83,8 +79,7 @@ static int user_move(lua_State *l)
 	return 0;
 }
 
-static int user_setMuted(lua_State *l)
-{
+static int user_setMuted(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
 	MumbleProto__UserState msg = MUMBLE_PROTO__USER_STATE__INIT;
@@ -99,10 +94,9 @@ static int user_setMuted(lua_State *l)
 	return 0;
 }
 
-static int user_setDeaf(lua_State *l)
-{
+static int user_setDeaf(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
-	
+
 	MumbleProto__UserState msg = MUMBLE_PROTO__USER_STATE__INIT;
 
 	msg.has_session = true;
@@ -110,7 +104,7 @@ static int user_setDeaf(lua_State *l)
 
 	msg.has_mute = true;
 	msg.mute = lua_toboolean(l, 2);
-	
+
 	msg.has_deaf = true;
 	msg.deaf = lua_toboolean(l, 2);
 
@@ -118,10 +112,9 @@ static int user_setDeaf(lua_State *l)
 	return 0;
 }
 
-static int user_register(lua_State *l)
-{
+static int user_register(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
-	
+
 	MumbleProto__UserState msg = MUMBLE_PROTO__USER_STATE__INIT;
 	msg.has_user_id = true;
 	msg.user_id = 0;
@@ -133,8 +126,7 @@ static int user_register(lua_State *l)
 	return 0;
 }
 
-static int user_request_stats(lua_State *l)
-{
+static int user_request_stats(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
 	MumbleProto__UserStats msg = MUMBLE_PROTO__USER_STATS__INIT;
@@ -148,92 +140,79 @@ static int user_request_stats(lua_State *l)
 	return 0;
 }
 
-static int user_getClient(lua_State *l)
-{
+static int user_getClient(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	mumble_client_raw_get(l, user->client);
 	return 1;
 }
 
-static int user_getSession(lua_State *l)
-{
+static int user_getSession(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushinteger(l, user->session);
 	return 1;
 }
 
-static int user_getName(lua_State *l)
-{
+static int user_getName(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushstring(l, user->name);
 	return 1;
 }
 
-static int user_getChannel(lua_State *l)
-{
+static int user_getChannel(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	mumble_channel_raw_get(l, user->client, user->channel_id);
 	return 1;
 }
 
-static int user_getId(lua_State *l)
-{
+static int user_getId(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushinteger(l, user->user_id);
 	return 1;
 }
 
-static int user_isRegistered(lua_State *l)
-{
+static int user_isRegistered(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushboolean(l, user->user_id > 0);
 	return 1;
 }
 
-static int user_isMute(lua_State *l)
-{
+static int user_isMute(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushboolean(l, user->mute);
 	return 1;
 }
 
-static int user_isDeaf(lua_State *l)
-{
+static int user_isDeaf(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushboolean(l, user->deaf);
 	return 1;
 }
 
-static int user_isSelfMute(lua_State *l)
-{
+static int user_isSelfMute(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushboolean(l, user->self_mute);
 	return 1;
 }
 
-static int user_isSelfDeaf(lua_State *l)
-{
+static int user_isSelfDeaf(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushboolean(l, user->self_deaf);
 	return 1;
 }
 
-static int user_isSuppressed(lua_State *l)
-{
+static int user_isSuppressed(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushboolean(l, user->suppress);
 	return 1;
 }
 
-static int user_getComment(lua_State *l)
-{
+static int user_getComment(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushstring(l, user->comment);
 	return 1;
 }
 
-static int user_getCommentHash(lua_State *l)
-{
+static int user_getCommentHash(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	char* result;
 	bin_to_strhex(user->comment_hash, user->comment_hash_len, &result);
@@ -242,36 +221,31 @@ static int user_getCommentHash(lua_State *l)
 	return 1;
 }
 
-static int user_isSpeaking(lua_State *l)
-{
+static int user_isSpeaking(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushboolean(l, user->speaking);
 	return 1;
 }
 
-static int user_isRecording(lua_State *l)
-{
+static int user_isRecording(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushboolean(l, user->recording);
 	return 1;
 }
 
-static int user_isPrioritySpeaker(lua_State *l)
-{
+static int user_isPrioritySpeaker(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushboolean(l, user->priority_speaker);
 	return 1;
 }
 
-static int user_getTexture(lua_State *l)
-{
+static int user_getTexture(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushstring(l, user->texture);
 	return 1;
 }
 
-static int user_getTextureHash(lua_State *l)
-{
+static int user_getTextureHash(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	char* result;
 	bin_to_strhex(user->texture_hash, user->texture_hash_len, &result);
@@ -280,22 +254,20 @@ static int user_getTextureHash(lua_State *l)
 	return 1;
 }
 
-static int user_getHash(lua_State *l)
-{
+static int user_getHash(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushstring(l, user->hash);
 	return 1;
 }
 
-static int user_setTexture(lua_State *l)
-{
+static int user_setTexture(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
 	MumbleProto__UserState msg = MUMBLE_PROTO__USER_STATE__INIT;
 
 	msg.has_session = true;
 	msg.session = user->session;
-	
+
 	msg.has_texture = true;
 	msg.texture.data = (uint8_t *) luaL_checklstring(l, 2, &msg.texture.len);
 
@@ -303,15 +275,13 @@ static int user_setTexture(lua_State *l)
 	return 0;
 }
 
-static int user_tostring(lua_State *l)
-{	
+static int user_tostring(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	lua_pushfstring(l, "%s [%d][\"%s\"] %p", METATABLE_USER, user->session, user->name, user);
 	return 1;
 }
 
-static int user_listen(lua_State *l)
-{
+static int user_listen(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
 	MumbleProto__UserState msg = MUMBLE_PROTO__USER_STATE__INIT;
@@ -374,8 +344,7 @@ static int user_listen(lua_State *l)
 	return 0;
 }
 
-static int user_unlisten(lua_State *l)
-{
+static int user_unlisten(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
 	MumbleProto__UserState msg = MUMBLE_PROTO__USER_STATE__INIT;
@@ -438,8 +407,7 @@ static int user_unlisten(lua_State *l)
 	return 0;
 }
 
-static int user_isListening(lua_State *l)
-{
+static int user_isListening(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	MumbleChannel *channel = luaL_checkudata(l, 2, METATABLE_CHAN);
 
@@ -457,8 +425,7 @@ static int user_isListening(lua_State *l)
 	return 1;
 }
 
-static int user_getListens(lua_State *l)
-{
+static int user_getListens(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
 	lua_newtable(l);
@@ -476,8 +443,7 @@ static int user_getListens(lua_State *l)
 	return 1;
 }
 
-static int user_sendPluginData(lua_State *l)
-{
+static int user_sendPluginData(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
 	MumbleProto__PluginDataTransmission data = MUMBLE_PROTO__PLUGIN_DATA_TRANSMISSION__INIT;
@@ -506,8 +472,7 @@ static int user_sendPluginData(lua_State *l)
 	return 0;
 }
 
-static int user_requestTextureBlob(lua_State *l)
-{
+static int user_requestTextureBlob(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
 	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
@@ -525,8 +490,7 @@ static int user_requestTextureBlob(lua_State *l)
 	return 0;
 }
 
-static int user_requestCommentBlob(lua_State *l)
-{
+static int user_requestCommentBlob(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
 	MumbleProto__RequestBlob msg = MUMBLE_PROTO__REQUEST_BLOB__INIT;
@@ -544,8 +508,7 @@ static int user_requestCommentBlob(lua_State *l)
 	return 0;
 }
 
-static int user_gc(lua_State *l)
-{
+static int user_gc(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	if (user->name) {
 		free(user->name);
@@ -571,8 +534,7 @@ static int user_gc(lua_State *l)
 	return 0;
 }
 
-static int user_newindex(lua_State *l)
-{
+static int user_newindex(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
 	mumble_pushref(l, user->data);
@@ -582,8 +544,7 @@ static int user_newindex(lua_State *l)
 	return 0;
 }
 
-static int user_index(lua_State *l)
-{
+static int user_index(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
 	mumble_pushref(l, user->data);

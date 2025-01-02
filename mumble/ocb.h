@@ -16,22 +16,22 @@
 typedef struct mumble_crypt mumble_crypt;
 
 struct mumble_crypt {
-		unsigned char raw_key[AES_KEY_SIZE_BYTES];
-		unsigned char encrypt_iv[AES_BLOCK_SIZE];
-		unsigned char decrypt_iv[AES_BLOCK_SIZE];
-		unsigned char decrypt_history[0x100];
+	unsigned char raw_key[AES_KEY_SIZE_BYTES];
+	unsigned char encrypt_iv[AES_BLOCK_SIZE];
+	unsigned char decrypt_iv[AES_BLOCK_SIZE];
+	unsigned char decrypt_history[0x100];
 
-		EVP_CIPHER_CTX *enc_ctx_ocb_enc;
-		EVP_CIPHER_CTX *dec_ctx_ocb_enc;
-		EVP_CIPHER_CTX *enc_ctx_ocb_dec;
-		EVP_CIPHER_CTX *dec_ctx_ocb_dec;
+	EVP_CIPHER_CTX *enc_ctx_ocb_enc;
+	EVP_CIPHER_CTX *dec_ctx_ocb_enc;
+	EVP_CIPHER_CTX *enc_ctx_ocb_dec;
+	EVP_CIPHER_CTX *dec_ctx_ocb_dec;
 
-		unsigned int uiGood;
-		unsigned int uiLate;
-		unsigned int uiLost;
-		unsigned int uiResync;
+	unsigned int uiGood;
+	unsigned int uiLate;
+	unsigned int uiLost;
+	unsigned int uiResync;
 
-		bool bInit;
+	bool bInit;
 };
 
 mumble_crypt* crypt_new();

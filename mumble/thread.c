@@ -29,14 +29,13 @@ static int mumble_dump_controller(lua_State *l, const void *buffer, size_t size,
 	return 0;
 }
 
-void mumble_thread_worker_start(void *arg)
-{
+void mumble_thread_worker_start(void *arg) {
 	MumbleThreadController *controller = arg;
 
 	lua_State *l = luaL_newstate();
 
 	lua_stackguard_entry(l);
-	
+
 	luaL_openlibs(l);
 
 	// Open ourself in the new state, since we need the worker metatable
@@ -110,8 +109,7 @@ void mumble_thread_worker_start(void *arg)
 	lua_close(l);
 }
 
-void mumble_thread_worker_finish(uv_async_t *handle)
-{
+void mumble_thread_worker_finish(uv_async_t *handle) {
 	MumbleThreadController* controller = (MumbleThreadController*) handle->data;
 
 	lua_State* l = controller->l;
@@ -148,8 +146,7 @@ void mumble_thread_worker_finish(uv_async_t *handle)
 	lua_stackguard_exit(l);
 }
 
-void mumble_thread_controller_message(uv_async_t *handle)
-{
+void mumble_thread_controller_message(uv_async_t *handle) {
 	MumbleThreadController* controller = (MumbleThreadController*) handle->data;
 
 	pthread_mutex_lock(&controller->mutex);
@@ -193,9 +190,8 @@ void mumble_thread_controller_message(uv_async_t *handle)
 	pthread_mutex_unlock(&controller->mutex);
 }
 
-void mumble_thread_worker_message(uv_async_t *handle)
-{
-	MumbleThreadWorker* worker = (MumbleThreadWorker*) handle->data;	
+void mumble_thread_worker_message(uv_async_t *handle) {
+	MumbleThreadWorker* worker = (MumbleThreadWorker*) handle->data;
 	MumbleThreadController* controller = (MumbleThreadController*) worker->controller;
 
 	pthread_mutex_lock(&worker->mutex);
@@ -238,8 +234,7 @@ void mumble_thread_worker_message(uv_async_t *handle)
 	pthread_mutex_unlock(&worker->mutex);
 }
 
-int mumble_thread_new(lua_State *l)
-{
+int mumble_thread_new(lua_State *l) {
 	MumbleThreadController *controller = lua_newuserdata(l, sizeof(MumbleThreadController));
 	controller->l = l;
 	controller->self = MUMBLE_UNREFERENCED;
@@ -251,23 +246,23 @@ int mumble_thread_new(lua_State *l)
 	controller->started = false;
 
 	switch (lua_type(l, 2)) {
-		case LUA_TSTRING:
-			controller->filename = lua_tostring(l, 2);
-			break;
-		case LUA_TFUNCTION:
-			// Convert our worker function to bytecode, so we can use it in a new state
-			lua_pushvalue(l, 2); // Push a copy of our worker function
-			if (lua_dump(l, mumble_dump_controller, controller) != 0) {
-				return luaL_error(l, "unable to convert worker function into bytecode");
-			}
-			lua_pop(l, 1); // Pop our worker function copy
-			break;
-		default:
-			const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
-				lua_typename(l, LUA_TSTRING), lua_typename(l, LUA_TFUNCTION), luaL_typename(l, 2));
-			return luaL_argerror(l, 1, msg);
+	case LUA_TSTRING:
+		controller->filename = lua_tostring(l, 2);
+		break;
+	case LUA_TFUNCTION:
+		// Convert our worker function to bytecode, so we can use it in a new state
+		lua_pushvalue(l, 2); // Push a copy of our worker function
+		if (lua_dump(l, mumble_dump_controller, controller) != 0) {
+			return luaL_error(l, "unable to convert worker function into bytecode");
+		}
+		lua_pop(l, 1); // Pop our worker function copy
+		break;
+	default:
+		const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
+		                                  lua_typename(l, LUA_TSTRING), lua_typename(l, LUA_TFUNCTION), luaL_typename(l, 2));
+		return luaL_argerror(l, 1, msg);
 	}
-	
+
 	controller->message_queue = queue_new();
 
 	pthread_mutex_init(&controller->mutex, NULL);
@@ -289,8 +284,7 @@ int mumble_thread_new(lua_State *l)
 	return 1;
 }
 
-static int thread_controller_join(lua_State *l)
-{
+static int thread_controller_join(lua_State *l) {
 	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
 
 	pthread_mutex_lock(&controller->mutex);
@@ -314,8 +308,7 @@ static int thread_controller_join(lua_State *l)
 	return 1;
 }
 
-static int thread_controller_onFinish(lua_State *l)
-{
+static int thread_controller_onFinish(lua_State *l) {
 	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
 
 	if (controller->finish > MUMBLE_UNREFERENCED) {
@@ -331,8 +324,7 @@ static int thread_controller_onFinish(lua_State *l)
 	return 1;
 }
 
-static int thread_controller_send(lua_State *l)
-{
+static int thread_controller_send(lua_State *l) {
 	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
 
 	pthread_mutex_lock(&controller->mutex);
@@ -344,25 +336,25 @@ static int thread_controller_send(lua_State *l)
 	pthread_mutex_unlock(&controller->mutex);
 
 	switch (lua_type(l, 2)) {
-		case LUA_TSTRING:
-			// Initialize with raw data
-			size_t size;
-			char* data = (char*) luaL_checklstring(l, 2, &size);
-			pthread_mutex_lock(&worker->mutex);
-			queue_push(worker->message_queue, strndup(data, size), size);
-			pthread_mutex_unlock(&worker->mutex);
-			break;
-		case LUA_TUSERDATA:
-			ByteBuffer *buffer = luaL_checkudata(l, 2, METATABLE_BUFFER);
-			pthread_mutex_lock(&worker->mutex);
-			size_t length = buffer_length(buffer);;
-			queue_push(worker->message_queue, strndup(buffer->data + buffer->read_head, length), length);
-			pthread_mutex_unlock(&worker->mutex);
-			break;
-		default:
-			const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
-				lua_typename(l, LUA_TSTRING), METATABLE_BUFFER, luaL_typename(l, 2));
-			return luaL_argerror(l, 1, msg);
+	case LUA_TSTRING:
+		// Initialize with raw data
+		size_t size;
+		char* data = (char*) luaL_checklstring(l, 2, &size);
+		pthread_mutex_lock(&worker->mutex);
+		queue_push(worker->message_queue, strndup(data, size), size);
+		pthread_mutex_unlock(&worker->mutex);
+		break;
+	case LUA_TUSERDATA:
+		ByteBuffer *buffer = luaL_checkudata(l, 2, METATABLE_BUFFER);
+		pthread_mutex_lock(&worker->mutex);
+		size_t length = buffer_length(buffer);
+		queue_push(worker->message_queue, strndup(buffer->data + buffer->read_head, length), length);
+		pthread_mutex_unlock(&worker->mutex);
+		break;
+	default:
+		const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
+		                                  lua_typename(l, LUA_TSTRING), METATABLE_BUFFER, luaL_typename(l, 2));
+		return luaL_argerror(l, 1, msg);
 	}
 
 	uv_async_send(&worker->async_message);
@@ -371,8 +363,7 @@ static int thread_controller_send(lua_State *l)
 	return 1;
 }
 
-static int thread_controller_onMessage(lua_State *l)
-{
+static int thread_controller_onMessage(lua_State *l) {
 	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
 
 	if (controller->message > MUMBLE_UNREFERENCED) {
@@ -388,14 +379,12 @@ static int thread_controller_onMessage(lua_State *l)
 	return 1;
 }
 
-static int thread_controller_tostring(lua_State *l)
-{
+static int thread_controller_tostring(lua_State *l) {
 	lua_pushfstring(l, "%s: %p", METATABLE_THREAD_CONTROLLER, lua_topointer(l, 1));
 	return 1;
 }
 
-static int thread_controller_gc(lua_State *l)
-{
+static int thread_controller_gc(lua_State *l) {
 	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
 	if (controller->bytecode) {
 		free(controller->bytecode);
@@ -425,31 +414,30 @@ const luaL_Reg mumble_thread_controller[] = {
 	{NULL, NULL}
 };
 
-static int thread_worker_send(lua_State *l)
-{
+static int thread_worker_send(lua_State *l) {
 	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
 	MumbleThreadController *controller = worker->controller;
 
 	switch (lua_type(l, 2)) {
-		case LUA_TSTRING:
-			// Initialize with raw data
-			size_t size;
-			char* data = (char*) luaL_checklstring(l, 2, &size);
-			pthread_mutex_lock(&controller->mutex);
-			queue_push(controller->message_queue, strndup(data, size), size);
-			pthread_mutex_unlock(&controller->mutex);
-			break;
-		case LUA_TUSERDATA:
-			ByteBuffer *buffer = luaL_checkudata(l, 2, METATABLE_BUFFER);
-			pthread_mutex_lock(&controller->mutex);
-			size_t length = buffer_length(buffer);
-			queue_push(controller->message_queue, strndup(buffer->data + buffer->read_head, length), length);
-			pthread_mutex_unlock(&controller->mutex);
-			break;
-		default:
-			const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
-				lua_typename(l, LUA_TSTRING), METATABLE_BUFFER, luaL_typename(l, 2));
-			return luaL_argerror(l, 1, msg);
+	case LUA_TSTRING:
+		// Initialize with raw data
+		size_t size;
+		char* data = (char*) luaL_checklstring(l, 2, &size);
+		pthread_mutex_lock(&controller->mutex);
+		queue_push(controller->message_queue, strndup(data, size), size);
+		pthread_mutex_unlock(&controller->mutex);
+		break;
+	case LUA_TUSERDATA:
+		ByteBuffer *buffer = luaL_checkudata(l, 2, METATABLE_BUFFER);
+		pthread_mutex_lock(&controller->mutex);
+		size_t length = buffer_length(buffer);
+		queue_push(controller->message_queue, strndup(buffer->data + buffer->read_head, length), length);
+		pthread_mutex_unlock(&controller->mutex);
+		break;
+	default:
+		const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
+		                                  lua_typename(l, LUA_TSTRING), METATABLE_BUFFER, luaL_typename(l, 2));
+		return luaL_argerror(l, 1, msg);
 	}
 
 	uv_async_send(&controller->async_message);
@@ -458,8 +446,7 @@ static int thread_worker_send(lua_State *l)
 	return 1;
 }
 
-static int thread_worker_onMessage(lua_State *l)
-{
+static int thread_worker_onMessage(lua_State *l) {
 	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
 
 	if (worker->message > MUMBLE_UNREFERENCED) {
@@ -475,44 +462,38 @@ static int thread_worker_onMessage(lua_State *l)
 	return 1;
 }
 
-static int thread_worker_sleep(lua_State *l)
-{
+static int thread_worker_sleep(lua_State *l) {
 	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
 	usleep(luaL_checkinteger(l, 2) * 1000);
 	lua_pushvalue(l, 1);
 	return 1;
 }
 
-static int thread_worker_loop(lua_State *l)
-{
+static int thread_worker_loop(lua_State *l) {
 	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
 	uv_run(&worker->loop, UV_RUN_DEFAULT);
 	lua_pushvalue(l, 1);
 	return 1;
 }
 
-static int thread_worker_stop(lua_State *l)
-{
+static int thread_worker_stop(lua_State *l) {
 	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
 	uv_stop(&worker->loop);
 	lua_pushvalue(l, 1);
 	return 1;
 }
 
-static int thread_worker_buffer(lua_State *l)
-{
+static int thread_worker_buffer(lua_State *l) {
 	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
 	return mumble_buffer_new(l);
 }
 
-static int thread_worker_tostring(lua_State *l)
-{
+static int thread_worker_tostring(lua_State *l) {
 	lua_pushfstring(l, "%s: %p", METATABLE_THREAD_WORKER, lua_topointer(l, 1));
 	return 1;
 }
 
-static int thread_worker_gc(lua_State *l)
-{
+static int thread_worker_gc(lua_State *l) {
 	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
 	uv_loop_close(&worker->loop);
 	if (uv_is_active((uv_handle_t*) &worker->async_message)) {

@@ -1,7 +1,7 @@
 #include "defines.h"
 
 #include <lauxlib.h>
-#include <stdarg.h> 
+#include <stdarg.h>
 #include <stdio.h>
 
 #include "util.h"
@@ -9,20 +9,18 @@
 static int LEVEL = LOG_LEVEL;
 static FILE* LOG_FILE = NULL;
 
-static const char* get_log_level_info(int level, const char** lcolor)
-{
+static const char* get_log_level_info(int level, const char** lcolor) {
 	switch (level) {
-		case LOG_TRACE: *lcolor = "\x1b[36;1m"; return "TRACE";
-		case LOG_DEBUG: *lcolor = "\x1b[35;1m"; return "DEBUG";
-		case LOG_INFO:  *lcolor = "\x1b[32;1m"; return "INFO";
-		case LOG_WARN:  *lcolor = "\x1b[33;1m"; return "WARN";
-		case LOG_ERROR: *lcolor = "\x1b[31;1m"; return "ERROR";
-		default:        *lcolor = "\x1b[0m";     return "UNKWN";
+	case LOG_TRACE: *lcolor = "\x1b[36;1m"; return "TRACE";
+	case LOG_DEBUG: *lcolor = "\x1b[35;1m"; return "DEBUG";
+	case LOG_INFO:  *lcolor = "\x1b[32;1m"; return "INFO";
+	case LOG_WARN:  *lcolor = "\x1b[33;1m"; return "WARN";
+	case LOG_ERROR: *lcolor = "\x1b[31;1m"; return "ERROR";
+	default:        *lcolor = "\x1b[0m";     return "UNKWN";
 	}
 }
 
-static void mumble_printf(int level, const char* fmt, va_list va)
-{
+static void mumble_printf(int level, const char* fmt, va_list va) {
 	if (level > LEVEL) return;
 
 	const char* lcolor;
@@ -46,8 +44,7 @@ static void mumble_printf(int level, const char* fmt, va_list va)
 	va_end(vac);
 }
 
-static void mumble_print(int level, const char* message)
-{
+static void mumble_print(int level, const char* message) {
 	if (level > LEVEL) return;
 
 	const char* lcolor;
@@ -66,12 +63,11 @@ static void mumble_print(int level, const char* message)
 	}
 }
 
-void mumble_log(int level, const char* fmt, ...)
-{
+void mumble_log(int level, const char* fmt, ...) {
 	if (level > LEVEL) return;
 
 	va_list va;
-	va_start(va,fmt);
+	va_start(va, fmt);
 	mumble_printf(level, fmt, va);
 	va_end(va);
 }
@@ -102,53 +98,47 @@ int mumble_setLogFile(FILE* file) {
 	}
 
 
-static int log_trace(lua_State *l)
-{
+static int log_trace(lua_State *l) {
 	lua_format_string(l, 1);
 	const char* message = lua_tostring(l, -1);
 	mumble_print(LOG_TRACE, message);
-	lua_pop(l,1);
+	lua_pop(l, 1);
 	return 0;
 }
 
-static int log_debug(lua_State *l)
-{
+static int log_debug(lua_State *l) {
 	lua_format_string(l, 1);
 	const char* message = lua_tostring(l, -1);
 	mumble_print(LOG_DEBUG, message);
-	lua_pop(l,1);
+	lua_pop(l, 1);
 	return 0;
 }
 
-static int log_info(lua_State *l)
-{
+static int log_info(lua_State *l) {
 	lua_format_string(l, 1);
 	const char* message = lua_tostring(l, -1);
 	mumble_print(LOG_INFO, message);
-	lua_pop(l,1);
+	lua_pop(l, 1);
 	return 0;
 }
 
-static int log_warn(lua_State *l)
-{
+static int log_warn(lua_State *l) {
 	lua_format_string(l, 1);
 	const char* message = lua_tostring(l, -1);
 	mumble_print(LOG_WARN, message);
-	lua_pop(l,1);
+	lua_pop(l, 1);
 	return 0;
 }
 
-static int log_error(lua_State *l)
-{
+static int log_error(lua_State *l) {
 	lua_format_string(l, 1);
 	const char* message = lua_tostring(l, -1);
 	mumble_print(LOG_ERROR, message);
-	lua_pop(l,1);
+	lua_pop(l, 1);
 	return 0;
 }
 
-static int log_setLogFile(lua_State *l)
-{
+static int log_setLogFile(lua_State *l) {
 	FILE** file = (FILE**)luaL_checkudata(l, 1, "FILE*");
 
 	// Check if the file pointer is valid

@@ -447,8 +447,6 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 	if (biggest_read > 0) {
 		bool end_frame = !didLoop && biggest_read < frame_size;
 		encode_and_send_audio(l, client, frame_size, end_frame);
-	} else {
-		client->audio_sequence = 0;
 	}
 
 	lua_stackguard_exit(l);

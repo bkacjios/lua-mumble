@@ -30,6 +30,7 @@ typedef struct MumbleThreadController MumbleThreadController;
 typedef struct AudioTimer AudioTimer;
 typedef struct QueueNode QueueNode;
 typedef struct LinkQueue LinkQueue;
+typedef struct MumbleOpusDecoder MumbleOpusDecoder;
 
 struct MumbleTimer {
 	uv_timer_t timer;
@@ -44,6 +45,11 @@ struct MumbleTimer {
 struct AudioFrame {
 	float l;
 	float r;
+};
+
+struct MumbleOpusDecoder {
+	OpusDecoder *decoder;
+	int channels;
 };
 
 struct AudioStream {
@@ -173,8 +179,7 @@ struct MumbleClient {
 	LinkNode*			user_list;
 };
 
-struct LinkNode
-{
+struct LinkNode {
 	uint32_t index;
 	void* data;
 	struct LinkNode	*next;
@@ -199,8 +204,7 @@ struct MumbleChannel {
 	float			listening_volume_adjustment;
 };
 
-struct MumbleUser
-{
+struct MumbleUser {
 	MumbleClient*	client;
 	int				data;
 	bool			connected;
@@ -225,8 +229,6 @@ struct MumbleUser
 	char*			hash;
 	LinkNode*		listens;
 };
-
-#define PACKET_HEADER_SIZE 6
 
 typedef struct {
 	uint16_t type;

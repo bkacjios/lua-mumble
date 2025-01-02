@@ -546,7 +546,7 @@ int luabuffer_index(lua_State *l) {
 			return 1;
 		}
 		// Metatable lookups
-		lua_getmetatable(l, 1);;
+		lua_getmetatable(l, 1);
 		lua_getfield(l, -1, key);
 		if (!lua_isnil(l, -1)) {
 			return 1;

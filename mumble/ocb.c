@@ -22,14 +22,14 @@ mumble_crypt* crypt_new() {
 
 	if (crypt == NULL) return crypt;
 
-	for (int i=0;i<0x100;i++)
+	for (int i = 0; i < 0x100; i++)
 		crypt->decrypt_history[i] = 0;
 
 	crypt->bInit = false;
 	memset(crypt->raw_key, 0, AES_KEY_SIZE_BYTES);
 	memset(crypt->encrypt_iv, 0, AES_BLOCK_SIZE);
 	memset(crypt->decrypt_iv, 0, AES_BLOCK_SIZE);
-	crypt->uiGood=crypt->uiLate=crypt->uiLost=crypt->uiResync=0;
+	crypt->uiGood = crypt->uiLate = crypt->uiLost = crypt->uiResync = 0;
 
 	crypt->enc_ctx_ocb_enc = EVP_CIPHER_CTX_new();
 	crypt->dec_ctx_ocb_enc = EVP_CIPHER_CTX_new();
@@ -359,7 +359,7 @@ bool crypt_ocb_encrypt(mumble_crypt *crypt, const unsigned char *plain, unsigned
 	AESencrypt(tmp, pad, crypt->raw_key);
 	memcpy(tmp, plain, len);
 	memcpy((unsigned char *)tmp + len, (const unsigned char *)pad + len,
-		   AES_BLOCK_SIZE - len);
+	       AES_BLOCK_SIZE - len);
 	XOR(checksum, checksum, tmp);
 	XOR(tmp, pad, tmp);
 	memcpy(encrypted, tmp, len);
