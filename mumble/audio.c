@@ -462,8 +462,11 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 	// All streams output nothing
 	bool stream_ended = stream_active && !streamed_audio;
 
-	if (biggest_read > 0 || stream_ended) {
-		bool end_frame = !didLoop && (biggest_read < frame_size || stream_ended);
+	// Something isn't looping, and either we stopped reading data or a buffer stream stopped sening data.
+	bool end_frame = !didLoop && (biggest_read < frame_size && stream_ended);
+
+	if (biggest_read > 0 || end_frame) {
+		// Encode and transmit until the end
 		encode_and_send_audio(l, client, frame_size, end_frame);
 	}
 
