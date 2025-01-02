@@ -156,18 +156,22 @@ mumble.client:disconnect()
 -- User list can be a table of users or varargs
 mumble.client:sendPluginData(String dataID, String plugindata, [Table {mumble.user ..}, mumble.user ..])
 
--- Transmit a raw, encoded, opus packet
--- Set speaking to false at the end of a stream
+-- Transmit a raw, encoded, opus packet.
+-- Set speaking to false at the end of a stream.
+-- This should only be used if you don't plan on using mumble.client:openAudio() or mumble.client:createAudioBuffer(),
+-- since this will directly conflict with the internal output of this module.
+-- When audio data is streamed, it can trigger the following hooks: OnUserStartSpeaking, OnUserSpeak, OnUserStopSpeaking
 mumble.client:transmit(Number codec, String encoded_audio_packet, Boolean speaking = true)
 
 -- Open an audio file as an audio stream
 -- If audiostream = nil, it will pass along an error string as to why it couldn't open the file
 mumble.audiostream audiostream, [ String error ] = mumble.client:openAudio(String audio file path, Number volume = 1.0)
 
--- Gets a buffer that you can write raw 32bit, float, PCM data that will be output by the client as soon as it can.
--- You can write to this buffer whenever you want, allowing you to queue up data preemptively.
+-- Creates a buffer that you can write raw 48000hz, 32bit float, stereo PCM data that will be output by the client as soon as it can.
+-- Creating multiple buffers will result in each buffer being mixed together during transmission, for simultaneous audio streaming.
 -- You should only ever use buffer:writeFloat(), but the other buffer methods are always available for whatever reason.
-mumble.buffer audiostreambuffer = mumble.client:getAudioStreamBuffer()
+-- When audio data is streamed, it can trigger the following hooks: OnUserStartSpeaking, OnUserSpeak, OnUserStopSpeaking
+mumble.buffer buffer = mumble.client:createAudioBuffer()
 
 -- Gets a table of all currently playing audio streams
 Table audiostreams = mumble.client:getAudioStreams()
@@ -574,23 +578,26 @@ mumble.timer:stop()
 
 ### mumble.buffer
 
+A buffer object used to read/write data from. It will dynamically adjust its capacity to fit all written data.
+
 ``` lua
 -- The buffers __tostring metamethod will return the written data as a string
 String data = tostring(buffer)
 
--- Clears the buffer by setting the position and limit to 0
-buffer:clear()
-
--- Compacts the buffer, optimizing its storage by removing any unused space
-buffer:compact()
-
--- Packs the buffer, taking all unread data and moving it to the head
+-- Packs the buffer, moving all remaining data that has not been read to the start.
+-- BEFORE PACK = [1234|5678|]
+--          Read head ^    ^ Write head
+-- AFTER PACK = [|5678|]
+--     Read head ^    ^ Write head
+-- If the read head and write head are in the same position, the buffer is cleared.
 buffer:pack()
 
--- Resets the buffer, setting the position to 0 and the limit to the capacity
+-- Resets the buffer, setting the read head and write head to the start.
+-- Esentially empties the buffer, but the capacity will remain the same.
 buffer:reset()
 
--- Flips the buffer, preparing it for reading by setting the limit to the current position and the position to 0
+-- Flips the buffer, preparing it for reading by setting the position to 0
+-- Does not alter the write head, so data can continue to be written to it.
 buffer:flip()
 
 -- Get the length of the buffer
@@ -603,11 +610,20 @@ String byte = buffer[Number index]
 -- Returns the capacity of the buffer, which is the total amount of space allocated
 Number capacity = buffer.capacity
 
--- Returns the current position of the buffer, which indicates where the next read or write operation will occur
-Number position = buffer:position()
+-- Returns the current read_head position in the buffer
+Number read_head = buffer.read_head, same as buffer:seek("read")
 
--- Returns the limit of the buffer, indicating the maximum position that can be read or written to
-Number limit = buffer:limit()
+-- Returns the current write_head position in the buffer
+Number write_head = buffer.write_head, same as buffer:seek("write")
+
+-- Will attempt to seek to a given position via offset numbers.
+-- See: https://www.lua.org/pil/21.3.html
+-- Returns the offset that it has seeked to.
+-- Mode defaults to "read"
+-- Whence defaults to "cur"
+-- Offset defaults to 0
+-- If the mode is set to "both" the read and write values will be returned.
+Number position = buffer:seek([String mode ["read", "write", "both"] = "read", String whence ["set", "cur", "end"] = "cur", offset = 0])
 
 -- Write the given string to the buffer
 -- Returns how many bytes were written to the buffer
@@ -813,11 +829,11 @@ Boolean children = mumble.voicetarget:getChildren()
 ### mumble.encoder
 
 ``` lua
--- Equivalent to OPUS_RESET_STATE
-mumble.encoder:reset()
-
 -- Equivalent to OPUS_GET_FINAL_RANGE
 Number range = mumble.encoder:getFinalRange()
+
+-- Equivalent to OPUS_GET_PITCH
+Number pitch = mumble.encoder:getPitch()
 
 -- Equivalent to OPUS_GET_BANDWIDTH
 Number bandwidth = mumble.encoder:getBandwidth()
@@ -825,17 +841,32 @@ Number bandwidth = mumble.encoder:getBandwidth()
 -- Equivalent to OPUS_GET_SAMPLE_RATE
 Number samplerate = mumble.encoder:getSamplerate()
 
--- Set the bitrate that the encoder will use
-mumble.encoder:setBitRate(Number bitrate)
+-- Equivalent to OPUS_GET_PHASE_INVERSION_DISABLED
+Boolen inversion = mumble.encoder:getPhaseInversionDisabled()
 
--- Get the bitrate that the encoder is using
+-- Equivalent to OPUS_SET_PHASE_INVERSION_DISABLED
+mumble.encoder:setPhaseInversionDisabled(Boolean inversion)
+
+-- Equivalent to OPUS_GET_IN_DTX
+Boolen indtx = mumble.encoder:getInDTX()
+
+-- Equivalent to OPUS_GET_COMPLEXITY
+Number bitrate = mumble.encoder:getComplexity()
+
+-- Equivalent to OPUS_SET_COMPLEXITY
+mumble.encoder:setComplexity(Number complexity)
+
+-- Equivalent to OPUS_GET_BITRATE
 Number bitrate = mumble.encoder:getBitRate()
 
--- Encode X number of pcm frames into an opus audio packet
+-- Equivalent to OPUS_SET_BITRATE
+mumble.encoder:setBitRate(Number bitrate)
+
+-- Encode X number of pcm 16 bit short frames into an opus audio packet
 String encoded = mumble.encoder:encode(Number frames, String pcm)
 
--- Encode X number of pcm float frames into an opus audio packet
-String encoded = mumble.encoder:encode_float(Number frames, String pcm)
+-- Encode X number of pcm 32 bit float frames into an opus audio packet
+String encoded = mumble.encoder:encodeFloat(Number frames, String pcm)
 ```
 
 ### mumble.decoder
@@ -847,17 +878,29 @@ mumble.decoder:reset()
 -- Equivalent to OPUS_GET_FINAL_RANGE
 Number range = mumble.decoder:getFinalRange()
 
+-- Equivalent to OPUS_GET_PITCH
+Number pitch = mumble.decoder:getPitch()
+
 -- Equivalent to OPUS_GET_BANDWIDTH
 Number bandwidth = mumble.decoder:getBandwidth()
 
 -- Equivalent to OPUS_GET_SAMPLE_RATE
 Number samplerate = mumble.decoder:getSamplerate()
 
+-- Equivalent to OPUS_GET_PHASE_INVERSION_DISABLED
+Boolen inversion = mumble.decoder:getPhaseInversionDisabled()
+
+-- Equivalent to OPUS_SET_PHASE_INVERSION_DISABLED
+mumble.decoder:setPhaseInversionDisabled(Boolean inversion)
+
+-- Equivalent to OPUS_GET_IN_DTX
+Boolen indtx = mumble.decoder:getInDTX()
+
 -- Decode an opus audio packet into raw PCM data
 String decoded = mumble.decoder:decode(String encoded)
 
 -- Decode an opus audio packet into raw PCM float data
-String decoded = mumble.decoder:decode_float(String encoded)
+String decoded = mumble.decoder:decodeFloat(String encoded)
 ```
 
 ### mumble.audiostream
@@ -894,9 +937,13 @@ mumble.audiostream:fadeTo(Number volume, Number duration = 1)
 -- Fade the volume to 0 over the duration and stop playing.
 mumble.audiostream:fadeOut(Number duration = 1)
 
--- Will attempt to seek to a given position via sample numbers
--- Returns the offset that it has seeked to
-Number samples = mumble.audiostream:seek(String whence ["start", "cur", "end"], Number offset = 0)
+-- Will attempt to seek to a given position via sample numbers.
+-- See: https://www.lua.org/pil/21.3.html
+-- Returns the offset that it has seeked to.
+-- Mode defaults to "read"
+-- Whence defaults to "cur"
+-- Offset defaults to 0
+Number samples = mumble.audiostream:seek(String whence ["set", "cur", "end"] = "cur", Number offset = 0)
 
 -- Returns the duration of the stream given the unit type
 Number samples/seconds = mumble.audiostream:getLength(String units ["seconds", "samples"])
@@ -1241,40 +1288,40 @@ Table event = {
 Audio loopback example
 
 ```lua
-local audiostream = client:getAudioStreamBuffer()
 local decoder = mumble.decoder()
 local echoing
 local option = 1
 
 client:hook("OnUserSpeak", function(client, event)
-	-- Ignore ourself
 	if client.me == event.user then return end
 
-	-- Only one person can be echoed at a time, so first come first serve
-	if not echoing then
-		-- We have two ways to echo voice data back
+	-- We have two ways to echo voice data back
 
-		if option == 1 then
+	if option == 1 then
 
-			-- Option 1
-			-- Decode the audio data and write it to our audiostream.
-			-- This will be properly mixed with any audio streams that are playing. (via client:openAudio("sound.mp3"):play())
-			-- You could theretically add support for multiple people with this,
-			-- but you would have to mix the decoded PCM data together before writing.
-			local decoded = decoder:decodeFloat(event.data)
-			audiostream:write(decoded)
-
-		else if option == 2 then
-
-			-- Option 2
-			-- Transmit the encoded data back directly.
-			-- This will not sound right if any audio streams are playing. (via client:openAudio("sound.mp3"):play())
-			client:transmit(event.codec, event.data, event.speaking)
-
+		-- Create an audio buffer for this user
+		-- This allows multiple people to be echoed at once
+		if not event.user.audiobuffer then
+			event.user.audiobuffer = client:createAudioBuffer()
 		end
+
+		-- Option 1
+		-- Decode the audio data and write it to our audiostream.
+		-- This will be properly mixed with any audio streams that are playing. (via client:openAudio("sound.mp3"):play())
+		local decoded = decoder:decodeFloat(event.data)
+
+		event.user.audiobuffer:write(decoded)
+
+	elseif option == 2 and not echoing then
+
+		-- Option 2
+		-- Transmit the encoded data back directly.
+		-- This will not sound right if any audio streams are playing. (via client:openAudio("sound.mp3"):play())
+		client:transmit(event.codec, event.data, event.speaking)
 
 		-- Keep echoing until the user stops speaking
 		echoing = speaking and event.user or nil
+
 	end
 end)
 ```
@@ -1585,6 +1632,8 @@ Sinwave tone example
 ```lua
 local samples = 0
 local time = 0
+local audiostream = client:createAudioBuffer()
+
 client:hook("OnAudioStream", function(client, samplerate, channels, frames)
 	-- The client is about to encode and stream x amount of frames
 	-- Samplerate will always be 48000
@@ -1596,7 +1645,7 @@ client:hook("OnAudioStream", function(client, samplerate, channels, frames)
 		for c=1,channels do
 			-- Write a 600hz tone to both channels for this frame
 			-- Whatever is written to the output buffer will be mixed with any playing mumble.audiostream
-			client:getAudioStreamBuffer():writeFloat(math.sin(2 * math.pi * 600 * time))
+			audiostream:writeFloat(math.sin(2 * math.pi * 600 * time))
 		end
 	end
 end)

@@ -383,6 +383,7 @@ static int encoder_gc(lua_State *l) {
 }
 
 const luaL_Reg mumble_encoder[] = {
+	{"reset", encoder_resetState},
 	{"resetState", encoder_resetState},
 	{"getFinalRange", encoder_getFinalRange},
 	{"getPitch", encoder_getPitch},

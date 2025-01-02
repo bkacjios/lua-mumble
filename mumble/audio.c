@@ -406,28 +406,42 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 
 	while (current != NULL) {
 		AudioStream *sound = current->data;
-		current = current->next;
 		process_audio_stream(l, client, sound, frame_size, &biggest_read, &didLoop);
+		current = current->next;
 	}
 
-	// Hook allows for feeding raw PCM data into our output stream, mixing it into other playing audio
-	ByteBuffer* buffer = client->audio_pipe;
+	current = client->audio_pipes;
 
+	// Hook allows for feeding raw PCM data into an audio buffer, mixing it into other playing audio
 	lua_pushinteger(l, AUDIO_SAMPLE_RATE);
 	lua_pushinteger(l, AUDIO_PLAYBACK_CHANNELS);
 	lua_pushinteger(l, frame_size);
 	mumble_hook_call(l, client, "OnAudioStream", 3);
 
-	// Prepare for read
-	buffer_flip(buffer);
+	// Keep track of when an audio buffer is outputting data
+	static bool stream_active = false;
+	bool streamed_audio = false;
 
-	size_t length = buffer_length(buffer);
-	size_t total_frames = length / sizeof(float) / AUDIO_PLAYBACK_CHANNELS;
-	size_t streamed_frames = total_frames > frame_size ? frame_size : total_frames;
+	while (current != NULL) {
+		ByteBuffer *buffer = current->data;
+		current = current->next;
 
-	if (streamed_frames > 0) {
-		double now = gettime(CLOCK_MONOTONIC);
-		for (int i = 0; i < streamed_frames; i++) {
+		// Prepare for read
+		buffer_flip(buffer);
+
+		size_t length = buffer_length(buffer);
+
+		if (length <= 0) {
+			continue;
+		}
+
+		streamed_audio = true;
+		size_t total_frames = length / sizeof(float) / AUDIO_PLAYBACK_CHANNELS;
+		size_t streamed_frames = total_frames > frame_size ? frame_size : total_frames;
+		size_t missing_frames = (didLoop || biggest_read > 0) ? 0 : (frame_size - streamed_frames);
+
+		// Handle the audio output for streamed frames
+		for (int i = missing_frames; i < streamed_frames + missing_frames; i++) {
 			float left;
 			float right;
 			buffer_readFloat(buffer, &left);
@@ -439,15 +453,21 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 		// Move any remaining audio data to the front
 		buffer_pack(buffer);
 
+		// Update biggest_read if necessary
 		if (streamed_frames > biggest_read) {
-			biggest_read = streamed_frames;
+			biggest_read = streamed_frames + missing_frames;
 		}
 	}
 
-	if (biggest_read > 0) {
-		bool end_frame = !didLoop && biggest_read < frame_size;
+	// All streams output nothing
+	bool stream_ended = stream_active && !streamed_audio;
+
+	if (biggest_read > 0 || stream_ended) {
+		bool end_frame = !didLoop && (biggest_read < frame_size || stream_ended);
 		encode_and_send_audio(l, client, frame_size, end_frame);
 	}
+
+	stream_active = streamed_audio;
 
 	lua_stackguard_exit(l);
 }
@@ -507,8 +527,8 @@ static int audiostream_stop(lua_State *l) {
 static int audiostream_seek(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 
-	enum what {START, CUR, END};
-	static const char * op[] = {"start", "cur", "end", NULL};
+	enum what {SET, CUR, END};
+	static const char * op[] = {"set", "cur", "end", NULL};
 
 	int option = luaL_checkoption(l, 2, "cur", op);
 	long offset = luaL_optlong(l, 3, 0);
@@ -516,7 +536,7 @@ static int audiostream_seek(lua_State *l) {
 	sf_count_t position;
 
 	switch (option) {
-	case START:
+	case SET:
 		position = sf_seek(sound->file, offset, SEEK_SET);
 		break;
 	case CUR:

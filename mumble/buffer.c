@@ -1,5 +1,3 @@
-#include "mumble.h"
-
 #include "buffer.h"
 #include "util.h"
 #include "log.h"
@@ -20,6 +18,7 @@ ByteBuffer* buffer_init(ByteBuffer* buffer, uint64_t size) {
 	buffer->read_head = 0;
 	buffer->write_head = 0;
 	buffer->data = malloc(sizeof(uint8_t) * size);
+	buffer->context = NULL;
 	if (buffer->data == NULL) return NULL;
 	return buffer;
 }
@@ -53,21 +52,18 @@ static int buffer_adjust(ByteBuffer* buffer, uint64_t size) {
 }
 
 void buffer_free(ByteBuffer* buffer) {
-	free(buffer->data);
-	buffer->data = NULL;
+	if (buffer->context) {
+		list_remove_data(&buffer->context->client->audio_pipes, buffer);
+		free(buffer->context);
+		buffer->context = NULL;
+	}
+	if (buffer->data) {
+		free(buffer->data);
+		buffer->data = NULL;
+	}
 	buffer->capacity = 0;
 	buffer->write_head = 0;
 	buffer->read_head = 0;
-}
-
-void buffer_compact(ByteBuffer* buffer) {
-	uint64_t remaining = buffer->write_head - buffer->read_head;
-
-	if (remaining > 0) {
-		memmove(buffer->data, buffer->data + buffer->read_head, remaining);
-		buffer->read_head = 0;
-		buffer->write_head = remaining;
-	}
 }
 
 void buffer_pack(ByteBuffer* buffer) {
@@ -281,12 +277,6 @@ int mumble_buffer_new(lua_State *l) {
 
 	// Return the buffer metatable
 	return 1;
-}
-
-int luabuffer_compact(lua_State *l) {
-	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
-	buffer_compact(buffer);
-	return 0;
 }
 
 int luabuffer_pack(lua_State *l) {
@@ -509,6 +499,62 @@ int luabuffer_isEmpty(lua_State *l) {
 	return 1;
 }
 
+static int luabuffer_seek(lua_State *l) {
+	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
+
+	enum mode {READ, WRITE, BOTH};
+	static const char *md[] = {"read", "write", "both", NULL};
+
+	enum what {SET, CUR, END};
+	static const char *op[] = {"set", "cur", "end", NULL};
+
+	int mode_option = luaL_checkoption(l, 2, "read", md);
+	int position_option = luaL_checkoption(l, 3, "cur", op);
+	long offset = luaL_optlong(l, 4, 0);
+
+	uint64_t old_read_head = buffer->read_head;
+	uint64_t old_write_head = buffer->write_head;
+	uint64_t new_read_head = 0;
+	uint64_t new_write_head = 0;
+
+	// Calculate the new heads based on position option
+	switch (position_option) {
+	case SET:
+		new_read_head = offset;
+		new_write_head = offset;
+		break;
+	case CUR:
+		new_read_head = old_read_head + offset;
+		new_write_head = old_write_head + offset;
+		break;
+	case END:
+		new_read_head = buffer->capacity + offset;
+		new_write_head = buffer->capacity + offset;
+		break;
+	}
+
+	// Update the heads based on mode
+	switch (mode_option) {
+	case READ:
+		buffer->read_head = new_read_head;
+		lua_pushinteger(l, new_read_head);
+		return 1;
+	case WRITE:
+		buffer->write_head = new_write_head;
+		lua_pushinteger(l, new_write_head);
+		return 1;
+	case BOTH:
+		buffer->read_head = new_read_head;
+		buffer->write_head = new_write_head;
+		lua_pushinteger(l, new_read_head);
+		lua_pushinteger(l, new_write_head);
+		return 2;
+	}
+
+	return 0;
+}
+
+
 int luabuffer_len(lua_State *l) {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
 	lua_pushinteger(l, buffer_length(buffer));
@@ -538,10 +584,10 @@ int luabuffer_index(lua_State *l) {
 		} else if (strcmp(key, "capacity") == 0) {
 			lua_pushinteger(l, buffer->capacity);
 			return 1;
-		} else if (strcmp(key, "readHead") == 0) {
+		} else if (strcmp(key, "read_head") == 0) {
 			lua_pushinteger(l, buffer->read_head);
 			return 1;
-		} else if (strcmp(key, "writeHead") == 0) {
+		} else if (strcmp(key, "write_head") == 0) {
 			lua_pushinteger(l, buffer->write_head);
 			return 1;
 		}
@@ -572,12 +618,9 @@ int luabuffer_gc(lua_State *l) {
 }
 
 const luaL_Reg mumble_buffer[] = {
-	{"compact", luabuffer_compact},
 	{"pack", luabuffer_pack},
 	{"reset", luabuffer_reset},
 	{"flip", luabuffer_flip},
-	{"readHead", luabuffer_readHead},
-	{"writeHead", luabuffer_writeHead},
 	{"write", luabuffer_write},
 	{"read", luabuffer_read},
 	{"writeByte", luabuffer_writeByte},

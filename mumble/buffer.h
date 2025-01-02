@@ -3,12 +3,24 @@
 #include <lauxlib.h>
 #include <stdint.h>
 
+#include <opus/opus.h>
+#include <stdbool.h>
+
+typedef struct MumbleClient MumbleClient;
+
+typedef struct {
+    MumbleClient* client;
+    opus_int32 samplerate;
+    int channels;
+    size_t start_offset;
+} AudioContext;
+
 typedef struct {
 	uint64_t capacity;
 	uint64_t read_head;
 	uint64_t write_head;
 	uint8_t* data;
-	bool dynamic;
+	AudioContext* context;
 } ByteBuffer;
 
 #define buffer_available(buffer, size) \
@@ -37,7 +49,6 @@ ByteBuffer* buffer_init(ByteBuffer* buffer, uint64_t size);
 ByteBuffer* buffer_init_data(ByteBuffer* buffer, void* data, uint64_t size);
 
 void buffer_free(ByteBuffer* buffer);
-void buffer_compact(ByteBuffer* buffer);
 void buffer_pack(ByteBuffer* buffer);
 void buffer_reset(ByteBuffer* buffer);
 void buffer_flip(ByteBuffer* buffer);

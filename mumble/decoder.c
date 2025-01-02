@@ -189,7 +189,7 @@ static int decoder_tostring(lua_State *l) {
 static int decoder_gc(lua_State *l) {
 	MumbleOpusDecoder *wrapper = luaL_checkudata(l, 1, METATABLE_DECODER);
 	if (wrapper->decoder != NULL) {
-		mumble_log(LOG_DEBUG, "destroying wrapper->decoder: %p", wrapper->decoder);
+		mumble_log(LOG_TRACE, "destroying wrapper->decoder: %p", wrapper->decoder);
 		opus_decoder_destroy(wrapper->decoder);
 	}
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_DECODER, wrapper);
@@ -197,6 +197,7 @@ static int decoder_gc(lua_State *l) {
 }
 
 const luaL_Reg mumble_decoder[] = {
+	{"reset", decoder_resetState},
 	{"resetState", decoder_resetState},
 	{"getFinalRange", decoder_getFinalRange},
 	{"getPitch", decoder_getPitch},

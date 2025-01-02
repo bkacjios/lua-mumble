@@ -28,7 +28,7 @@
 #define AUDIO_FRAME_SIZE_LARGE	60
 
 // 10 = Lower latency, 60 = Better quality
-#define AUDIO_DEFAULT_FRAMES AUDIO_FRAME_SIZE_MEDIUM
+#define AUDIO_DEFAULT_FRAMES AUDIO_FRAME_SIZE_LARGE
 
 // How many channels the audio file playback should handle
 #define AUDIO_PLAYBACK_CHANNELS 2

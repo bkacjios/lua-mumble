@@ -319,11 +319,21 @@ static int client_openAudio(lua_State *l) {
 	const char* filepath	= luaL_checkstring(l, 2);
 	float volume			= (float) luaL_optnumber(l, 3, 1);
 
+	SF_INFO info;
+	SNDFILE* file = sf_open(filepath, SFM_READ, &info);
+
+	if (!file) {
+		lua_pushnil(l);
+		lua_pushfstring(l, "error opening file \"%s\" (%s)", filepath, sf_strerror(NULL));
+		return 2;
+	}
+
 	AudioStream *sound = lua_newuserdata(l, sizeof(AudioStream));
 	luaL_getmetatable(l, METATABLE_AUDIOSTREAM);
 	lua_setmetatable(l, -2);
 
-	sound->file = sf_open(filepath, SFM_READ, &sound->info);
+	sound->file = file;
+	sound->info = info;
 	sound->client = client;
 	sound->playing = false;
 	sound->looping = false;
@@ -334,12 +344,6 @@ static int client_openAudio(lua_State *l) {
 	       sound->fade_frames = 0;
 	sound->fade_frames_left = 0;
 	sound->fade_stop = false;
-
-	if (!sound->file) {
-		lua_pushnil(l);
-		lua_pushfstring(l, "error opening file \"%s\" (%s)", filepath, sf_strerror(NULL));
-		return 2;
-	}
 
 	return 1;
 }
@@ -889,9 +893,30 @@ static int client_createChannel(lua_State *l) {
 	return 0;
 }
 
-static int client_getAudioStreamBuffer(lua_State *l) {
+static int client_createAudioBuffer(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
-	mumble_pushref(l, client->audio_pipe_ref);
+	opus_int32 samplerate = luaL_optinteger(l, 2, AUDIO_SAMPLE_RATE);
+	int channels = luaL_optinteger(l, 3, AUDIO_PLAYBACK_CHANNELS);
+
+	ByteBuffer* buffer = luabuffer_new(l);
+	buffer = buffer_init(buffer, PCM_BUFFER * sizeof(float));
+
+	if (buffer == NULL) return luaL_error(l, "error creating buffer: %s", strerror(errno));
+
+	AudioContext* context = malloc(sizeof(AudioContext));
+
+	if (context == NULL) return luaL_error(l, "error creating buffer context: %s", strerror(errno));
+
+	context->client = client;
+	context->channels = channels;
+	context->samplerate = samplerate;
+	context->start_offset = 0;
+	
+	buffer->context = context;
+
+	// We keep a list of it, but we aren't referencing it.
+	// ByteBuffers's __gc method will remove it from this list.
+	list_add(&client->audio_pipes, MUMBLE_UNREFERENCED, buffer);
 	return 1;
 }
 
@@ -916,7 +941,6 @@ static int client_gc(lua_State *l) {
 	mumble_unref(l, client->channels);
 	mumble_unref(l, client->audio_streams);
 	mumble_unref(l, client->encoder_ref);
-	mumble_unref(l, client->audio_pipe_ref);
 
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_CLIENT, client);
 	return 0;
@@ -991,7 +1015,7 @@ const luaL_Reg mumble_client[] = {
 	{"requestCommentBlob", client_requestCommentBlob},
 	{"requestDescriptionBlob", client_requestDescriptionBlob},
 	{"createChannel", client_createChannel},
-	{"getAudioStreamBuffer", client_getAudioStreamBuffer},
+	{"createAudioBuffer", client_createAudioBuffer},
 	{"getMe", client_getMe},
 	{"getSelf", client_getMe},
 	{"isTunnelingUDP", client_isTunnelingUDP},

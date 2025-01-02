@@ -528,9 +528,6 @@ static int mumble_client_new(lua_State *l) {
 	client->audio_sequence = 0;
 	client->audio_target = 0;
 	client->audio_frames = AUDIO_DEFAULT_FRAMES;
-	client->audio_pipe = luabuffer_new(l);
-	buffer_init(client->audio_pipe, PCM_BUFFER * sizeof(float));
-	client->audio_pipe_ref = mumble_ref(l);
 
 	client->tcp_packets = 0;
 	client->tcp_ping_avg = 0;
@@ -546,6 +543,7 @@ static int mumble_client_new(lua_State *l) {
 	client->stream_list = NULL;
 	client->user_list = NULL;
 	client->channel_list = NULL;
+	client->audio_pipes = NULL;
 	return 1;
 }
 
@@ -792,36 +790,30 @@ static int mumble_stop(lua_State *l) {
 
 static void mumble_client_free(MumbleClient *client) {
 	if (client->host) {
-		mumble_log(LOG_TRACE, "mumble.client: %p freeing client->host: %p", client, client->host);
 		free(client->host);
+		client->host = NULL;
 	}
-
 	if (client->crypt) {
-		mumble_log(LOG_TRACE, "mumble.client: %p freeing client->crypt: %p", client, client->crypt);
 		crypt_free(client->crypt);
 		client->crypt = NULL;
 	}
 
 	if (client->ssl) {
-		mumble_log(LOG_TRACE, "mumble.client: %p shutting down client->ssl: %p", client, client->ssl);
 		SSL_shutdown(client->ssl);
 		client->ssl = NULL;
 	}
 
 	if (client->ssl_context) {
-		mumble_log(LOG_TRACE, "mumble.client: %p freeing client->ssl_context: %p", client, client->ssl_context);
 		SSL_CTX_free(client->ssl_context);
 		client->ssl_context = NULL;
 	}
 
 	if (client->server_host_udp) {
-		mumble_log(LOG_TRACE, "mumble.client: %p freeing client->server_host_udp: %p", client, client->server_host_udp);
 		freeaddrinfo(client->server_host_udp);
 		client->server_host_udp = NULL;
 	}
 
 	if (client->server_host_tcp) {
-		mumble_log(LOG_TRACE, "mumble.client: %p freeing client->server_host_tcp: %p", client, client->server_host_tcp);
 		freeaddrinfo(client->server_host_tcp);
 		client->server_host_tcp = NULL;
 	}

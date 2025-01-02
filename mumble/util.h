@@ -26,6 +26,7 @@ QueueNode* queue_pop(LinkQueue *queue);
 
 void list_add(LinkNode** head_ref, uint32_t index, void *data);
 void list_remove(LinkNode **head_ref, uint32_t index);
+void list_remove_data(LinkNode **head_ref, void *data);
 void list_clear(LinkNode** head_ref);
 size_t list_count(LinkNode** head_ref);
 void* list_get(LinkNode* current, uint32_t index);

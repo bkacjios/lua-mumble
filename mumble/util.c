@@ -309,6 +309,32 @@ void list_remove(LinkNode **head_ref, uint32_t index) {
 	free(temp);               // free old head
 }
 
+void list_remove_data(LinkNode **head_ref, void *data) {
+	LinkNode* temp = *head_ref, *prev;
+
+	// If head node itself holds the key to be deleted
+	if (temp != NULL && temp->data == data) {
+		*head_ref = temp->next;   // Changed head
+		free(temp);               // free old head
+		return;
+	}
+
+	// Search for the key to be deleted, keep track of the
+	// previous node as we need to change 'prev->next'
+	while (temp != NULL && temp->data != data) {
+		prev = temp;
+		temp = temp->next;
+	}
+
+	// If key was not present in linked list
+	if (temp == NULL) return;
+
+	// Unlink the node from linked list
+	prev->next = temp->next;
+
+	free(temp);               // free old head
+}
+
 void list_clear(LinkNode** head_ref) {
 	/* deref head_ref to get the real head */
 	LinkNode* current = *head_ref;

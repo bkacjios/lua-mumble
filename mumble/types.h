@@ -19,6 +19,7 @@
 
 typedef struct MumbleClient MumbleClient;
 typedef struct AudioStream AudioStream;
+typedef struct AudioBuffer AudioBuffer;
 typedef struct AudioFrame AudioFrame;
 typedef struct MumbleChannel MumbleChannel;
 typedef struct MumbleUser MumbleUser;
@@ -53,9 +54,8 @@ struct MumbleOpusDecoder {
 };
 
 struct AudioStream {
-	lua_State *lua;
-	SNDFILE *file;
 	MumbleClient *client;
+	SNDFILE *file;
 	bool closed;
 	bool playing;
 	float volume;
@@ -69,6 +69,12 @@ struct AudioStream {
 	float fade_volume;
 	float fade_from_volume;
 	float fade_to_volume;
+};
+
+struct AudioBuffer {
+	MumbleClient* client;
+	opus_int32 samplerate;
+	ByteBuffer* buffer;
 };
 
 struct MumbleThreadWorker {
@@ -149,11 +155,9 @@ struct MumbleClient {
 	uv_timer_t			audio_timer;
 	uv_timer_t			ping_timer;
 
-	AudioFrame			audio_output[PCM_BUFFER];
+	AudioFrame			audio_output[MAX_PCM_FRAMES];
 	uint32_t			audio_sequence;
 	uint32_t			audio_frames;
-	ByteBuffer*			audio_pipe;
-	uint32_t			audio_pipe_ref;
 
 	OpusEncoder*		encoder;
 	int					encoder_ref;
@@ -177,6 +181,7 @@ struct MumbleClient {
 	LinkNode*			stream_list;
 	LinkNode*			channel_list;
 	LinkNode*			user_list;
+	LinkNode*			audio_pipes;
 };
 
 struct LinkNode {
