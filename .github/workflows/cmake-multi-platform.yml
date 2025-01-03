@@ -85,9 +85,8 @@ jobs:
       if: matrix.os == 'windows-latest'
       uses: lukka/run-vcpkg@v11
       with:
-        vcpkgDirectory: "${{ github.workspace }}/vcpkg"
+        vcpkgDirectory: "${{ github.workspace }}"
         runVcpkgInstall: true
-        vcpkgArguments: "--triplet x64-windows install libssl protobuf-c libopus libsndfile libuv"
         doNotUpdateVcpkg: true  # Avoid updating vcpkg itself
 
     - name: Configure CMake

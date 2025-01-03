@@ -1,0 +1,10 @@
+{
+  "version-string": "1.0.0",
+  "dependencies": [
+    "libssl",
+    "protobuf-c",
+    "libopus",
+    "libsndfile",
+    "libuv"
+  ]
+}
