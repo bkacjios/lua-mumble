@@ -6,7 +6,7 @@ A lua module to connect to a mumble server and interact with it
 
 ### Ubuntu
 ```bash
-sudo apt-get install cmake pkgconf libluajit-5.1-dev protobuf-c libprotobuf-c-dev libssl-dev libopus-dev libuv1-dev libsndfile1-dev
+sudo apt-get install cmake pkgconf libluajit-5.1-dev protobuf-c-compiler libprotobuf-c-dev libssl-dev libopus-dev libuv1-dev libsndfile1-dev
 ```
 
 Note: `liblua5.1-0-dev` can be substituted with `libluajit-5.1-dev`, `liblua5.2-dev`, or `liblua5.3-dev` depending on your needs.

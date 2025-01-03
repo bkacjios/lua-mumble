@@ -61,7 +61,7 @@ jobs:
         sudo apt-get install -y \
           libssl-dev \
           libluajit-5.1-dev \
-          protobuf-c \
+          protobuf-c-compiler \
           libprotobuf-c-dev \
           libopus-dev \
           libsndfile1-dev \
