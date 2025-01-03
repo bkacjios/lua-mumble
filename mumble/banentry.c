@@ -109,7 +109,7 @@ static int banentry_tostring(lua_State *l) {
 
 const luaL_Reg mumble_banentry[] = {
 	{"setAddress", banentry_setAddress},
-	{"getAddress", banentry_setAddress},
+	{"getAddress", banentry_getAddress},
 	{"setMask", banentry_setMask},
 	{"getMask", banentry_getMask},
 	{"setName", banentry_setName},

@@ -4,12 +4,6 @@
 #include "util.h"
 #include "log.h"
 
-static MumbleTimer* mumble_checktimer(lua_State *l, int index) {
-	MumbleTimer *timer = luaL_checkudata(l, index, METATABLE_TIMER);
-
-	return timer;
-}
-
 static void mumble_lua_timer_finish(lua_State *l, MumbleTimer *ltimer) {
 	if (ltimer->running) {
 		if (uv_is_active((uv_handle_t*) &ltimer->timer)) {
@@ -122,7 +116,7 @@ static int timer_set(lua_State *l) {
 	double repeat = luaL_optnumber(l, 3, 0);
 
 	ltimer->after = after;
-	uv_timer_set_repeat(&ltimer->timer, luaL_checknumber(l, 2) * 1000);
+	uv_timer_set_repeat(&ltimer->timer, repeat * 1000);
 
 	// Return ourself
 	lua_settop(l, 1);

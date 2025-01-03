@@ -220,7 +220,7 @@ static void mumble_update_ping(lua_State* l, MumbleClient* client, uint64_t time
 	mumble_hook_call(l, client, "OnPongUDP", 1);
 }
 
-void mumble_handle_udp_packet(lua_State* l, MumbleClient* client, char* unencrypted, ssize_t size, bool udp) {
+void mumble_handle_udp_packet(lua_State* l, MumbleClient* client, unsigned char* unencrypted, ssize_t size, bool udp) {
 	uint8_t header = unencrypted[0];
 
 	if (client->legacy) {
@@ -302,7 +302,7 @@ void socket_read_event_udp(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf,
 		return;
 	}
 
-	uint8_t unencrypted[nread];
+	unsigned char unencrypted[nread];
 	memset(unencrypted, 0, sizeof(unencrypted));
 
 	if (!crypt_isValid(client->crypt)) {
@@ -310,7 +310,7 @@ void socket_read_event_udp(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf,
 		return;
 	}
 
-	if (!crypt_decrypt(client->crypt, buf->base, unencrypted, nread)) {
+	if (!crypt_decrypt(client->crypt, (unsigned char*) buf->base, unencrypted, nread)) {
 		mumble_log(LOG_ERROR, "[UDP] Unable to decrypt UDP packet: %x", &buf->base);
 		return;
 	}
@@ -1238,7 +1238,7 @@ void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, M
 		state_change = true;
 	}
 
-	if (one_frame || state_change && speaking) {
+	if ((one_frame || state_change) && speaking) {
 		mumble_user_raw_get(l, client, session);
 		mumble_hook_call(l, client, "OnUserStartSpeaking", 1);
 	}
@@ -1254,7 +1254,7 @@ void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, M
 	lua_setfield(l, -2, "user");
 	lua_pushboolean(l, speaking);
 	lua_setfield(l, -2, "speaking");
-	lua_pushlstring(l, audio->opus_data.data, audio->opus_data.len);
+	lua_pushlstring(l, (char*) audio->opus_data.data, audio->opus_data.len);
 	lua_setfield(l, -2, "data");
 	lua_pushinteger(l, audio->context);
 	lua_setfield(l, -2, "context");
@@ -1266,7 +1266,7 @@ void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, M
 	lua_setfield(l, -2, "samples_per_frame");
 	mumble_hook_call(l, client, "OnUserSpeak", 1);
 
-	if (one_frame || state_change && !speaking) {
+	if ((one_frame || state_change) && !speaking) {
 		mumble_user_raw_get(l, client, session);
 		mumble_hook_call(l, client, "OnUserStopSpeaking", 1);
 	}
@@ -1304,7 +1304,7 @@ void mumble_handle_speaking_hooks_legacy(lua_State* l, MumbleClient* client, uin
 		state_change = true;
 	}
 
-	if (one_frame || state_change && speaking) {
+	if ((one_frame || state_change) && speaking) {
 		mumble_user_raw_get(l, client, session);
 		mumble_hook_call(l, client, "OnUserStartSpeaking", 1);
 	}
@@ -1320,7 +1320,7 @@ void mumble_handle_speaking_hooks_legacy(lua_State* l, MumbleClient* client, uin
 	lua_setfield(l, -2, "user");
 	lua_pushboolean(l, speaking);
 	lua_setfield(l, -2, "speaking");
-	lua_pushlstring(l, buffer + read, payload_len);
+	lua_pushlstring(l, (char*) buffer + read, payload_len);
 	lua_setfield(l, -2, "data");
 	lua_pushinteger(l, opus_packet_get_nb_channels(buffer + read));
 	lua_setfield(l, -2, "channels");
@@ -1330,7 +1330,7 @@ void mumble_handle_speaking_hooks_legacy(lua_State* l, MumbleClient* client, uin
 	lua_setfield(l, -2, "samples_per_frame");
 	mumble_hook_call(l, client, "OnUserSpeak", 1);
 
-	if (one_frame || state_change && !speaking) {
+	if ((one_frame || state_change) && !speaking) {
 		mumble_user_raw_get(l, client, session);
 		mumble_hook_call(l, client, "OnUserStopSpeaking", 1);
 	}

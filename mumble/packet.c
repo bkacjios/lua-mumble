@@ -20,7 +20,7 @@ typedef struct {
 		if ((dest) != NULL) { \
 			free(dest); \
 		} \
-		(dest) = (src) ? strdup(src) : NULL; \
+		(dest) = (src) ? strdup((char*)src) : NULL; \
 	} while (0)
 
 #define SAFE_STRNDUP(dest, src, n) \
@@ -28,7 +28,7 @@ typedef struct {
 		if ((dest) != NULL) { \
 			free(dest); \
 		} \
-		(dest) = (src) ? strndup((src), (n)) : NULL; \
+		(dest) = (src) ? strndup((char*)(src), (n)) : NULL; \
 	} while (0)
 
 void on_send(uv_udp_send_t* req, int status) {
@@ -69,8 +69,11 @@ int packet_sendudp(MumbleClient* client, const void *message, const int length) 
 		while (!context->is_done) {
 			uv_run(uv_default_loop(), UV_RUN_ONCE);
 		}
+
+		return ret;
 	} else {
 		mumble_log(LOG_ERROR, "[UDP] Unable to encrypt UDP packet");
+		return 0;
 	}
 }
 
@@ -477,7 +480,7 @@ void packet_channel_state(lua_State *l, MumbleClient *client, MumblePacket *pack
 		channel->description_hash_len = state->description_hash.len;
 
 		char* result;
-		bin_to_strhex(channel->description_hash, channel->description_hash_len, &result);
+		bin_to_strhex((char*) channel->description_hash, channel->description_hash_len, &result);
 		lua_pushstring(l, result);
 		lua_setfield(l, -2, "description_hash");
 		free(result);
@@ -695,7 +698,7 @@ void packet_user_state(lua_State *l, MumbleClient *client, MumblePacket *packet)
 		user->comment_hash_len = state->comment_hash.len;
 
 		char* result;
-		bin_to_strhex(user->comment_hash, user->comment_hash_len, &result);
+		bin_to_strhex((char*) user->comment_hash, user->comment_hash_len, &result);
 		lua_pushstring(l, result);
 		lua_setfield(l, -2, "comment_hash");
 		free(result);
@@ -705,7 +708,7 @@ void packet_user_state(lua_State *l, MumbleClient *client, MumblePacket *packet)
 		user->texture_hash_len = state->texture_hash.len;
 
 		char* result;
-		bin_to_strhex(user->texture_hash, user->texture_hash_len, &result);
+		bin_to_strhex((char*) user->texture_hash, user->texture_hash_len, &result);
 		lua_pushstring(l, result);
 		lua_setfield(l, -2, "texture_hash");
 		free(result);
@@ -1072,21 +1075,21 @@ void packet_crypt_setup(lua_State *l, MumbleClient *client, MumblePacket *packet
 
 	if (crypt->has_key) {
 		char* result;
-		bin_to_strhex(crypt->key.data, crypt->key.len, &result);
+		bin_to_strhex((char*) crypt->key.data, crypt->key.len, &result);
 		lua_pushstring(l, result);
 		lua_setfield(l, -2, "key");
 		free(result);
 	}
 	if (crypt->has_client_nonce) {
 		char* result;
-		bin_to_strhex(crypt->client_nonce.data, crypt->client_nonce.len, &result);
+		bin_to_strhex((char*) crypt->client_nonce.data, crypt->client_nonce.len, &result);
 		lua_pushstring(l, result);
 		lua_setfield(l, -2, "client_nonce");
 		free(result);
 	}
 	if (crypt->has_server_nonce) {
 		char* result;
-		bin_to_strhex(crypt->server_nonce.data, crypt->server_nonce.len, &result);
+		bin_to_strhex((char*) crypt->server_nonce.data, crypt->server_nonce.len, &result);
 		lua_pushstring(l, result);
 		lua_setfield(l, -2, "server_nonce");
 		free(result);
@@ -1459,7 +1462,7 @@ void packet_plugin_data(lua_State *l, MumbleClient *client, MumblePacket *packet
 	}
 
 	if (transmission->has_data) {
-		lua_pushlstring(l, transmission->data.data, transmission->data.len);
+		lua_pushlstring(l, (char*) transmission->data.data, transmission->data.len);
 		lua_setfield(l, -2, "data");
 	}
 	if (transmission->dataid != NULL) {

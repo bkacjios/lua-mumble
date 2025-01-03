@@ -59,7 +59,7 @@ uint64_t buffer_write(ByteBuffer* buffer, const void* data, uint64_t size);
 uint64_t buffer_read(ByteBuffer* buffer, void* output, uint64_t size);
 
 uint8_t buffer_writeByte(ByteBuffer* buffer, uint8_t value);
-uint8_t buffer_readByte(ByteBuffer* buffer, int8_t* output);
+uint8_t buffer_readByte(ByteBuffer* buffer, uint8_t* output);
 
 buffer_rwh(UnsignedByte, uint8_t);
 buffer_rwh(Short, int16_t);

@@ -192,7 +192,6 @@ void mumble_thread_controller_message(uv_async_t *handle) {
 
 void mumble_thread_worker_message(uv_async_t *handle) {
 	MumbleThreadWorker* worker = (MumbleThreadWorker*) handle->data;
-	MumbleThreadController* controller = (MumbleThreadController*) worker->controller;
 
 	pthread_mutex_lock(&worker->mutex);
 
@@ -350,7 +349,7 @@ static int thread_controller_send(lua_State *l) {
 		ByteBuffer *buffer = luaL_checkudata(l, 2, METATABLE_BUFFER);
 		pthread_mutex_lock(&worker->mutex);
 		size_t length = buffer_length(buffer);
-		queue_push(worker->message_queue, strndup(buffer->data + buffer->read_head, length), length);
+		queue_push(worker->message_queue, strndup((char*) buffer->data + buffer->read_head, length), length);
 		pthread_mutex_unlock(&worker->mutex);
 		break;
 	default:
@@ -433,7 +432,7 @@ static int thread_worker_send(lua_State *l) {
 		ByteBuffer *buffer = luaL_checkudata(l, 2, METATABLE_BUFFER);
 		pthread_mutex_lock(&controller->mutex);
 		size_t length = buffer_length(buffer);
-		queue_push(controller->message_queue, strndup(buffer->data + buffer->read_head, length), length);
+		queue_push(controller->message_queue, strndup((char*) buffer->data + buffer->read_head, length), length);
 		pthread_mutex_unlock(&controller->mutex);
 		break;
 	default:
@@ -465,7 +464,7 @@ static int thread_worker_onMessage(lua_State *l) {
 }
 
 static int thread_worker_sleep(lua_State *l) {
-	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
+	luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
 	usleep(luaL_checkinteger(l, 2) * 1000);
 	lua_pushvalue(l, 1);
 	return 1;
@@ -486,7 +485,7 @@ static int thread_worker_stop(lua_State *l) {
 }
 
 static int thread_worker_buffer(lua_State *l) {
-	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
+	luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
 	return mumble_buffer_new(l);
 }
 

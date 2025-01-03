@@ -76,7 +76,7 @@ int mumble_getLogLevel() {
 	return LEVEL;
 }
 
-int mumble_setLogFile(FILE* file) {
+void mumble_setLogFile(FILE* file) {
 	LOG_FILE = file;
 }
 
@@ -86,7 +86,7 @@ int mumble_setLogFile(FILE* file) {
 	lua_getglobal(l, "string"); \
 	lua_getfield(l, -1, "format"); \
 	lua_remove(l, -2); \
-	const char *format = luaL_checkstring(l, (start_index)); \
+	luaL_checkstring(l, (start_index)); \
 	/* Push all arguments onto the stack */ \
 	for (int i = 0; i < num_args; i++) { \
 		lua_pushvalue(l, (i) + (start_index)); \

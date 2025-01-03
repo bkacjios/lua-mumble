@@ -131,7 +131,7 @@ int voicepacket_setframe(VoicePacket *packet, const uint8_t type, const uint16_t
 		offset = util_set_varint(packet->buffer + packet->header_length, frame_header);
 	} else if (type == LEGACY_UDP_SPEEX || type == LEGACY_UDP_CELT_ALPHA || type == LEGACY_UDP_CELT_BETA) {
 		// Every other codec uses a single byte as the frame header
-		offset += 1;
+		offset = 1;
 		packet->buffer[packet->header_length] = frame_header;
 	}
 
@@ -508,10 +508,7 @@ static int audiostream_play(lua_State *l) {
 		if (sound->refrence <= MUMBLE_UNREFERENCED) {
 			// Push a copy of the audio stream and save a reference
 			lua_pushvalue(l, 1);
-			sound->refrence = mumble_registry_ref(l, sound->client->audio_streams);
-
-			// Add to our stream list
-			list_add(&sound->client->stream_list, sound->refrence, sound);
+			audio_transmission_reference(l, sound);
 		}
 	} else {
 		sf_seek(sound->file, 0, SEEK_SET);

@@ -346,10 +346,10 @@ static int encoder_encode(lua_State *l) {
 
 	const uint32_t enc_frame_size = frames * AUDIO_SAMPLE_RATE / 100;
 
-	uint8_t output[0x1FFF];
+	unsigned char output[0x1FFF];
 	opus_int32 outlen = opus_encode(encoder, pcm, enc_frame_size, output, len);
 
-	lua_pushlstring(l, output, outlen);
+	lua_pushlstring(l, (char*) output, outlen);
 	return 1;
 }
 
@@ -362,10 +362,10 @@ static int encoder_encode_float(lua_State *l) {
 
 	const uint32_t enc_frame_size = frames * AUDIO_SAMPLE_RATE / 100;
 
-	uint8_t output[0x1FFF];
+	unsigned char output[0x1FFF];
 	opus_int32 outlen = opus_encode_float(encoder, pcm, enc_frame_size, output, len);
 
-	lua_pushlstring(l, output, outlen);
+	lua_pushlstring(l, (char*) output, outlen);
 	return 1;
 }
 

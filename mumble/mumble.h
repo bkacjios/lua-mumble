@@ -40,7 +40,7 @@ void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_
 
 int mumble_push_address(lua_State* l, ProtobufCBinaryData address);
 
-void mumble_handle_udp_packet(lua_State* l, MumbleClient* client, char* unencrypted, ssize_t size, bool udp);
+void mumble_handle_udp_packet(lua_State* l, MumbleClient* client, unsigned char* unencrypted, ssize_t size, bool udp);
 void mumble_handle_speaking_hooks_legacy(lua_State* l, MumbleClient* client, uint8_t buffer[], uint8_t codec, uint8_t target, uint32_t session);
 void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, MumbleUDP__Audio *audio, uint32_t session);
 

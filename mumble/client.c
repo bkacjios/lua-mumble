@@ -465,12 +465,9 @@ static int client_unhook(lua_State *l) {
 	const char *hook = luaL_checkstring(l, 2);
 	const char *name = "hook";
 
-	int index = 3;
-
 	if (!lua_isnoneornil(l, 3) && lua_isstring(l, 3)) {
 		// If a custom name for the hook is provided, adjust
 		name = lua_tostring(l, 3);
-		index = 4;
 	}
 
 	// Push our reference for the hooks table

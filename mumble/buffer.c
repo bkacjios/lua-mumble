@@ -113,7 +113,7 @@ uint8_t buffer_writeByte(ByteBuffer* buffer, uint8_t value) {
 	return 1;
 }
 
-uint8_t buffer_readByte(ByteBuffer* buffer, int8_t* output) {
+uint8_t buffer_readByte(ByteBuffer* buffer, uint8_t* output) {
 	buffer_available(buffer, 1);
 	*output = buffer->data[buffer->read_head++];
 	return 1;
@@ -372,7 +372,7 @@ int luabuffer_writeShort(lua_State *l) {
 
 int luabuffer_readShort(lua_State *l) {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
-	uint16_t value;
+	int16_t value;
 
 	if (!buffer_readShort(buffer, &value)) {
 		return luaL_error(l, "attempt to read beyond buffer limit");
@@ -466,7 +466,11 @@ int luabuffer_writeString(lua_State *l) {
 int luabuffer_readString(lua_State *l) {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
 	uint64_t size;
-	uint8_t read = buffer_readVarInt(buffer, &size);
+
+	if (!buffer_readVarInt(buffer, &size)) {
+		return luaL_error(l, "attempt to read beyond buffer limit");
+	}
+
 	char string[size + 1];
 
 	if (!buffer_read(buffer, string, size)) {
@@ -571,7 +575,7 @@ int luabuffer_index(lua_State *l) {
 		// Read specific character
 		int index = lua_tointeger(l, 2);
 		if (index >= buffer->read_head && index < buffer_length(buffer)) {
-			lua_pushlstring(l, buffer->data + index, 1);
+			lua_pushlstring(l, (char*) buffer->data + index, 1);
 		} else {
 			lua_pushnil(l);
 		}
@@ -608,7 +612,7 @@ int luabuffer_index(lua_State *l) {
 
 int luabuffer_tostring(lua_State *l) {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
-	lua_pushlstring(l, buffer->data + buffer->read_head, buffer_length(buffer));
+	lua_pushlstring(l, (char*) buffer->data + buffer->read_head, buffer_length(buffer));
 	return 1;
 }
 
@@ -644,6 +648,7 @@ const luaL_Reg mumble_buffer[] = {
 	{"writeBoolean", luabuffer_writeBool},
 	{"readBoolean", luabuffer_readBool},
 	{"isEmpty", luabuffer_isEmpty},
+	{"seek", luabuffer_seek},
 	{"__len", luabuffer_len},
 	{"__index", luabuffer_index},
 	{"__tostring", luabuffer_tostring},
