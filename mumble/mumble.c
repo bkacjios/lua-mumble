@@ -825,7 +825,13 @@ static void mumble_client_free(MumbleClient *client) {
 }
 
 static void mumble_client_cleanup(MumbleClient *client) {
+	if (uv_is_active((uv_handle_t*) &client->socket_udp)) {
+		uv_udp_recv_stop(&client->socket_udp);
+	}
 	uv_close((uv_handle_t*) &client->socket_udp, NULL);
+	if (uv_is_active((uv_handle_t*) &client->ssl_poll)) {
+		uv_poll_stop(&client->ssl_poll);
+	}
 	uv_close((uv_handle_t*) &client->socket_tcp, NULL);
 	if (uv_is_active((uv_handle_t*) &client->ping_timer)) {
 		uv_timer_stop(&client->ping_timer);
@@ -833,6 +839,7 @@ static void mumble_client_cleanup(MumbleClient *client) {
 	if (uv_is_active((uv_handle_t*) &client->audio_timer)) {
 		uv_timer_stop(&client->audio_timer);
 	}
+	uv_cancel((uv_req_t*)&client->tcp_connect_req);
 
 	LinkNode* current = client->stream_list;
 
