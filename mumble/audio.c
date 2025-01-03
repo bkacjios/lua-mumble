@@ -185,7 +185,7 @@ static void handle_audio_stream_end(lua_State *l, MumbleClient *client, AudioStr
 		sound->loop_count--;
 	} else {
 		mumble_registry_pushref(l, client->audio_streams, sound->refrence);
-		mumble_hook_call(l, client, "OnAudioStreamEnd", 1);
+		mumble_hook_call(client, "OnAudioStreamEnd", 1);
 		audio_transmission_unreference(l, sound);
 	}
 }
@@ -313,7 +313,7 @@ static void audio_transmission_bitrate_warning(MumbleClient *client, size_t leng
 	mumble_log(LOG_WARN, "Audio packet length %u greater than maximum of %u, stopping all audio streams. Try reducing the bitrate.", length, UDP_BUFFER_MAX);
 }
 
-static void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
+static void send_legacy_audio(MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
 	uint32_t frame_header = encoded_len;
 	if (end_frame) {
 		frame_header |= (1 << 13);
@@ -342,10 +342,10 @@ static void send_legacy_audio(lua_State *l, MumbleClient *client, uint8_t *encod
 		packet_sendudp(client, packet_buffer, len);
 	}
 
-	mumble_handle_speaking_hooks_legacy(l, client, packet_buffer + 1, LEGACY_UDP_OPUS, client->audio_target, client->session);
+	mumble_handle_speaking_hooks_legacy(client, packet_buffer + 1, LEGACY_UDP_OPUS, client->audio_target, client->session);
 }
 
-static void send_protobuf_audio(lua_State *l, MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
+static void send_protobuf_audio(MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
 	MumbleUDP__Audio audio = MUMBLE_UDP__AUDIO__INIT;
 	ProtobufCBinaryData audio_data = { .data = encoded, .len = (size_t)encoded_len };
 
@@ -375,19 +375,19 @@ static void send_protobuf_audio(lua_State *l, MumbleClient *client, uint8_t *enc
 		packet_sendudp(client, packet_buffer, len);
 	}
 
-	mumble_handle_speaking_hooks_protobuf(l, client, &audio, client->session);
+	mumble_handle_speaking_hooks_protobuf(client, &audio, client->session);
 }
 
-static void encode_and_send_audio(lua_State *l, MumbleClient *client, sf_count_t frame_size, bool end_frame) {
+static void encode_and_send_audio(MumbleClient *client, sf_count_t frame_size, bool end_frame) {
 	uint8_t encoded[PAYLOAD_SIZE_MAX];
 	opus_int32 encoded_len = opus_encode_float(client->encoder, (float *)client->audio_output, frame_size, encoded, PAYLOAD_SIZE_MAX);
 
 	if (encoded_len <= 0) return;
 
 	if (client->legacy) {
-		send_legacy_audio(l, client, encoded, encoded_len, end_frame);
+		send_legacy_audio(client, encoded, encoded_len, end_frame);
 	} else {
-		send_protobuf_audio(l, client, encoded, encoded_len, end_frame);
+		send_protobuf_audio(client, encoded, encoded_len, end_frame);
 	}
 
 	client->audio_sequence++;
@@ -416,7 +416,7 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 	lua_pushinteger(l, AUDIO_SAMPLE_RATE);
 	lua_pushinteger(l, AUDIO_PLAYBACK_CHANNELS);
 	lua_pushinteger(l, frame_size);
-	mumble_hook_call(l, client, "OnAudioStream", 3);
+	mumble_hook_call(client, "OnAudioStream", 3);
 
 	// Keep track of when an audio buffer is outputting data
 	static bool stream_active = false;
@@ -467,7 +467,7 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 
 	if (biggest_read > 0 || end_frame) {
 		// Encode and transmit until the end
-		encode_and_send_audio(l, client, frame_size, end_frame);
+		encode_and_send_audio(client, frame_size, end_frame);
 	}
 
 	stream_active = streamed_audio;

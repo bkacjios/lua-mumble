@@ -46,7 +46,7 @@ void mumble_ping_timer(uv_timer_t* handle) {
 
 	lua_stackguard_entry(l);
 
-	mumble_ping(l, client);
+	mumble_ping(client);
 
 	lua_stackguard_exit(l);
 }
@@ -92,7 +92,9 @@ static uint64_t mumble_ping_udp_protobuf(lua_State *l, MumbleClient* client) {
 	return timestamp;
 }
 
-static void mumble_ping_tcp(lua_State *l, MumbleClient *client) {
+static void mumble_ping_tcp(MumbleClient *client) {
+	lua_State* l = client->l;
+
 	MumbleProto__Ping ping = MUMBLE_PROTO__PING__INIT;
 
 	double timestamp = gettime(CLOCK_MONOTONIC);
@@ -155,15 +157,14 @@ static void mumble_ping_tcp(lua_State *l, MumbleClient *client) {
 	lua_setfield(l, -2, "udp_ping_avg");
 	lua_pushnumber(l, ping.udp_ping_var);
 	lua_setfield(l, -2, "udp_ping_var");
-	mumble_hook_call(l, client, "OnPingTCP", 1);
+	mumble_hook_call(client, "OnPingTCP", 1);
 
 	packet_send(client, PACKET_PING, &ping);
 }
 
-void mumble_ping(lua_State *l, MumbleClient* client) {
-	mumble_ping_tcp(l, client);
-
+static void mumble_ping_udp(MumbleClient* client) {
 	if (crypt_isValid(client->crypt)) {
+		lua_State* l = client->l;
 		uint64_t timestamp;
 		if (client->legacy) {
 			timestamp = mumble_ping_udp_legacy(l, client);
@@ -180,13 +181,18 @@ void mumble_ping(lua_State *l, MumbleClient* client) {
 		lua_newtable(l);
 		lua_pushnumber(l, timestamp);
 		lua_setfield(l, -2, "timestamp");
-		mumble_hook_call(l, client, "OnPingUDP", 1);
+		mumble_hook_call(client, "OnPingUDP", 1);
 
 		client->udp_ping_acc++;
 	}
 }
 
-static void mumble_update_ping(lua_State* l, MumbleClient* client, uint64_t timestamp, bool udp) {
+void mumble_ping(MumbleClient* client) {
+	mumble_ping_tcp(client);
+	mumble_ping_udp(client);
+}
+
+static void mumble_update_ping(MumbleClient* client, uint64_t timestamp, bool udp) {
 	double response = gettime(CLOCK_MONOTONIC);
 	double delay = (response * 1000) - timestamp;
 
@@ -208,6 +214,7 @@ static void mumble_update_ping(lua_State* l, MumbleClient* client, uint64_t time
 	// Reset our ping accumulation counter
 	client->udp_ping_acc = 0;
 
+	lua_State* l = client->l;
 	lua_newtable(l);
 	lua_pushnumber(l, (double) timestamp / 1000);
 	lua_setfield(l, -2, "timestamp");
@@ -217,10 +224,10 @@ static void mumble_update_ping(lua_State* l, MumbleClient* client, uint64_t time
 	lua_setfield(l, -2, "average");
 	lua_pushnumber(l, client->udp_ping_var);
 	lua_setfield(l, -2, "deviation");
-	mumble_hook_call(l, client, "OnPongUDP", 1);
+	mumble_hook_call(client, "OnPongUDP", 1);
 }
 
-void mumble_handle_udp_packet(lua_State* l, MumbleClient* client, unsigned char* unencrypted, ssize_t size, bool udp) {
+void mumble_handle_udp_packet(MumbleClient* client, unsigned char* unencrypted, ssize_t size, bool udp) {
 	uint8_t header = unencrypted[0];
 
 	if (client->legacy) {
@@ -233,7 +240,7 @@ void mumble_handle_udp_packet(lua_State* l, MumbleClient* client, unsigned char*
 
 			mumble_log(LOG_TRACE, "[UDP] Received legacy ping packet (size=%u, id=%u, timestamp=%lu)", size, id, timestamp);
 
-			mumble_update_ping(l, client, timestamp, udp);
+			mumble_update_ping(client, timestamp, udp);
 			return;
 		}
 		case LEGACY_UDP_OPUS:
@@ -246,7 +253,7 @@ void mumble_handle_udp_packet(lua_State* l, MumbleClient* client, unsigned char*
 			int session = util_get_varint(unencrypted + read, &read);
 
 			mumble_log(LOG_TRACE, "[UDP] Received legacy audio packet (size=%u, id=%u, target=%u, session=%u)", size, id, target, session);
-			mumble_handle_speaking_hooks_legacy(l, client, unencrypted + read, id, target, session);
+			mumble_handle_speaking_hooks_legacy(client, unencrypted + read, id, target, session);
 			return;
 		}
 		default: {
@@ -260,7 +267,7 @@ void mumble_handle_udp_packet(lua_State* l, MumbleClient* client, unsigned char*
 			MumbleUDP__Audio *audio = mumble_udp__audio__unpack(NULL, size - 1, unencrypted + 1);
 			if (audio != NULL) {
 				mumble_log(LOG_TRACE, "[UDP] Received %s: %p", audio->base.descriptor->name, audio);
-				mumble_handle_speaking_hooks_protobuf(l, client, audio, audio->sender_session);
+				mumble_handle_speaking_hooks_protobuf(client, audio, audio->sender_session);
 				mumble_udp__audio__free_unpacked(audio, NULL);
 			} else {
 				mumble_log(LOG_WARN, "[UDP] Error unpacking UDP audio packet");
@@ -271,7 +278,7 @@ void mumble_handle_udp_packet(lua_State* l, MumbleClient* client, unsigned char*
 			MumbleUDP__Ping *ping = mumble_udp__ping__unpack(NULL, size - 1, unencrypted + 1);
 			if (ping != NULL) {
 				mumble_log(LOG_TRACE, "[UDP] Received %s: %p", ping->base.descriptor->name, ping);
-				mumble_update_ping(l, client, ping->timestamp, udp);
+				mumble_update_ping(client, ping->timestamp, udp);
 				mumble_udp__ping__free_unpacked(ping, NULL);
 			} else {
 				mumble_log(LOG_WARN, "[UDP] Error unpacking ping packet");
@@ -288,7 +295,6 @@ void mumble_handle_udp_packet(lua_State* l, MumbleClient* client, unsigned char*
 
 void socket_read_event_udp(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf, const struct sockaddr* addr, unsigned flags) {
 	MumbleClient* client = (MumbleClient*) handle->data;
-	lua_State *l = client->l;
 
 	// Check for errors in the read operation
 	if (nread < 0) {
@@ -315,7 +321,7 @@ void socket_read_event_udp(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf,
 		return;
 	}
 
-	mumble_handle_udp_packet(l, client, unencrypted, nread - 4, true);
+	mumble_handle_udp_packet(client, unencrypted, nread - 4, true);
 
 	if (buf->base) {
 		free(buf->base);
@@ -349,7 +355,7 @@ void handle_ssl_read_error(MumbleClient* client, int ret) {
 		return; // Retry when SSL is ready
 	}
 
-	mumble_disconnect(client->l, client, mumble_ssl_error(ERR_get_error()), false);
+	mumble_disconnect(client, mumble_ssl_error(ERR_get_error()), false);
 }
 
 void socket_read_event_tcp(uv_poll_t* handle, int status, int events) {
@@ -426,7 +432,7 @@ void socket_read_event_tcp(uv_poll_t* handle, int status, int events) {
 					Packet_Handler_Func handler = packet_handler[packet.type];
 					if (handler) {
 						lua_stackguard_entry(l);
-						handler(l, client, &packet);
+						handler(client, &packet);
 						lua_stackguard_exit(l);
 					}
 					packet_reset(&packet);
@@ -440,13 +446,12 @@ void socket_read_event_tcp(uv_poll_t* handle, int status, int events) {
 }
 
 void socket_write_event_tcp(uv_poll_t* handle, int status, int events) {
+	MumbleClient* client = (MumbleClient*) handle->data;
+
 	if (status < 0) {
-		mumble_log(LOG_ERROR, "tcp write event error: %s", uv_strerror(status));
+		mumble_disconnect(client, uv_strerror(status), false);
 		return;
 	}
-
-	MumbleClient* client = (MumbleClient*) handle->data;
-	lua_State* l = client->l;
 
 	if (events & UV_WRITABLE && !client->connected) {
 		int ret = SSL_connect(client->ssl);
@@ -464,7 +469,7 @@ void socket_write_event_tcp(uv_poll_t* handle, int status, int events) {
 			mumble_log(LOG_INFO, "%s[%d] connected to server %s:%d", METATABLE_CLIENT, client->self, address, client->port);
 
 			// Set the connected flag and trigger any connection callback
-			mumble_hook_call(l, client, "OnConnect", 0);
+			mumble_hook_call(client, "OnConnect", 0);
 
 			uv_poll_stop(&client->ssl_poll);
 			uv_poll_start(&client->ssl_poll, UV_READABLE, socket_read_event_tcp);
@@ -480,13 +485,13 @@ void socket_write_event_tcp(uv_poll_t* handle, int status, int events) {
 }
 
 void mumble_connected_tcp(uv_connect_t *req, int status) {
-	if (status < 0) {
-		mumble_log(LOG_ERROR, "TCP connection failed: %s", uv_strerror(status));
-		return;
-	}
-
 	uv_tcp_t* tcp_handle = (uv_tcp_t*) req->handle;
 	MumbleClient* client = (MumbleClient*) tcp_handle->data;
+
+	if (status < 0) {
+		mumble_disconnect(client, uv_strerror(status), false);
+		return;
+	}
 
 	// Create a new uv_poll_t to monitor the socket for SSL handshake
 	uv_poll_init(uv_default_loop(), &client->ssl_poll, client->socket_tcp_fd);
@@ -844,7 +849,7 @@ static void mumble_client_cleanup(MumbleClient *client) {
 	if (current) {
 		// Cleanup our user objects
 		while (current != NULL) {
-			mumble_user_remove(client->l, client, current->index);
+			mumble_user_remove(client, current->index);
 			current = current->next;
 		}
 		list_clear(&client->user_list);
@@ -855,7 +860,7 @@ static void mumble_client_cleanup(MumbleClient *client) {
 	if (current) {
 		// Cleanup our channel objects
 		while (current != NULL) {
-			mumble_channel_remove(client->l, client, current->index);
+			mumble_channel_remove(client, current->index);
 			current = current->next;
 		}
 		list_clear(&client->channel_list);
@@ -867,7 +872,7 @@ static void mumble_client_cleanup(MumbleClient *client) {
 	}
 }
 
-void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason, bool garbagecollected) {
+void mumble_disconnect(MumbleClient *client, const char* reason, bool garbagecollected) {
 	if (!client->connecting) {
 		mumble_log(LOG_TRACE, "mumble.client: %p attempted to disconnect while not connected (%s)", client, reason);
 		return;
@@ -876,13 +881,15 @@ void mumble_disconnect(lua_State *l, MumbleClient *client, const char* reason, b
 	client->connecting = false;
 	client->connected = false;
 
+	lua_State* l = client->l;
+
 	lua_stackguard_entry(l);
 
 	if (!garbagecollected) {
 		// Only call "OnDisconnect" hook if we weren't garbage collected
 		mumble_log(LOG_INFO, "%s[%d] disconnected from server: %s", METATABLE_CLIENT, client->self, reason);
 		lua_pushstring(l, reason);
-		mumble_hook_call(l, client, "OnDisconnect", 1);
+		mumble_hook_call(client, "OnDisconnect", 1);
 	}
 
 	mumble_client_free(client);
@@ -917,12 +924,14 @@ int mumble_traceback(lua_State *l) {
 	return 1;
 }
 
-int mumble_hook_call(lua_State* l, MumbleClient *client, const char* hook, int nargs) {
-	return mumble_hook_call_ret(l, client, hook, nargs, 0);
+int mumble_hook_call(MumbleClient *client, const char* hook, int nargs) {
+	return mumble_hook_call_ret(client, hook, nargs, 0);
 }
 
-int mumble_hook_call_ret(lua_State* l, MumbleClient *client, const char* hook, int nargs, int nresults) {
+int mumble_hook_call_ret(MumbleClient *client, const char* hook, int nargs, int nresults) {
 	//lua_stackguard_entry(l);
+
+	lua_State* l = client->l;
 
 	const int top = lua_gettop(l);
 	const int callargs = nargs + 1;
@@ -962,7 +971,7 @@ int mumble_hook_call_ret(lua_State* l, MumbleClient *client, const char* hook, i
 			lua_pushvalue(l, -2);
 
 			// Push the client the hook is for
-			mumble_client_raw_get(l, client);
+			mumble_client_raw_get(client);
 
 			for (int i = 1; i <= nargs; i++) {
 				// Push a copy of the argument
@@ -984,7 +993,7 @@ int mumble_hook_call_ret(lua_State* l, MumbleClient *client, const char* hook, i
 					// Call errored, call OnError hook
 					erroring = true;
 					mumble_log(LOG_ERROR, "%s", lua_tostring(l, -1));
-					mumble_hook_call(l, client, "OnError", 1);
+					mumble_hook_call(client, "OnError", 1);
 					erroring = false;
 				} else {
 					// Call success
@@ -1033,7 +1042,8 @@ exit:
 	return nreturns;
 }
 
-MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session) {
+MumbleUser* mumble_user_get(MumbleClient* client, uint32_t session) {
+	lua_State* l = client->l;
 	MumbleUser* user = NULL;
 
 	mumble_pushref(l, client->users);
@@ -1088,8 +1098,8 @@ MumbleUser* mumble_user_get(lua_State* l, MumbleClient* client, uint32_t session
 	return user;
 }
 
-void mumble_client_raw_get(lua_State* l, MumbleClient* client) {
-	mumble_registry_pushref(l, MUMBLE_CLIENTS, client->self);
+void mumble_client_raw_get(MumbleClient* client) {
+	mumble_registry_pushref(client->l, MUMBLE_CLIENTS, client->self);
 }
 
 bool mumble_user_isnil(lua_State* l, MumbleClient* client, uint32_t session) {
@@ -1105,11 +1115,12 @@ bool mumble_user_isnil(lua_State* l, MumbleClient* client, uint32_t session) {
 	return isNil;
 }
 
-void mumble_user_raw_get(lua_State* l, MumbleClient* client, uint32_t session) {
-	mumble_registry_pushref(l, client->users, session);
+void mumble_user_raw_get(MumbleClient* client, uint32_t session) {
+	mumble_registry_pushref(client->l, client->users, session);
 }
 
-void mumble_user_remove(lua_State* l, MumbleClient* client, uint32_t session) {
+void mumble_user_remove(MumbleClient* client, uint32_t session) {
+	lua_State* l = client->l;
 	mumble_pushref(l, client->users);
 	lua_pushinteger(l, session);
 	lua_pushnil(l);
@@ -1117,11 +1128,12 @@ void mumble_user_remove(lua_State* l, MumbleClient* client, uint32_t session) {
 	lua_pop(l, 1);
 }
 
-void mumble_channel_raw_get(lua_State* l, MumbleClient* client, uint32_t channel_id) {
-	mumble_registry_pushref(l, client->channels, channel_id);
+void mumble_channel_raw_get(MumbleClient* client, uint32_t channel_id) {
+	mumble_registry_pushref(client->l, client->channels, channel_id);
 }
 
-MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t channel_id) {
+MumbleChannel* mumble_channel_get(MumbleClient* client, uint32_t channel_id) {
+	lua_State* l = client->l;
 	MumbleChannel* channel = NULL;
 
 	mumble_pushref(l, client->channels);
@@ -1167,7 +1179,8 @@ MumbleChannel* mumble_channel_get(lua_State* l, MumbleClient* client, uint32_t c
 	return channel;
 }
 
-void mumble_channel_remove(lua_State* l, MumbleClient* client, uint32_t channel_id) {
+void mumble_channel_remove(MumbleClient* client, uint32_t channel_id) {
+	lua_State* l = client->l;
 	mumble_pushref(l, client->channels);
 	lua_pushinteger(l, channel_id);
 	lua_pushnil(l);
@@ -1222,13 +1235,14 @@ int mumble_push_address(lua_State* l, ProtobufCBinaryData address) {
 	return 1;
 }
 
-void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, MumbleUDP__Audio *audio, uint32_t session) {
+void mumble_handle_speaking_hooks_protobuf(MumbleClient* client, MumbleUDP__Audio *audio, uint32_t session) {
+	lua_State* l = client->l;
 	lua_stackguard_entry(l);
 
 	uint64_t sequence = audio->frame_number;
 
 	bool speaking = !audio->is_terminator;
-	MumbleUser* user = mumble_user_get(l, client, session);
+	MumbleUser* user = mumble_user_get(client, session);
 
 	bool state_change = false;
 	bool one_frame = (user->speaking == false && speaking == false); // This will only be true if the user only sent exactly one audio packet
@@ -1239,8 +1253,8 @@ void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, M
 	}
 
 	if ((one_frame || state_change) && speaking) {
-		mumble_user_raw_get(l, client, session);
-		mumble_hook_call(l, client, "OnUserStartSpeaking", 1);
+		mumble_user_raw_get(client, session);
+		mumble_hook_call(client, "OnUserStartSpeaking", 1);
 	}
 
 	lua_newtable(l);
@@ -1250,7 +1264,7 @@ void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, M
 	lua_setfield(l, -2, "target");
 	lua_pushnumber(l, sequence);
 	lua_setfield(l, -2, "sequence");
-	mumble_user_raw_get(l, client, session);
+	mumble_user_raw_get(client, session);
 	lua_setfield(l, -2, "user");
 	lua_pushboolean(l, speaking);
 	lua_setfield(l, -2, "speaking");
@@ -1264,24 +1278,25 @@ void mumble_handle_speaking_hooks_protobuf(lua_State* l, MumbleClient* client, M
 	lua_setfield(l, -2, "bandwidth");
 	lua_pushinteger(l, opus_packet_get_samples_per_frame(audio->opus_data.data, AUDIO_SAMPLE_RATE));
 	lua_setfield(l, -2, "samples_per_frame");
-	mumble_hook_call(l, client, "OnUserSpeak", 1);
+	mumble_hook_call(client, "OnUserSpeak", 1);
 
 	if ((one_frame || state_change) && !speaking) {
-		mumble_user_raw_get(l, client, session);
-		mumble_hook_call(l, client, "OnUserStopSpeaking", 1);
+		mumble_user_raw_get(client, session);
+		mumble_hook_call(client, "OnUserStopSpeaking", 1);
 	}
 
 	lua_stackguard_exit(l);
 }
 
-void mumble_handle_speaking_hooks_legacy(lua_State* l, MumbleClient* client, uint8_t buffer[], uint8_t codec, uint8_t target, uint32_t session) {
+void mumble_handle_speaking_hooks_legacy(MumbleClient* client, uint8_t buffer[], uint8_t codec, uint8_t target, uint32_t session) {
+	lua_State* l = client->l;
 	lua_stackguard_entry(l);
 
 	int read = 0;
 	uint64_t sequence = util_get_varint(buffer, &read);
 
 	bool speaking = false;
-	MumbleUser* user = mumble_user_get(l, client, session);
+	MumbleUser* user = mumble_user_get(client, session);
 
 	int payload_len = 0;
 	uint16_t frame_header = 0;
@@ -1305,8 +1320,8 @@ void mumble_handle_speaking_hooks_legacy(lua_State* l, MumbleClient* client, uin
 	}
 
 	if ((one_frame || state_change) && speaking) {
-		mumble_user_raw_get(l, client, session);
-		mumble_hook_call(l, client, "OnUserStartSpeaking", 1);
+		mumble_user_raw_get(client, session);
+		mumble_hook_call(client, "OnUserStartSpeaking", 1);
 	}
 
 	lua_newtable(l);
@@ -1316,7 +1331,7 @@ void mumble_handle_speaking_hooks_legacy(lua_State* l, MumbleClient* client, uin
 	lua_setfield(l, -2, "target");
 	lua_pushnumber(l, sequence);
 	lua_setfield(l, -2, "sequence");
-	mumble_user_raw_get(l, client, session);
+	mumble_user_raw_get(client, session);
 	lua_setfield(l, -2, "user");
 	lua_pushboolean(l, speaking);
 	lua_setfield(l, -2, "speaking");
@@ -1328,11 +1343,11 @@ void mumble_handle_speaking_hooks_legacy(lua_State* l, MumbleClient* client, uin
 	lua_setfield(l, -2, "bandwidth");
 	lua_pushinteger(l, opus_packet_get_samples_per_frame(buffer + read, AUDIO_SAMPLE_RATE));
 	lua_setfield(l, -2, "samples_per_frame");
-	mumble_hook_call(l, client, "OnUserSpeak", 1);
+	mumble_hook_call(client, "OnUserSpeak", 1);
 
 	if ((one_frame || state_change) && !speaking) {
-		mumble_user_raw_get(l, client, session);
-		mumble_hook_call(l, client, "OnUserStopSpeaking", 1);
+		mumble_user_raw_get(client, session);
+		mumble_hook_call(client, "OnUserStopSpeaking", 1);
 	}
 
 	lua_stackguard_exit(l);
@@ -1662,10 +1677,6 @@ void mumble_init(lua_State *l) {
 		lua_setfield(l, -2, "registry");
 	}
 	lua_pop(l, 1);
-}
-
-int mumble_immutable(lua_State *l) {
-	return 0;
 }
 
 void mumble_weak_table(lua_State *l) {

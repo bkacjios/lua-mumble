@@ -43,6 +43,6 @@ enum {
 int packet_sendex(MumbleClient* client, const int type, const void *message, const ProtobufCMessage* base, const int length);
 int packet_sendudp(MumbleClient* client, const void *message, const int length);
 
-typedef void (*Packet_Handler_Func)(lua_State *lua, MumbleClient *client, MumblePacket *packet);
+typedef void (*Packet_Handler_Func)(MumbleClient *client, MumblePacket *packet);
 
 extern const Packet_Handler_Func packet_handler[NUM_PACKETS];
