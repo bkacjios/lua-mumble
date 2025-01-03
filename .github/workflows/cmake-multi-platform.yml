@@ -71,6 +71,7 @@ jobs:
         elif [ "$RUNNER_OS" == "Windows" ]; then
           echo "Windows dependencies installed via vcpkg"
         fi
+      shell: bash
 
     - name: Set reusable strings
       id: strings
@@ -103,6 +104,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -S ${{ github.workspace }}
         fi
+      shell: bash
 
     - name: Build
       run: |
