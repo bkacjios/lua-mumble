@@ -25,6 +25,7 @@ void bin_to_strhex(char *bin, size_t binsz, char **result) {
 	}
 }
 
+/*
 static void iterate_and_print(lua_State *L, int index) {
 	// Push another reference to the table on top of the stack (so we know
 	// where it is, and this function can work for negative, positive and
@@ -51,6 +52,7 @@ static void iterate_and_print(lua_State *L, int index) {
 	lua_pop(L, 1);
 	// Stack is now the same as it was on entry to this function
 }
+*/
 
 void print_unescaped(const char* ptr, int len) {
 	if (!ptr) return;

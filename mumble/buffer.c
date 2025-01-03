@@ -182,6 +182,8 @@ uint8_t buffer_readVarInt(ByteBuffer* buffer, uint64_t* output) {
 
 	uint8_t size = 0;
 
+	uint8_t byte1, byte2, byte3, byte4, byte5, byte6, byte7, byte8;
+
 	if ((v & 0x80) == 0x00) {
 		*output = (v & 0x7F);
 		size += 1;
@@ -193,22 +195,25 @@ uint8_t buffer_readVarInt(ByteBuffer* buffer, uint64_t* output) {
 		switch (v & 0xFC) {
 		case 0xF0:
 			buffer_available(buffer, 4);
-			*output = buffer->data[buffer->read_head++] << 24
-			          | buffer->data[buffer->read_head++] << 16
-			          | buffer->data[buffer->read_head++] << 8
-			          | buffer->data[buffer->read_head++];
+			byte1 = buffer->data[buffer->read_head++];
+			byte2 = buffer->data[buffer->read_head++];
+			byte3 = buffer->data[buffer->read_head++];
+			byte4 = buffer->data[buffer->read_head++];
+			*output = byte1 << 24 | byte2 << 16 | byte3 << 8 | byte4;
 			size += 5;
 			break;
 		case 0xF4:
 			buffer_available(buffer, 8);
-			*output = (uint64_t)buffer->data[buffer->read_head++] << 56
-			          | (uint64_t)buffer->data[buffer->read_head++] << 48
-			          | (uint64_t)buffer->data[buffer->read_head++] << 40
-			          | (uint64_t)buffer->data[buffer->read_head++] << 32
-			          | buffer->data[buffer->read_head++] << 24
-			          | buffer->data[buffer->read_head++] << 16
-			          | buffer->data[buffer->read_head++] << 8
-			          | buffer->data[buffer->read_head++];
+			byte1 = buffer->data[buffer->read_head++];
+			byte2 = buffer->data[buffer->read_head++];
+			byte3 = buffer->data[buffer->read_head++];
+			byte4 = buffer->data[buffer->read_head++];
+			byte5 = buffer->data[buffer->read_head++];
+			byte6 = buffer->data[buffer->read_head++];
+			byte7 = buffer->data[buffer->read_head++];
+			byte8 = buffer->data[buffer->read_head++];
+			*output = (uint64_t)byte1 << 56 | (uint64_t)byte2 << 48 | (uint64_t)byte3 << 40 |
+			          (uint64_t)byte4 << 32 | byte5 << 24 | byte6 << 16 | byte7 << 8 | byte8;
 			size += 9;
 			break;
 		case 0xF8:
@@ -227,11 +232,16 @@ uint8_t buffer_readVarInt(ByteBuffer* buffer, uint64_t* output) {
 		}
 	} else if ((v & 0xF0) == 0xE0) {
 		buffer_available(buffer, 3);
-		*output = (v & 0x0F) << 24 | buffer->data[buffer->read_head++] << 16 | buffer->data[buffer->read_head++] << 8 | buffer->data[buffer->read_head++];
+		byte1 = buffer->data[buffer->read_head++];
+		byte2 = buffer->data[buffer->read_head++];
+		byte3 = buffer->data[buffer->read_head++];
+		*output = (v & 0x0F) << 24 | byte1 << 16 | byte2 << 8 | byte3;
 		size += 4;
 	} else if ((v & 0xE0) == 0xC0) {
 		buffer_available(buffer, 2);
-		*output = (v & 0x1F) << 16 | buffer->data[buffer->read_head++] << 8 | buffer->data[buffer->read_head++];
+		byte1 = buffer->data[buffer->read_head++];
+		byte2 = buffer->data[buffer->read_head++];
+		*output = (v & 0x1F) << 16 | byte1 << 8 | byte2;
 		size += 3;
 	}
 
@@ -271,7 +281,7 @@ int mumble_buffer_new(lua_State *l) {
 		break;
 	default:
 		msg = lua_pushfstring(l, "%s or %s expected, got %s",
-		                                  lua_typename(l, LUA_TNUMBER), lua_typename(l, LUA_TSTRING), luaL_typename(l, 2));
+		                      lua_typename(l, LUA_TNUMBER), lua_typename(l, LUA_TSTRING), luaL_typename(l, 2));
 		return luaL_argerror(l, 1, msg);
 	}
 

@@ -14,7 +14,7 @@ find_package(Threads REQUIRED)
 pkg_check_modules(PKG_DEPS REQUIRED ${DEPENDENCIES})
 
 # Compiler flags
-set(CMAKE_C_FLAGS "-fPIC -I.")
+set(CMAKE_C_FLAGS "-fPIC -I. -Wall")
 if("${LUAVER}" STREQUAL "luajit")
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DLUAJIT")
 endif()
