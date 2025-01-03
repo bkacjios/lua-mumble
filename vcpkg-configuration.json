@@ -1,0 +1,5 @@
+{
+  "version-string": "2025.01",
+  "default-triplet": "x64-windows",
+  "vcpkg-commit-id": "latest"
+}

@@ -38,32 +38,42 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]  # You can also add windows-latest if you want to support Windows
+        os: [ubuntu-latest] #, windows-latest]
         build_type: [Release]
-        c_compiler: [gcc, clang]  # Now we have gcc and clang in the same matrix
         include:
+          # For Linux, use gcc or clang as compilers
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
-          - os: ubuntu-latest
-            c_compiler: clang
-            cpp_compiler: clang++
+          # - os: ubuntu-latest
+          #   c_compiler: clang
+          #   cpp_compiler: clang++
+
+          # For Windows, use MSVC as the compiler
+          # - os: windows-latest
+          #   c_compiler: msvc
+          #   cpp_compiler: msvc
 
     steps:
     - uses: actions/checkout@v4
 
     - name: Install Dependencies (Including gh)
       run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          libssl-dev \
-          libluajit-5.1-dev \
-          protobuf-c-compiler \
-          libprotobuf-c-dev \
-          libopus-dev \
-          libsndfile1-dev \
-          libuv1-dev \
-          gh  # Install GitHub CLI
+        if [ "$RUNNER_OS" == "Linux" ]; then
+          sudo apt-get update
+          sudo apt-get install -y \
+            libssl-dev \
+            libluajit-5.1-dev \
+            protobuf-c-compiler \
+            libprotobuf-c-dev \
+            libopus-dev \
+            libsndfile1-dev \
+            libuv1-dev \
+            gh  # Install GitHub CLI
+        elif [ "$RUNNER_OS" == "Windows" ]; then
+          echo "Windows dependencies installed via vcpkg"
+        fi
+      shell: bash
 
     - name: Set reusable strings
       id: strings
@@ -71,16 +81,38 @@ jobs:
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
+    - name: Install vcpkg for MSVC (Windows only)
+      if: matrix.os == 'windows-latest'
+      uses: lukka/run-vcpkg@v11
+      with:
+        runVcpkgInstall: true 
+        doNotUpdateVcpkg: true
+        vcpkgJsonGlob: "**/vcpkg.json"
+      env:
+        VCPKG_DEFAULT_TRIPLET: "x64-windows"  # Set the default triplet for MSVC
+
     - name: Configure CMake
-      run: >
-        cmake -B ${{ steps.strings.outputs.build-output-dir }}
-        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
-        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
-        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        -S ${{ github.workspace }}
+      run: |
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          # CMake configuration for Windows (MSVC)
+          cmake -B ${{ steps.strings.outputs.build-output-dir }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
+            -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -G "Visual Studio 16 2019"  # Specify Visual Studio generator for MSVC
+        else
+          # CMake configuration for Linux
+          cmake -B ${{ steps.strings.outputs.build-output-dir }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
+            -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -S ${{ github.workspace }}
+        fi
+      shell: bash
 
     - name: Build
-      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+      run: |
+        cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
 
     - name: Test
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
@@ -106,10 +138,21 @@ jobs:
         echo "Zipped Clang .so files into $ZIP_FILE"
       working-directory: ${{ github.workspace }}
 
+    - name: Zip MSVC Files
+      if: matrix.c_compiler == 'msvc'
+      run: |
+        echo "Zipping MSVC files..."
+        MSVC_DLL_FILES=$(find ${{ steps.strings.outputs.build-output-dir }} -name '*.dll' -type f)
+        echo "Found MSVC .dll files: $MSVC_DLL_FILES"
+        ZIP_FILE="release-msvc.zip"
+        Compress-Archive -Path $MSVC_DLL_FILES -DestinationPath $ZIP_FILE # Zip all MSVC .dll files
+        echo "Zipped MSVC .dll files into $ZIP_FILE"
+      shell: powershell
+
     - name: Upload GCC .so Zip to Release
       if: matrix.c_compiler == 'gcc'
       run: |
-        RELEASE_TAG="${{ needs.create_release.outputs.release_tag }}"  # Ensure that the release tag is available here
+        RELEASE_TAG="${{ needs.create_release.outputs.release_tag }}"
         ZIP_FILE="release-gcc.zip"
         if [ -f "$ZIP_FILE" ]; then  # Check if the zip file was created
           echo "Uploading $ZIP_FILE to release $RELEASE_TAG"
@@ -124,13 +167,29 @@ jobs:
     - name: Upload Clang .so Zip to Release
       if: matrix.c_compiler == 'clang'
       run: |
-        RELEASE_TAG="${{ needs.create_release.outputs.release_tag }}"  # Ensure that the release tag is available here
+        RELEASE_TAG="${{ needs.create_release.outputs.release_tag }}"
         ZIP_FILE="release-clang.zip"
         if [ -f "$ZIP_FILE" ]; then  # Check if the zip file was created
           echo "Uploading $ZIP_FILE to release $RELEASE_TAG"
           gh release upload $RELEASE_TAG $ZIP_FILE --clobber  # Upload the zip file to the single release
         else
           echo "Error: $ZIP_FILE does not exist."
+          exit 1
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload MSVC .dll Zip to Release
+      if: matrix.c_compiler == 'msvc'
+      run: |
+        echo "Uploading MSVC zip..."
+        RELEASE_TAG="${{ needs.create_release.outputs.release_tag }}"
+        ZIP_FILE="release-msvc.zip"
+        if [ -f "$ZIP_FILE" ]; then  # Check if the zip file was created
+          echo "Uploading $ZIP_FILE to release $RELEASE_TAG"
+          gh release upload $RELEASE_TAG $ZIP_FILE --clobber
+        else
+          echo "Error: $ZIP_FILE not found."
           exit 1
         fi
       env:
