@@ -10,6 +10,7 @@ set(DEPENDENCIES libssl ${LUAVER} libprotobuf-c opus sndfile libuv)
 
 # Include directories and libraries
 find_package(PkgConfig REQUIRED)
+find_package(Threads REQUIRED)
 pkg_check_modules(PKG_DEPS REQUIRED ${DEPENDENCIES})
 
 # Compiler flags

@@ -245,6 +245,8 @@ int mumble_thread_new(lua_State *l) {
 	controller->bytecode_size = 0;
 	controller->started = false;
 
+	const char *msg = NULL;
+
 	switch (lua_type(l, 2)) {
 	case LUA_TSTRING:
 		controller->filename = lua_tostring(l, 2);
@@ -258,8 +260,8 @@ int mumble_thread_new(lua_State *l) {
 		lua_pop(l, 1); // Pop our worker function copy
 		break;
 	default:
-		const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
-		                                  lua_typename(l, LUA_TSTRING), lua_typename(l, LUA_TFUNCTION), luaL_typename(l, 2));
+		msg = lua_pushfstring(l, "%s or %s expected, got %s",
+		                      lua_typename(l, LUA_TSTRING), lua_typename(l, LUA_TFUNCTION), luaL_typename(l, 2));
 		return luaL_argerror(l, 1, msg);
 	}
 

@@ -252,6 +252,8 @@ int mumble_buffer_new(lua_State *l) {
 
 	if (buffer == NULL) return luaL_error(l, "error creating buffer: %s", strerror(errno));
 
+	const char *msg = NULL;
+
 	switch (type) {
 	case LUA_TNUMBER:
 		// Initialize with a given allocation size
@@ -268,7 +270,7 @@ int mumble_buffer_new(lua_State *l) {
 		buffer = buffer_init(buffer, 1024);
 		break;
 	default:
-		const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
+		msg = lua_pushfstring(l, "%s or %s expected, got %s",
 		                                  lua_typename(l, LUA_TNUMBER), lua_typename(l, LUA_TSTRING), luaL_typename(l, 2));
 		return luaL_argerror(l, 1, msg);
 	}

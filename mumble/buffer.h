@@ -37,7 +37,7 @@ uint8_t buffer_write##name(ByteBuffer* buffer, double value) { \
 	size_t size = sizeof(type); \
 	union { \
 		type value; \
-		uint8_t bytes[size]; \
+		uint8_t bytes[sizeof(type)]; \
 	} convert; \
 	convert.value = value; \
 	buffer_write(buffer, convert.bytes, size); \

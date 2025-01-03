@@ -632,6 +632,8 @@ static int audiostream_getComments(lua_State *l) {
 static int audiostream_setLooping(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 
+	const char *msg = NULL;
+
 	switch (lua_type(l, 2)) {
 	case LUA_TNUMBER:
 		sound->looping = false;
@@ -642,8 +644,8 @@ static int audiostream_setLooping(lua_State *l) {
 		sound->loop_count = 0;
 		break;
 	default:
-		const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
-		                                  lua_typename(l, LUA_TNUMBER), lua_typename(l, LUA_TBOOLEAN), luaL_typename(l, 2));
+		msg = lua_pushfstring(l, "%s or %s expected, got %s",
+		                      lua_typename(l, LUA_TNUMBER), lua_typename(l, LUA_TBOOLEAN), luaL_typename(l, 2));
 		return luaL_argerror(l, 2, msg);
 	}
 
