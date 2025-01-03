@@ -85,10 +85,11 @@ jobs:
       if: matrix.os == 'windows-latest'
       uses: lukka/run-vcpkg@v11
       with:
-        vcpkgDirectory: "${{ github.workspace }}/vcpkg"
         runVcpkgInstall: true 
         doNotUpdateVcpkg: true
         vcpkgJsonGlob: "**/vcpkg.json"
+      env:
+        VCPKG_DEFAULT_TRIPLET: "x64-windows"  # Set the default triplet for MSVC
 
     - name: Configure CMake
       run: |
