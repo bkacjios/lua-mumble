@@ -1,0 +1,25 @@
+{
+  "vcpkg-commit-id": "latest",
+  "dependencies": [
+    {
+      "name": "libssl",
+      "version": "latest"
+    },
+    {
+      "name": "protobuf-c",
+      "version": "latest"
+    },
+    {
+      "name": "libopus",
+      "version": "latest"
+    },
+    {
+      "name": "libsndfile",
+      "version": "latest"
+    },
+    {
+      "name": "libuv",
+      "version": "latest"
+    }
+  ]
+}
