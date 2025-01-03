@@ -6,14 +6,14 @@ A lua module to connect to a mumble server and interact with it
 
 ### Ubuntu
 ```bash
-sudo apt-get install libluajit-5.1-dev protobuf-c libprotobuf-c-dev libssl-dev libopus-dev libuv1-dev libsndfile1-dev
+sudo apt-get install cmake pkgconf libluajit-5.1-dev protobuf-c libprotobuf-c-dev libssl-dev libopus-dev libuv1-dev libsndfile1-dev
 ```
 
 Note: `liblua5.1-0-dev` can be substituted with `libluajit-5.1-dev`, `liblua5.2-dev`, or `liblua5.3-dev` depending on your needs.
 
 ### Arch Linux
 ```bash
-sudo pacman -S luajit protobuf-c openssl libsndfile opus libuv
+sudo pacman -S cmake pkgconf luajit protobuf-c openssl libsndfile opus libuv
 ```
 
 Note: `luajit` can be substituted with `lua5.1`, `lua5.2` or `lua5.3` depending on your needs.
@@ -21,33 +21,24 @@ Note: `luajit` can be substituted with `lua5.1`, `lua5.2` or `lua5.3` depending 
 ## Make usage
 
 ```bash
-# Removes all object files, generated protobuf c/h files, dependency files, and mumble.so
-make clean
+mkdir build
 
-# Makes everything
-make all
+cd build
 
-# Use LUAVER override to change what version of lua it should be compiled for
-# luajit, lua5.1, lua5.2, lua5.3 are all acceptable options
-make all LUAVER=lua5.1
+# Configure
+cmake .. -DLUAVER=luajit -DLUALIB=/usr/local/lib/lua/5.1
 
-# Make everything with debug flags for use with a debugger
-# Example: gdb --args luajit script.lua
-make debug
-
-# Makes only the protobuf c files in the ./proto folder
-make proto
+# Build mumble.so
+make
 
 # Copies mumble.so to the provided LUALIB path
-# Defaults to /usr/local/lib/lua/5.1/ if not provided
 make install
 
-# Use LUALIB to change where the module will be installed
-make install LUAVER=lua5.1 LUALIB=/usr/local/lib/lua/5.1/
-
 # Removes mumble.so in the provided LUALIB path
-make uninstall LUALIB=/usr/local/lib/lua/5.1/
+make uninstall
 ```
+
+If you want a debug build, add `-DCMAKE_BUILD_TYPE=Debug` to the cmake arguments
 
 ## Scripting documentation
 
