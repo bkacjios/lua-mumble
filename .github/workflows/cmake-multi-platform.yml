@@ -35,22 +35,24 @@ jobs:
     needs: create_release  # Ensure this job runs after `create_release`
     runs-on: ${{ matrix.os }}
 
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        build_type: [Release]
-        c_compiler: [gcc, clang, msvc]
-        include:
-          - os: ubuntu-latest
-            c_compiler: gcc
-            cpp_compiler: g++
-          - os: ubuntu-latest
-            c_compiler: clang
-            cpp_compiler: clang++
-          - os: windows-latest
-            c_compiler: msvc
-            cpp_compiler: msvc
+  strategy:
+    fail-fast: false
+    matrix:
+      os: [ubuntu-latest, windows-latest]
+      build_type: [Release]
+      include:
+        # For Linux, use gcc or clang as compilers
+        - os: ubuntu-latest
+          c_compiler: gcc
+          cpp_compiler: g++
+        - os: ubuntu-latest
+          c_compiler: clang
+          cpp_compiler: clang++
+
+        # For Windows, use MSVC as the compiler
+        - os: windows-latest
+          c_compiler: msvc
+          cpp_compiler: msvc
 
     steps:
     - uses: actions/checkout@v4
@@ -83,9 +85,10 @@ jobs:
       if: matrix.os == 'windows-latest'
       uses: lukka/run-vcpkg@v11
       with:
-        vcpkgArguments: "--triplet x64-windows install libssl protobuf-c libopus libsndfile libuv"
         vcpkgDirectory: "${{ github.workspace }}/vcpkg"
-        cleanAfterBuild: true
+        runVcpkgInstall: true
+        vcpkgArguments: "--triplet x64-windows install libssl protobuf-c libopus libsndfile libuv"
+        doNotUpdateVcpkg: true  # Avoid updating vcpkg itself
 
     - name: Configure CMake
       run: |
