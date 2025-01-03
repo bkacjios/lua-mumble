@@ -57,7 +57,7 @@ jobs:
 
     - name: Install Dependencies (Including gh)
       run: |
-        if [[ "$RUNNER_OS" == "Linux" ]]; then
+        if [ "$RUNNER_OS" == "Linux" ]; then
           sudo apt-get update
           sudo apt-get install -y \
             libssl-dev \
@@ -68,7 +68,7 @@ jobs:
             libsndfile1-dev \
             libuv1-dev \
             gh  # Install GitHub CLI
-        elif [[ "$RUNNER_OS" == "Windows" ]]; then
+        elif [ "$RUNNER_OS" == "Windows" ]; then
           echo "Windows dependencies installed via vcpkg"
         fi
 
@@ -88,7 +88,7 @@ jobs:
 
     - name: Configure CMake
       run: |
-        if [[ "$RUNNER_OS" == "Windows" ]]; then
+        if [ "$RUNNER_OS" == "Windows" ]; then
           # CMake configuration for Windows (MSVC)
           cmake -B ${{ steps.strings.outputs.build-output-dir }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
