@@ -1042,7 +1042,7 @@ void packet_query_users(MumbleClient *client, MumblePacket *packet) {
 
 	lua_newtable(l);
 	if (users->n_ids > 0 && users->n_ids == users->n_names) {
-		for (uint32_t i; i < users->n_ids; i++) {
+		for (uint32_t i = 0; i < users->n_ids; i++) {
 			uint32_t id = users->ids[i];
 			char* name = users->names[i];
 

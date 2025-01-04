@@ -117,7 +117,7 @@ int voicepacket_setheader(VoicePacket *packet, const uint8_t type, const uint8_t
 }
 
 int voicepacket_setframe(VoicePacket *packet, const uint8_t type, const uint16_t frame_header, uint8_t *buffer, size_t buffer_len) {
-	int offset;
+	int offset = 0;
 
 	if (packet == NULL || buffer == NULL || buffer_len <= 0 || buffer_len >= 0x2000) {
 		return -1;
@@ -533,7 +533,7 @@ static int audiostream_seek(lua_State *l) {
 	int option = luaL_checkoption(l, 2, "cur", op);
 	long offset = luaL_optlong(l, 3, 0);
 
-	sf_count_t position;
+	sf_count_t position = 0;
 
 	switch (option) {
 	case SET:
