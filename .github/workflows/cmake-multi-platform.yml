@@ -25,6 +25,7 @@ jobs:
     - name: Check if Release Already Exists
       id: release_exists
       run: |
+        RELEASE_TAG="${{ steps.release_tag.outputs.release_tag }}"
         EXISTING_RELEASE=$(gh release view $RELEASE_TAG --json tagName --jq ".tagName" || echo "null")
         echo "Existing release tag: $EXISTING_RELEASE"
         echo "Wanted release tag  : $RELEASE_TAG"
