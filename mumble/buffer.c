@@ -345,16 +345,43 @@ int luabuffer_write(lua_State *l) {
 
 int luabuffer_read(lua_State *l) {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
-	uint64_t size = luaL_checkinteger(l, 2);
-	char read[size];
+	int nargs = lua_gettop(l) - 1;  // Get number of arguments
+	char *read;
 
-	if (!buffer_read(buffer, &read, size)) {
-		return luaL_error(l, "attempt to read beyond buffer limit");
+	for (int i = 2; i < nargs + 2; i++) {
+		size_t size = 0;
+
+		if (lua_type(l, i) == LUA_TNUMBER) {
+			// If the argument is a number, read that many bytes
+			size = (size_t) lua_tointeger(l, i);
+		} else {
+			const char *arg = lua_tostring(l, i);
+			if (arg && arg[0] == '*' && arg[1] == 'a') {
+				// If the argument is "*a", read the entire buffer
+				size = buffer_length(buffer);
+			} else {
+				return luaL_argerror(l, i, "invalid format");
+			}
+		}
+
+		// Allocate memory and perform the read operation
+		read = malloc(size);
+		if (!read) {
+			return luaL_error(l, "failed to allocate memory for read buffer");
+		}
+
+		if (!buffer_read(buffer, read, size)) {
+			free(read);
+			return luaL_error(l, "attempt to read beyond buffer limit");
+		}
+
+		lua_pushlstring(l, read, size);
+		free(read);
 	}
 
-	lua_pushlstring(l, read, size);
-	return 1;
+	return nargs;
 }
+
 
 int luabuffer_writeByte(lua_State *l) {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);

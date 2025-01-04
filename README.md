@@ -572,9 +572,6 @@ mumble.timer:stop()
 A buffer object used to read/write data from. It will dynamically adjust its capacity to fit all written data.
 
 ``` lua
--- The buffers __tostring metamethod will return the written data as a string
-String data = tostring(buffer)
-
 -- Packs the buffer, moving all remaining data that has not been read to the start.
 -- BEFORE PACK = [1234|5678|]
 --          Read head ^    ^ Write head
@@ -621,7 +618,8 @@ Number position = buffer:seek([String mode ["read", "write", "both"] = "read", S
 Number written = buffer:write(String data)
 
 -- Reads the specified number of bytes from the buffer and returns the data as a string
-String data = buffer:read(Number size)
+-- Accepts multiple arguments, like buffer:read(4, 6, "*all")
+String data = buffer:read([Number length, String format, ..]
 
 -- Write a single byte to the buffer
 -- Returns how many bytes were written to the buffer

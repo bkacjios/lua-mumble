@@ -828,17 +828,23 @@ static void mumble_client_cleanup(MumbleClient *client) {
 	if (uv_is_active((uv_handle_t*) &client->socket_udp)) {
 		uv_udp_recv_stop(&client->socket_udp);
 	}
+
 	uv_close((uv_handle_t*) &client->socket_udp, NULL);
+
 	if (uv_is_active((uv_handle_t*) &client->ssl_poll)) {
 		uv_poll_stop(&client->ssl_poll);
 	}
+
 	uv_close((uv_handle_t*) &client->socket_tcp, NULL);
+
 	if (uv_is_active((uv_handle_t*) &client->ping_timer)) {
 		uv_timer_stop(&client->ping_timer);
 	}
+
 	if (uv_is_active((uv_handle_t*) &client->audio_timer)) {
 		uv_timer_stop(&client->audio_timer);
 	}
+
 	uv_cancel((uv_req_t*)&client->tcp_connect_req);
 
 	LinkNode* current = client->stream_list;
@@ -846,8 +852,9 @@ static void mumble_client_cleanup(MumbleClient *client) {
 	if (current) {
 		// Cleanup any active audio transmissions
 		while (current != NULL) {
+			LinkNode* next = current->next;
 			audio_transmission_unreference(client->l, current->data);
-			current = current->next;
+			current = next;
 		}
 	}
 
@@ -856,8 +863,9 @@ static void mumble_client_cleanup(MumbleClient *client) {
 	if (current) {
 		// Cleanup our user objects
 		while (current != NULL) {
+			LinkNode* next = current->next;
 			mumble_user_remove(client, current->index);
-			current = current->next;
+			current = next;
 		}
 		list_clear(&client->user_list);
 	}
@@ -867,8 +875,9 @@ static void mumble_client_cleanup(MumbleClient *client) {
 	if (current) {
 		// Cleanup our channel objects
 		while (current != NULL) {
+			LinkNode* next = current->next;
 			mumble_channel_remove(client, current->index);
-			current = current->next;
+			current = next;
 		}
 		list_clear(&client->channel_list);
 	}
@@ -1653,6 +1662,10 @@ void mumble_init(lua_State *l) {
 		}
 		lua_setmetatable(l, -2);
 		lua_setfield(l, -2, "thread");
+
+		// https://publist.mumble.info/v1/list
+		// lua_pushcfunction(l, mumble_getPublicServerList)
+		// lua_setfield(l, -2, "getPublicServerList")
 
 		// Register encoder metatable
 		luaL_newmetatable(l, METATABLE_AUDIOSTREAM);

@@ -42,7 +42,6 @@ void on_send(uv_udp_send_t* req, int status) {
 	} else {
 		mumble_log(LOG_TRACE, "[UDP] Sent UDP packet successfully");
 	}
-	free(req);
 }
 
 int packet_sendudp(MumbleClient* client, const void *message, const int length) {
@@ -50,23 +49,22 @@ int packet_sendudp(MumbleClient* client, const void *message, const int length) 
 	if (crypt_isValid(client->crypt) && crypt_encrypt(client->crypt, message, encrypted, length)) {
 		uv_buf_t buf = uv_buf_init((char*)encrypted, length + 4);
 
-		send_context_t* context = (send_context_t*)malloc(sizeof(send_context_t));
-		context->is_done = 0;
+        send_context_t context;
+        context.is_done = 0;
 
-		// Prepare the request
-		uv_udp_send_t* req = &context->req;
-		req->data = context;
+        // Prepare the request
+        uv_udp_send_t req;
+        req.data = &context;
 
-		int ret = uv_udp_send(req, &client->socket_udp, &buf, 1, NULL, on_send);
+		int ret = uv_udp_send(&req, &client->socket_udp, &buf, 1, NULL, on_send);
 
 		if (ret < 0) {
 			mumble_log(LOG_ERROR, "[UDP] Unable to send UDP packet: %s", uv_strerror(ret));
-			free(req);
 			return 0;
 		}
 
 		// Wait until the send operation is done (helps prevent the audio timer from stuttering)
-		while (!context->is_done) {
+		while (!context.is_done) {
 			uv_run(uv_default_loop(), UV_RUN_ONCE);
 		}
 

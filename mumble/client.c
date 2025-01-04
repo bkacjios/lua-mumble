@@ -319,7 +319,7 @@ static int client_openAudio(lua_State *l) {
 	const char* filepath	= luaL_checkstring(l, 2);
 	float volume			= (float) luaL_optnumber(l, 3, 1);
 
-	SF_INFO info;
+	SF_INFO info = {0};
 	SNDFILE* file = sf_open(filepath, SFM_READ, &info);
 
 	if (!file) {

@@ -168,9 +168,15 @@ void luaL_debugstack(lua_State *l, const char* text) {
 		switch (t) {
 		case LUA_TSTRING: { /* strings */
 			const char* str = lua_tolstring(l, i, &len);
-			printf("\t%d - %s[\"", i, tname);
-			print_unescaped(str, len);
-			printf("\"]" NEWLINE);
+			if (len < 64) {
+				printf("\t%d - %s[\"", i, tname);
+				print_unescaped(str, len);
+				printf("\"]" NEWLINE);
+				print_unescaped(str, len);
+				printf("\"]" NEWLINE);
+			} else {
+				printf("\t%d - %s[%ld]" NEWLINE, i, tname, len);
+			}
 			break;
 		}
 		case LUA_TBOOLEAN:  /* booleans */
