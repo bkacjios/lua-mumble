@@ -648,8 +648,7 @@ int luabuffer_index(lua_State *l) {
 }
 
 int luabuffer_tostring(lua_State *l) {
-	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
-	lua_pushlstring(l, (char*) buffer->data + buffer->read_head, buffer_length(buffer));
+	lua_pushfstring(l, "%s: %p", METATABLE_BUFFER, lua_topointer(l, 1));
 	return 1;
 }
 

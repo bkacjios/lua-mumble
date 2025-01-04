@@ -7,7 +7,7 @@ on:
     branches: [ "master" ]
 
 jobs:
-  create_release:
+  create_or_update_release:
     runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.release_tag.outputs.release_tag }}  # Expose release tag as output
@@ -15,24 +15,41 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set Release Tag to Current Date and Time
+    - name: Set Release Tag to Current Date
       id: release_tag
       run: |
-        RELEASE_TAG="v$(date +'%Y%m%d%H%M%S')"  # Create a version tag based on the current date and time
+        RELEASE_TAG="v$(date +'%Y-%m-%d')"  # Use only the current date for the release tag (e.g., v20250104)
         echo "Release tag: $RELEASE_TAG"
         echo "::set-output name=release_tag::$RELEASE_TAG"  # Set the release tag as an output variable
 
-    - name: Create Release
-      id: create_release
+    - name: Check if Release Already Exists
+      id: release_exists
       run: |
-        RELEASE_TAG="${{ steps.release_tag.outputs.release_tag }}"  # Fetch release tag from earlier step
+        EXISTING_RELEASE=$(gh release view $RELEASE_TAG --json tagName --jq ".tagName" || echo "null")
+        echo "Existing release tag: $EXISTING_RELEASE"
+        echo "Wanted release tag  : $RELEASE_TAG"
+        # Check if release exists and if the tag matches
+        if [ "$EXISTING_RELEASE" == "$RELEASE_TAG" ]; then
+          echo "Release tag $RELEASE_TAG already exists. Skipping creation."
+          echo "release_exists=true" >> $GITHUB_ENV
+        else
+          echo "Release does not exist or tags do not match. Creating new release."
+          echo "release_exists=false" >> $GITHUB_ENV
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create New Release (if necessary)
+      if: env.release_exists == 'false'
+      run: |
+        RELEASE_TAG="${{ steps.release_tag.outputs.release_tag }}"
         echo "Creating release with tag $RELEASE_TAG"
-        gh release create $RELEASE_TAG --title "Release $RELEASE_TAG" --notes "Release created on $RELEASE_TAG"  # Create the release with the tag
+        gh release create $RELEASE_TAG --title "Release $RELEASE_TAG" --notes "Release created on $RELEASE_TAG"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build_and_upload:
-    needs: create_release  # Ensure this job runs after `create_release`
+    needs: create_or_update_release
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -41,7 +58,6 @@ jobs:
         os: [ubuntu-latest] #, windows-latest]
         build_type: [Release]
         include:
-          # For Linux, use gcc or clang as compilers
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
@@ -69,7 +85,7 @@ jobs:
             libopus-dev \
             libsndfile1-dev \
             libuv1-dev \
-            gh  # Install GitHub CLI
+            gh
         elif [ "$RUNNER_OS" == "Windows" ]; then
           echo "Windows dependencies installed via vcpkg"
         fi
@@ -89,19 +105,17 @@ jobs:
         doNotUpdateVcpkg: true
         vcpkgJsonGlob: "**/vcpkg.json"
       env:
-        VCPKG_DEFAULT_TRIPLET: "x64-windows"  # Set the default triplet for MSVC
+        VCPKG_DEFAULT_TRIPLET: "x64-windows"
 
     - name: Configure CMake
       run: |
         if [ "$RUNNER_OS" == "Windows" ]; then
-          # CMake configuration for Windows (MSVC)
           cmake -B ${{ steps.strings.outputs.build-output-dir }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
             -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -G "Visual Studio 16 2019"  # Specify Visual Studio generator for MSVC
+            -G "Visual Studio 16 2019"
         else
-          # CMake configuration for Linux
           cmake -B ${{ steps.strings.outputs.build-output-dir }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
             -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
@@ -124,7 +138,7 @@ jobs:
         GCC_SO_FILES=$(find ${{ steps.strings.outputs.build-output-dir }} -name '*.so' -type f)
         echo "Found GCC .so files: $GCC_SO_FILES"
         ZIP_FILE="release-gcc.zip"
-        zip -r $ZIP_FILE $GCC_SO_FILES  # Zip all GCC .so files
+        zip -r $ZIP_FILE $GCC_SO_FILES
         echo "Zipped GCC .so files into $ZIP_FILE"
       working-directory: ${{ github.workspace }}
 
@@ -134,29 +148,28 @@ jobs:
         CLANG_SO_FILES=$(find ${{ steps.strings.outputs.build-output-dir }} -name '*.so' -type f)
         echo "Found Clang .so files: $CLANG_SO_FILES"
         ZIP_FILE="release-clang.zip"
-        zip -r $ZIP_FILE $CLANG_SO_FILES  # Zip all Clang .so files
+        zip -r $ZIP_FILE $CLANG_SO_FILES
         echo "Zipped Clang .so files into $ZIP_FILE"
       working-directory: ${{ github.workspace }}
 
     - name: Zip MSVC Files
       if: matrix.c_compiler == 'msvc'
       run: |
-        echo "Zipping MSVC files..."
         MSVC_DLL_FILES=$(find ${{ steps.strings.outputs.build-output-dir }} -name '*.dll' -type f)
         echo "Found MSVC .dll files: $MSVC_DLL_FILES"
         ZIP_FILE="release-msvc.zip"
-        Compress-Archive -Path $MSVC_DLL_FILES -DestinationPath $ZIP_FILE # Zip all MSVC .dll files
+        Compress-Archive -Path $MSVC_DLL_FILES -DestinationPath $ZIP_FILE
         echo "Zipped MSVC .dll files into $ZIP_FILE"
       shell: powershell
 
     - name: Upload GCC .so Zip to Release
       if: matrix.c_compiler == 'gcc'
       run: |
-        RELEASE_TAG="${{ needs.create_release.outputs.release_tag }}"
+        RELEASE_TAG="${{ needs.create_or_update_release.outputs.release_tag }}"
         ZIP_FILE="release-gcc.zip"
-        if [ -f "$ZIP_FILE" ]; then  # Check if the zip file was created
+        if [ -f "$ZIP_FILE" ]; then
           echo "Uploading $ZIP_FILE to release $RELEASE_TAG"
-          gh release upload $RELEASE_TAG $ZIP_FILE --clobber  # Upload the zip file to the single release
+          gh release upload $RELEASE_TAG $ZIP_FILE --clobber
         else
           echo "Error: $ZIP_FILE does not exist."
           exit 1
@@ -167,11 +180,11 @@ jobs:
     - name: Upload Clang .so Zip to Release
       if: matrix.c_compiler == 'clang'
       run: |
-        RELEASE_TAG="${{ needs.create_release.outputs.release_tag }}"
+        RELEASE_TAG="${{ needs.create_or_update_release.outputs.release_tag }}"
         ZIP_FILE="release-clang.zip"
-        if [ -f "$ZIP_FILE" ]; then  # Check if the zip file was created
+        if [ -f "$ZIP_FILE" ]; then
           echo "Uploading $ZIP_FILE to release $RELEASE_TAG"
-          gh release upload $RELEASE_TAG $ZIP_FILE --clobber  # Upload the zip file to the single release
+          gh release upload $RELEASE_TAG $ZIP_FILE --clobber
         else
           echo "Error: $ZIP_FILE does not exist."
           exit 1
@@ -182,10 +195,9 @@ jobs:
     - name: Upload MSVC .dll Zip to Release
       if: matrix.c_compiler == 'msvc'
       run: |
-        echo "Uploading MSVC zip..."
-        RELEASE_TAG="${{ needs.create_release.outputs.release_tag }}"
+        RELEASE_TAG="${{ needs.create_or_update_release.outputs.release_tag }}"
         ZIP_FILE="release-msvc.zip"
-        if [ -f "$ZIP_FILE" ]; then  # Check if the zip file was created
+        if [ -f "$ZIP_FILE" ]; then
           echo "Uploading $ZIP_FILE to release $RELEASE_TAG"
           gh release upload $RELEASE_TAG $ZIP_FILE --clobber
         else
