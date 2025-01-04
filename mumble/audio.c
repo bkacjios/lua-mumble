@@ -164,7 +164,9 @@ void audio_transmission_unreference(lua_State*l, AudioStream *sound) {
 	       sound->fade_frames = 0;
 	sound->fade_frames_left = 0;
 	sound->fade_stop = false;
-	sf_seek(sound->file, 0, SEEK_SET);
+	if (sound->file) {
+		sf_seek(sound->file, 0, SEEK_SET);
+	}
 }
 
 void mumble_audio_timer(uv_timer_t* handle) {
@@ -691,7 +693,10 @@ static int audiostream_fadeOut(lua_State *l) {
 
 static int audiostream_gc(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
-	sf_close(sound->file);
+	if (sound->file) {
+		sf_close(sound->file);
+		sound->file = NULL;
+	}
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_AUDIOSTREAM, sound);
 	return 0;
 }

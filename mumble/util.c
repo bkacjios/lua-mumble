@@ -292,7 +292,8 @@ void list_add(LinkNode** head_ref, uint32_t index, void *data) {
 }
 
 void list_remove(LinkNode **head_ref, uint32_t index) {
-	LinkNode* temp = *head_ref, *prev;
+	LinkNode* temp = *head_ref;
+	LinkNode* prev = NULL;
 
 	// If head node itself holds the key to be deleted
 	if (temp != NULL && temp->index == index) {

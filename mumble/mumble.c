@@ -831,6 +831,8 @@ static void mumble_client_cleanup(MumbleClient *client) {
 
 	uv_close((uv_handle_t*) &client->socket_udp, NULL);
 
+	uv_cancel((uv_req_t*)&client->tcp_connect_req);
+
 	if (uv_is_active((uv_handle_t*) &client->ssl_poll)) {
 		uv_poll_stop(&client->ssl_poll);
 	}
@@ -844,8 +846,6 @@ static void mumble_client_cleanup(MumbleClient *client) {
 	if (uv_is_active((uv_handle_t*) &client->audio_timer)) {
 		uv_timer_stop(&client->audio_timer);
 	}
-
-	uv_cancel((uv_req_t*)&client->tcp_connect_req);
 
 	LinkNode* current = client->stream_list;
 
