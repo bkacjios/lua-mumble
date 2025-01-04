@@ -394,7 +394,6 @@ void packet_server_sync(MumbleClient *client, MumblePacket *packet) {
 		lua_pushinteger(l, sync->max_bandwidth);
 		lua_setfield(l, -2, "max_bandwidth");
 
-		mumble_log(LOG_DEBUG, "Max server bandwidth: %u", sync->max_bandwidth);
 		client->max_bandwidth = sync->max_bandwidth;
 
 		mumble_create_audio_timer(client);
@@ -427,7 +426,6 @@ void packet_channel_remove(MumbleClient *client, MumblePacket *packet) {
 	mumble_channel_raw_get(client, channel->channel_id);
 	mumble_hook_call(client, "OnChannelRemove", 1);
 	mumble_channel_remove(client, channel->channel_id);
-	list_remove(&client->channel_list, channel->channel_id);
 
 	mumble_proto__channel_remove__free_unpacked(channel, NULL);
 }
@@ -575,7 +573,6 @@ void packet_user_remove(MumbleClient *client, MumblePacket *packet) {
 	}
 	mumble_hook_call(client, "OnUserRemove", 1);
 	mumble_user_remove(client, user->session);
-	list_remove(&client->user_list, user->session);
 
 	if (client->session == user->session) {
 		char* type = (user->has_ban && user->ban) ? "banned" : "kicked";
@@ -1070,12 +1067,12 @@ void packet_crypt_setup(MumbleClient *client, MumblePacket *packet) {
 	lua_newtable(l);
 	if (crypt->has_key && crypt->has_client_nonce && crypt->has_server_nonce) {
 		if (!crypt_setKey(client->crypt, crypt->key, crypt->client_nonce, crypt->server_nonce)) {
-			mumble_log(LOG_ERROR, "\x1b[35;1mCryptState\x1b[0m: cipher resync failed (Invalid key/nonce from the server)");
+			mumble_log(LOG_ERROR, "[OCB] CryptState: cipher resync failed (Invalid key/nonce from the server)");
 		}
 	} else if (crypt->has_server_nonce) {
 		client->resync++;
 		if (!crypt_setDecryptIV(client->crypt, crypt->server_nonce)) {
-			mumble_log(LOG_ERROR, "\x1b[35;1mCryptState\x1b[0m: cipher resync failed (Invalid nonce from the server)");
+			mumble_log(LOG_ERROR, "[OCB] CryptState: cipher resync failed (Invalid nonce from the server)");
 		}
 	} else {
 		MumbleProto__CryptSetup msg = MUMBLE_PROTO__CRYPT_SETUP__INIT;
@@ -1083,13 +1080,13 @@ void packet_crypt_setup(MumbleClient *client, MumblePacket *packet) {
 		msg.client_nonce.len = AES_BLOCK_SIZE;
 		msg.client_nonce.data = (uint8_t*) crypt_getEncryptIV(client->crypt);
 		packet_send(client, PACKET_CRYPTSETUP, &msg);
-		mumble_log(LOG_WARN, "\x1b[35;1mCryptState\x1b[0m: cipher disagreement, renegotiating with server");
+		mumble_log(LOG_WARN, "[OCB] CryptState: cipher disagreement, renegotiating with server");
 	}
 
 	bool validCrypt = crypt_isValid(client->crypt);
 
 	if (validCrypt) {
-		mumble_log(LOG_INFO, "\x1b[35;1mCryptState\x1b[0m: handshake complete");
+		mumble_log(LOG_INFO, "[OCB] CryptState: handshake complete");
 		mumble_ping(client);
 	}
 

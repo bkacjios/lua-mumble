@@ -13,8 +13,8 @@ static void mumble_lua_timer_finish(lua_State *l, MumbleTimer *ltimer) {
 		}
 		// Cleanup all our references
 		mumble_log(LOG_TRACE, "mumble.timer: %p cleanup", ltimer);
-		mumble_registry_unref(l, MUMBLE_TIMER_REG, ltimer->self);
-		mumble_registry_unref(l, MUMBLE_TIMER_REG, ltimer->callback);
+		mumble_registry_unref(l, MUMBLE_TIMER_REG, &ltimer->self);
+		mumble_registry_unref(l, MUMBLE_TIMER_REG, &ltimer->callback);
 		ltimer->running = false;
 	}
 }

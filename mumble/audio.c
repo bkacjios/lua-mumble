@@ -156,9 +156,8 @@ static void audio_transmission_reference(lua_State *l, AudioStream *sound) {
 }
 
 void audio_transmission_unreference(lua_State*l, AudioStream *sound) {
-	mumble_registry_unref(l, sound->client->audio_streams, sound->refrence);
 	list_remove(&sound->client->stream_list, sound->refrence);
-	sound->refrence = MUMBLE_UNREFERENCED;
+	mumble_registry_unref(l, sound->client->audio_streams, &sound->refrence);
 	sound->playing = false;
 	sound->fade_volume = 1.0f,
 	       sound->fade_frames = 0;

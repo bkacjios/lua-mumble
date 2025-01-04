@@ -30,12 +30,26 @@ static uv_signal_t mumble_signal;
 static void mumble_client_cleanup(MumbleClient *client);
 static void mumble_client_free(MumbleClient *client);
 
+static LinkNode* mumble_clients = NULL;
+
 static void mumble_signal_event(uv_signal_t* handle, int signum) {
 	if (signum == SIGINT) {
 		printf(NEWLINE);
 		mumble_log(LOG_WARN, "exiting loop");
 		uv_signal_stop(handle);
 		uv_close((uv_handle_t*) handle, NULL);
+
+		LinkNode* current = mumble_clients;
+
+		if (current) {
+			// Stop any clients
+			while (current != NULL) {
+				LinkNode* next = current->next;
+				mumble_client_cleanup(current->data);
+				current = next;
+			}
+		}
+
 		uv_stop(uv_default_loop());
 	}
 }
@@ -204,7 +218,7 @@ static void mumble_update_ping(MumbleClient* client, uint64_t timestamp, bool ud
 	if (client->tcp_udp_tunnel && udp) {
 		if (client->udp_ping_acc >= UDP_TCP_FALLBACK) {
 			// We suddenly got a response, after sending out pings with multiple missing responses
-			mumble_log(LOG_WARN, "Server is responding to UDP packets again, switching back to UDP..");
+			mumble_log(LOG_WARN, "[UDP] Server is responding to UDP packets again, disabling TCP tunnel");
 		}
 		// Fallback to tunneling UDP data through TCP
 		mumble_log(LOG_DEBUG, "[UDP] Connection active");
@@ -415,6 +429,7 @@ void socket_read_event_tcp(uv_poll_t* handle, int status, int events) {
 				}
 			} else {
 				handle_ssl_read_error(client, ret);
+				packet_reset(&packet);
 				return;
 			}
 		}
@@ -439,6 +454,7 @@ void socket_read_event_tcp(uv_poll_t* handle, int status, int events) {
 				}
 			} else {
 				handle_ssl_read_error(client, ret);
+				packet_reset(&packet);
 				return;
 			}
 		}
@@ -705,6 +721,7 @@ int mumble_client_connect(lua_State *l) {
 	lua_pushvalue(l, 1);
 	client->self = mumble_registry_ref(l, MUMBLE_CLIENTS);
 	client->connecting = true;
+	list_add(&mumble_clients, client->self, client);
 
 	mumble_log(LOG_INFO, "%s[%d] connecting to host %s:%d", METATABLE_CLIENT, client->self, server_host_str, port);
 
@@ -827,9 +844,8 @@ static void mumble_client_free(MumbleClient *client) {
 static void mumble_client_cleanup(MumbleClient *client) {
 	if (uv_is_active((uv_handle_t*) &client->socket_udp)) {
 		uv_udp_recv_stop(&client->socket_udp);
+		uv_close((uv_handle_t*) &client->socket_udp, NULL);
 	}
-
-	uv_close((uv_handle_t*) &client->socket_udp, NULL);
 
 	uv_cancel((uv_req_t*)&client->tcp_connect_req);
 
@@ -837,7 +853,9 @@ static void mumble_client_cleanup(MumbleClient *client) {
 		uv_poll_stop(&client->ssl_poll);
 	}
 
-	uv_close((uv_handle_t*) &client->socket_tcp, NULL);
+	if (uv_is_active((uv_handle_t*) &client->socket_tcp)) {
+		uv_close((uv_handle_t*) &client->socket_tcp, NULL);
+	}
 
 	if (uv_is_active((uv_handle_t*) &client->ping_timer)) {
 		uv_timer_stop(&client->ping_timer);
@@ -867,7 +885,6 @@ static void mumble_client_cleanup(MumbleClient *client) {
 			mumble_user_remove(client, current->index);
 			current = next;
 		}
-		list_clear(&client->user_list);
 	}
 
 	current = client->channel_list;
@@ -879,12 +896,12 @@ static void mumble_client_cleanup(MumbleClient *client) {
 			mumble_channel_remove(client, current->index);
 			current = next;
 		}
-		list_clear(&client->channel_list);
 	}
 
-	if (client->self > 0) {
+	if (client->self > MUMBLE_UNREFERENCED) {
 		// Remove from the connected clients list
-		mumble_registry_unref(client->l, MUMBLE_CLIENTS, client->self);
+		list_remove(&mumble_clients, client->self);
+		mumble_registry_unref(client->l, MUMBLE_CLIENTS, &client->self);
 	}
 }
 
@@ -948,6 +965,12 @@ int mumble_hook_call_ret(MumbleClient *client, const char* hook, int nargs, int 
 	//lua_stackguard_entry(l);
 
 	lua_State* l = client->l;
+
+	if (client->self == MUMBLE_UNREFERENCED) {
+		lua_pop(l, nargs); // Just pop whatever we expected to get popped
+		mumble_log(LOG_DEBUG, "unreferenced %s: %p hook \"%s\" ignored", METATABLE_CLIENT, client, hook);
+		return 0;
+	}
 
 	const int top = lua_gettop(l);
 	const int callargs = nargs + 1;
@@ -1142,6 +1165,7 @@ void mumble_user_remove(MumbleClient* client, uint32_t session) {
 	lua_pushnil(l);
 	lua_settable(l, -3);
 	lua_pop(l, 1);
+	list_remove(&client->user_list, session);
 }
 
 void mumble_channel_raw_get(MumbleClient* client, uint32_t channel_id) {
@@ -1202,6 +1226,7 @@ void mumble_channel_remove(MumbleClient* client, uint32_t channel_id) {
 	lua_pushnil(l);
 	lua_settable(l, -3);
 	lua_pop(l, 1);
+	list_remove(&client->channel_list, channel_id);
 }
 
 int mumble_push_address(lua_State* l, ProtobufCBinaryData address) {
@@ -1743,8 +1768,9 @@ void mumble_registry_pushref(lua_State *l, int t, int ref) {
 	lua_remove(l, -2);
 }
 
-void mumble_registry_unref(lua_State *l, int t, int ref) {
+void mumble_registry_unref(lua_State *l, int t, int *ref) {
 	mumble_pushref(l, t);
-	luaL_unref(l, -1, ref);
+	luaL_unref(l, -1, *ref);
 	lua_pop(l, 1);
+	*ref = MUMBLE_UNREFERENCED;
 }

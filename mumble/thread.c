@@ -101,7 +101,7 @@ void mumble_thread_worker_start(void *arg) {
 	pthread_cond_signal(&worker->cond); // Signal the waiting thread
 	pthread_mutex_unlock(&worker->mutex);
 
-	mumble_registry_unref(l, MUMBLE_THREAD_REG, worker->self);
+	mumble_registry_unref(l, MUMBLE_THREAD_REG, &worker->self);
 
 	lua_stackguard_exit(l);
 
@@ -135,12 +135,12 @@ void mumble_thread_worker_finish(uv_async_t *handle) {
 		lua_pop(l, 1);
 
 		// Unreference our finished callback
-		mumble_registry_unref(l, MUMBLE_THREAD_REG, controller->finish);
+		mumble_registry_unref(l, MUMBLE_THREAD_REG, &controller->finish);
 	}
 
 	if (controller->self > MUMBLE_UNREFERENCED) {
 		// Unreference ourself
-		mumble_registry_unref(l, MUMBLE_THREAD_REG, controller->self);
+		mumble_registry_unref(l, MUMBLE_THREAD_REG, &controller->self);
 	}
 
 	lua_stackguard_exit(l);
@@ -313,7 +313,7 @@ static int thread_controller_onFinish(lua_State *l) {
 	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
 
 	if (controller->finish > MUMBLE_UNREFERENCED) {
-		mumble_registry_unref(l, MUMBLE_THREAD_REG, controller->finish);
+		mumble_registry_unref(l, MUMBLE_THREAD_REG, &controller->finish);
 	}
 
 	if (luaL_checkfunction(l, 2)) {
@@ -368,7 +368,7 @@ static int thread_controller_onMessage(lua_State *l) {
 	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
 
 	if (controller->message > MUMBLE_UNREFERENCED) {
-		mumble_registry_unref(l, MUMBLE_THREAD_REG, controller->message);
+		mumble_registry_unref(l, MUMBLE_THREAD_REG, &controller->message);
 	}
 
 	if (luaL_checkfunction(l, 2)) {
@@ -451,7 +451,7 @@ static int thread_worker_onMessage(lua_State *l) {
 	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
 
 	if (worker->message > MUMBLE_UNREFERENCED) {
-		mumble_registry_unref(l, MUMBLE_THREAD_REG, worker->message);
+		mumble_registry_unref(l, MUMBLE_THREAD_REG, &worker->message);
 	}
 
 	if (luaL_checkfunction(l, 2)) {
