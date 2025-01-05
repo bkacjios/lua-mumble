@@ -543,28 +543,51 @@ mumble.channel:create(String name, String description = "", Number position = 0,
 ### mumble.timer
 
 ``` lua
--- Run the timer
+-- Run the timer with a given callback function.
+-- The callback function will first be called after the initial delay.
+-- If the timers repeat value is > 0, it will then repeat over using the repeat value as the delay.
+-- While the timer is running, the timer will not be garbage collected.
+-- It will only be garabage collected once the timer stops on its own, or mumble.timer:stop() is called.
 mumble.timer = mumble.timer:start(Function callback(mumble.timer), Number after = 0, Number repeat = 0)
+
+-- Stops the timer
+mumble.timer:stop()
+
+-- Sets the timers delay and repeat values
+mumble.timer:set(Number after, [ Number repeat = 0 ])
+
+-- Gets the timers delay and repeat values
+Number after, Number repeat = mumble.timer:get()
+
+-- Sets the timers delay value
+mumble.timer:setDuration(Number after)
+
+-- Gets the timers delay value
+Number after = mumble.timer:getDuration()
+
+-- Sets the timers repeat value
+mumble.timer:setRepeat(Number repeat)
+
+-- Gets the timers repeat value
+Number repeat = mumble.timer:getRepeat()
 
 -- Retruns if the timer is currently running
 Boolean running = mumble.timer:isActive()
 
--- Configure the timer to trigger after after seconds (fractional and negative values are supported).
--- If repeat is 0., then it will automatically be stopped once the timeout is reached.
--- If it is positive, then the timer will automatically be configured to trigger again repeat seconds later, again, and again, until stopped manually.
+-- Get how many times the timer has looped
+Number count = mumble.timer:getCount()
+
+-- Get how many seconds remain until the callback is triggered
+Number remain = mumble.timer:getRemain()
+
 mumble.timer = mumble.timer:set(Number after, Number repeat = 0)
 
-Number after, repeat = mumble.timer:get()
-
--- This will act as if the timer timed out, and restarts it again if it is repeating. It basically works like calling mumble.timer.stop, updating the timeout to the repeat value and calling mumble.timer.start.
--- The exact semantics are as in the following rules, all of which will be applied to the watcher:
--- If the timer is pending, the pending status is always cleared.
--- If the timer is started but non-repeating, stop it (as if it timed out, without invoking it).
--- If the timer is repeating, make the repeat value the new timeout and start the timer, if necessary.
+-- Attempts to restart the timer.
+-- Will error out if the timer is not repeating or hasn't been started previously.
 mumble.timer:again()
 
--- Stops the timer
-mumble.timer:stop()
+-- Returns if the timer is currently running or not.
+Boolean active = mumble.timer:isActive()
 ```
 
 ### mumble.buffer

@@ -4,18 +4,20 @@
 #include "util.h"
 #include "log.h"
 
-static void mumble_lua_timer_finish(lua_State *l, MumbleTimer *ltimer) {
-	if (ltimer->running) {
-		if (uv_is_active((uv_handle_t*) &ltimer->timer)) {
-			mumble_log(LOG_TRACE, "mumble.timer: %p stopping", ltimer);
-			uv_timer_stop(&ltimer->timer);
-			ltimer->count = 0;
-		}
-		// Cleanup all our references
-		mumble_log(LOG_TRACE, "mumble.timer: %p cleanup", ltimer);
+static void mumble_lua_timer_cleanup(lua_State *l, MumbleTimer *ltimer) {
+	// Cleanup all our references
+	if (ltimer->self > LUA_REFNIL) {
 		mumble_registry_unref(l, MUMBLE_TIMER_REG, &ltimer->self);
+	}
+	if (ltimer->callback > LUA_REFNIL) {
 		mumble_registry_unref(l, MUMBLE_TIMER_REG, &ltimer->callback);
-		ltimer->running = false;
+	}
+	ltimer->count = 0;
+}
+
+static void mumble_lua_timer_stop(lua_State *l, MumbleTimer *ltimer) {
+	if (uv_is_active((uv_handle_t*) &ltimer->timer)) {
+		uv_timer_stop(&ltimer->timer);
 	}
 }
 
@@ -46,8 +48,8 @@ static void mumble_lua_timer(uv_timer_t* handle) {
 
 	if (!uv_is_active((uv_handle_t*) handle)) {
 		// Timer is no longer active
-		// Finish and cleanup timer references to allow for garbage collection
-		mumble_lua_timer_finish(l, ltimer);
+		// Cleanup timer references to allow for garbage collection
+		mumble_lua_timer_cleanup(l, ltimer);
 	}
 
 	lua_stackguard_exit(l);
@@ -57,14 +59,14 @@ int mumble_timer_new(lua_State *l) {
 	MumbleTimer *ltimer = lua_newuserdata(l, sizeof(MumbleTimer));
 	ltimer->count = 0;
 	ltimer->l = l;
-	ltimer->running = false;
 	ltimer->after = 0;
 	ltimer->self = LUA_NOREF;
 	ltimer->callback = LUA_NOREF;
 	ltimer->timer.data = ltimer;
-
 	luaL_getmetatable(l, METATABLE_TIMER);
 	lua_setmetatable(l, -2);
+
+	uv_timer_init(uv_default_loop(), &ltimer->timer);
 
 	// Return the timer metatable
 	return 1;
@@ -79,32 +81,38 @@ static int timer_start(lua_State *l) {
 
 	ltimer->after = after;
 
-	if (!ltimer->running) {
-		ltimer->running = true;
+	if (uv_is_active((uv_handle_t*) &ltimer->timer)) {
+		// Timer is already running, so stop before going again
+		uv_timer_stop(&ltimer->timer);
+	}
 
+	if (ltimer->self <= LUA_NOREF) {
+		// Self will be referenced until stopped
 		lua_pushvalue(l, 1); // Push a copy of the userdata to prevent garabage collection
 		ltimer->self = mumble_registry_ref(l, MUMBLE_TIMER_REG); // Pop it off as a reference
-
-		lua_pushvalue(l, 2); // Push a copy of our callback function
-		ltimer->callback = mumble_registry_ref(l, MUMBLE_TIMER_REG); // Pop it off as a reference
-
-		// Initialize our timer object
-		uv_timer_init(uv_default_loop(), &ltimer->timer);
-		uv_timer_start(&ltimer->timer, mumble_lua_timer, after, repeat); // Fire every 1 second
-
-		// Return ourself
-		lua_settop(l, 1);
-	} else {
-		// Timer is already running, so stop and go again
-		uv_timer_stop(&ltimer->timer);
-		uv_timer_start(&ltimer->timer, mumble_lua_timer, after, repeat);
 	}
+
+	if (ltimer->callback > LUA_REFNIL) {
+		// We had a previously referenced callback, so unrefrence it
+		mumble_registry_unref(l, MUMBLE_TIMER_REG, &ltimer->callback);
+	}
+
+	// Create a new callback referenced
+	lua_pushvalue(l, 2); // Push a copy of our callback function
+	ltimer->callback = mumble_registry_ref(l, MUMBLE_TIMER_REG); // Pop it off as a reference
+
+	// Start our timer
+	uv_timer_start(&ltimer->timer, mumble_lua_timer, after, repeat);
+
+	// Return ourself
+	lua_settop(l, 1);
 	return 1;
 }
 
 static int timer_stop(lua_State *l) {
 	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
-	mumble_lua_timer_finish(l, ltimer);
+	mumble_lua_timer_stop(l, ltimer);
+	mumble_lua_timer_cleanup(l, ltimer);
 	// Return ourself
 	lua_settop(l, 1);
 	return 1;
@@ -177,7 +185,11 @@ static int timer_getRemain(lua_State *l) {
 static int timer_again(lua_State *l) {
 	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 
-	uv_timer_again(&ltimer->timer);
+	if (uv_timer_get_repeat(&ltimer->timer) <= 0) {
+		return luaL_error(l, "attempt to call 'again' on non-repeating timer");
+	} else if (uv_timer_again(&ltimer->timer) == UV_EINVAL) {
+		return luaL_error(l, "attempt to call 'again' on unstarted timer");
+	}
 
 	// Return ourself
 	lua_settop(l, 1);
@@ -192,7 +204,8 @@ static int timer_isActive(lua_State *l) {
 
 static int timer_gc(lua_State *l) {
 	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
-	mumble_lua_timer_finish(l, ltimer);
+	mumble_lua_timer_stop(l, ltimer);
+	mumble_lua_timer_cleanup(l, ltimer);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_TIMER, ltimer);
 	return 0;
 }

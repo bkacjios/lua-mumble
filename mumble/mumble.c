@@ -612,7 +612,7 @@ int mumble_client_connect(lua_State *l) {
 
 	if (client->crypt == NULL) {
 		mumble_client_free(client);
-		lua_pushnil(l);
+		lua_pushboolean(l, false);
 		lua_pushfstring(l, "could not initialize ocb cryptstate");
 		return 2;
 	}
