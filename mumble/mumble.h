@@ -51,7 +51,7 @@ int mumble_hook_call_ret(MumbleClient *client, const char* hook, int nargs, int 
 void mumble_weak_table(lua_State *l);
 int mumble_ref(lua_State *l);
 void mumble_pushref(lua_State *l, int ref);
-void mumble_unref(lua_State *l, int ref);
+void mumble_unref(lua_State *l, int *ref);
 
 int mumble_registry_ref(lua_State *l, int t);
 void mumble_registry_pushref(lua_State *l, int t, int ref);

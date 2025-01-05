@@ -142,6 +142,7 @@ struct MumbleClient {
 	char*				host;
 	uint16_t			port;
 	int					hooks;
+	int					commands;
 	int					users;
 	int					channels;
 	int					audio_streams;

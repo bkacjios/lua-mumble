@@ -25,6 +25,7 @@ int MUMBLE_CLIENTS;
 int MUMBLE_REGISTRY;
 int MUMBLE_TIMER_REG;
 int MUMBLE_THREAD_REG;
+int MUMBLE_DATA_REG;
 
 static uv_signal_t mumble_signal;
 static void mumble_client_cleanup(MumbleClient *client);
@@ -526,7 +527,7 @@ static int mumble_client_new(lua_State *l) {
 
 	client->host = NULL;
 	client->port = 0;
-	client->self = MUMBLE_UNREFERENCED;
+	client->self = LUA_NOREF;
 	client->session = 0;
 	client->volume = 0.5;
 	client->connecting = false;
@@ -888,7 +889,7 @@ static void mumble_client_cleanup(MumbleClient *client) {
 		}
 	}
 
-	if (client->self > MUMBLE_UNREFERENCED) {
+	if (client->self > LUA_REFNIL) {
 		// Remove from the connected clients list
 		list_remove(&mumble_clients, client->self);
 		mumble_registry_unref(client->l, MUMBLE_CLIENTS, &client->self);
@@ -956,7 +957,7 @@ int mumble_hook_call_ret(MumbleClient *client, const char* hook, int nargs, int 
 
 	lua_State* l = client->l;
 
-	if (client->self == MUMBLE_UNREFERENCED) {
+	if (client->self <= LUA_NOREF) {
 		lua_pop(l, nargs); // Just pop whatever we expected to get popped
 		mumble_log(LOG_DEBUG, "unreferenced %s: %p hook \"%s\" ignored", METATABLE_CLIENT, client, hook);
 		return 0;
@@ -1088,7 +1089,7 @@ MumbleUser* mumble_user_get(MumbleClient* client, uint32_t session) {
 		{
 			user->client = client;
 			lua_newtable(l);
-			user->data = mumble_ref(l);
+			user->data = mumble_registry_ref(l, MUMBLE_DATA_REG);
 			user->connected = false;
 			user->session = session;
 			user->user_id = 0;
@@ -1180,7 +1181,7 @@ MumbleChannel* mumble_channel_get(MumbleClient* client, uint32_t channel_id) {
 		{
 			channel->client = client;
 			lua_newtable(l);
-			channel->data = mumble_ref(l);
+			channel->data = mumble_registry_ref(l, MUMBLE_DATA_REG);
 			channel->name = NULL;
 			channel->channel_id = channel_id;
 			channel->parent = 0;
@@ -1396,12 +1397,6 @@ const luaL_Reg mumble[] = {
 };
 
 int luaopen_mumble(lua_State *l) {
-	signal(SIGPIPE, SIG_IGN);
-	mumble_init(l);
-	return 0;
-}
-
-void mumble_init(lua_State *l) {
 	lua_newtable(l);
 	MUMBLE_REGISTRY = luaL_ref(l, LUA_REGISTRYINDEX);
 
@@ -1413,6 +1408,9 @@ void mumble_init(lua_State *l) {
 
 	lua_newtable(l);
 	MUMBLE_THREAD_REG = mumble_ref(l);
+
+	lua_newtable(l);
+	MUMBLE_DATA_REG = mumble_ref(l);
 
 	luaL_register(l, "mumble", mumble);
 	{
@@ -1710,6 +1708,8 @@ void mumble_init(lua_State *l) {
 		lua_setfield(l, -2, "registry");
 	}
 	lua_pop(l, 1);
+
+	return 0;
 }
 
 static void mumble_close() {
@@ -1752,10 +1752,11 @@ void mumble_pushref(lua_State *l, int ref) {
 	lua_remove(l, -2);
 }
 
-void mumble_unref(lua_State *l, int ref) {
+void mumble_unref(lua_State *l, int *ref) {
 	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_REGISTRY);
-	luaL_unref(l, -1, ref);
+	luaL_unref(l, -1, *ref);
 	lua_pop(l, 1);
+	*ref = LUA_NOREF;
 }
 
 int mumble_registry_ref(lua_State *l, int t) {
@@ -1777,5 +1778,5 @@ void mumble_registry_unref(lua_State *l, int t, int *ref) {
 	mumble_pushref(l, t);
 	luaL_unref(l, -1, *ref);
 	lua_pop(l, 1);
-	*ref = MUMBLE_UNREFERENCED;
+	*ref = LUA_NOREF;
 }

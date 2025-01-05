@@ -39,7 +39,7 @@ void mumble_thread_worker_start(void *arg) {
 	luaL_openlibs(l);
 
 	// Open ourself in the new state, since we need the worker metatable
-	mumble_init(l);
+	luaopen_mumble(l);
 
 	// Push our error handler
 	lua_pushcfunction(l, mumble_traceback);
@@ -117,7 +117,7 @@ void mumble_thread_worker_finish(uv_async_t *handle) {
 	lua_stackguard_entry(l);
 
 	// Check if we have a message callback reference
-	if (controller->finish > MUMBLE_UNREFERENCED) {
+	if (controller->finish > LUA_REFNIL) {
 		// Push our error handler
 		lua_pushcfunction(l, mumble_traceback);
 
@@ -138,7 +138,7 @@ void mumble_thread_worker_finish(uv_async_t *handle) {
 		mumble_registry_unref(l, MUMBLE_THREAD_REG, &controller->finish);
 	}
 
-	if (controller->self > MUMBLE_UNREFERENCED) {
+	if (controller->self > LUA_REFNIL) {
 		// Unreference ourself
 		mumble_registry_unref(l, MUMBLE_THREAD_REG, &controller->self);
 	}
@@ -153,7 +153,7 @@ void mumble_thread_controller_message(uv_async_t *handle) {
 
 	lua_State* l = controller->l;
 
-	if (controller->message > MUMBLE_UNREFERENCED) {
+	if (controller->message > LUA_REFNIL) {
 
 		// Push our error handler
 		lua_pushcfunction(l, mumble_traceback);
@@ -197,7 +197,7 @@ void mumble_thread_worker_message(uv_async_t *handle) {
 
 	lua_State* l = worker->l;
 
-	if (worker->message > MUMBLE_UNREFERENCED) {
+	if (worker->message > LUA_NOREF) {
 
 		// Push our error handler
 		lua_pushcfunction(l, mumble_traceback);
@@ -236,9 +236,9 @@ void mumble_thread_worker_message(uv_async_t *handle) {
 int mumble_thread_new(lua_State *l) {
 	MumbleThreadController *controller = lua_newuserdata(l, sizeof(MumbleThreadController));
 	controller->l = l;
-	controller->self = MUMBLE_UNREFERENCED;
-	controller->finish = MUMBLE_UNREFERENCED;
-	controller->message = MUMBLE_UNREFERENCED;
+	controller->self = LUA_NOREF;
+	controller->finish = LUA_NOREF;
+	controller->message = LUA_NOREF;
 	controller->filename = NULL;
 	controller->bytecode = NULL;
 	controller->bytecode_size = 0;
@@ -312,7 +312,7 @@ static int thread_controller_join(lua_State *l) {
 static int thread_controller_onFinish(lua_State *l) {
 	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
 
-	if (controller->finish > MUMBLE_UNREFERENCED) {
+	if (controller->finish > LUA_REFNIL) {
 		mumble_registry_unref(l, MUMBLE_THREAD_REG, &controller->finish);
 	}
 
@@ -367,7 +367,7 @@ static int thread_controller_send(lua_State *l) {
 static int thread_controller_onMessage(lua_State *l) {
 	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
 
-	if (controller->message > MUMBLE_UNREFERENCED) {
+	if (controller->message > LUA_REFNIL) {
 		mumble_registry_unref(l, MUMBLE_THREAD_REG, &controller->message);
 	}
 
@@ -450,7 +450,7 @@ static int thread_worker_send(lua_State *l) {
 static int thread_worker_onMessage(lua_State *l) {
 	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
 
-	if (worker->message > MUMBLE_UNREFERENCED) {
+	if (worker->message > LUA_REFNIL) {
 		mumble_registry_unref(l, MUMBLE_THREAD_REG, &worker->message);
 	}
 

@@ -77,8 +77,6 @@
 #define LOG_LEVEL LOG_ERROR
 #endif
 
-#define MUMBLE_UNREFERENCED 0
-
 #define LUA_COMPAT_MODULE
 #define LUA_COMPAT_5_1
 

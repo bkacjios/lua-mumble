@@ -59,8 +59,8 @@ int mumble_timer_new(lua_State *l) {
 	ltimer->l = l;
 	ltimer->running = false;
 	ltimer->after = 0;
-	ltimer->self = MUMBLE_UNREFERENCED;
-	ltimer->callback = MUMBLE_UNREFERENCED;
+	ltimer->self = LUA_NOREF;
+	ltimer->callback = LUA_NOREF;
 	ltimer->timer.data = ltimer;
 
 	luaL_getmetatable(l, METATABLE_TIMER);

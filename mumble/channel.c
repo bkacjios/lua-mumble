@@ -450,7 +450,7 @@ static int channel_gc(lua_State *l) {
 		free(channel->description_hash);
 	}
 	list_clear(&channel->links);
-	mumble_unref(l, channel->data);
+	mumble_unref(l, &channel->data);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_CHAN, channel);
 	return 0;
 }

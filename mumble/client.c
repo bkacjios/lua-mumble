@@ -337,7 +337,7 @@ static int client_openAudio(lua_State *l) {
 	sound->client = client;
 	sound->playing = false;
 	sound->looping = false;
-	sound->refrence = MUMBLE_UNREFERENCED;
+	sound->refrence = LUA_NOREF;
 	sound->loop_count = 0;
 	sound->volume = volume;
 	sound->fade_volume = 1.0f,
@@ -913,7 +913,7 @@ static int client_createAudioBuffer(lua_State *l) {
 
 	// We keep a list of it, but we aren't referencing it.
 	// ByteBuffers's __gc method will remove it from this list.
-	list_add(&client->audio_pipes, MUMBLE_UNREFERENCED, buffer);
+	list_add(&client->audio_pipes, LUA_NOREF, buffer);
 	return 1;
 }
 
@@ -933,11 +933,12 @@ static int client_gc(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	mumble_disconnect(client, "garbage collected", true);
 
-	mumble_unref(l, client->hooks);
+	mumble_unref(l, &client->hooks);
 	mumble_unref(l, client->users);
-	mumble_unref(l, client->channels);
-	mumble_unref(l, client->audio_streams);
-	mumble_unref(l, client->encoder_ref);
+	mumble_unref(l, &client->users);
+	mumble_unref(l, &client->channels);
+	mumble_unref(l, &client->audio_streams);
+	mumble_unref(l, &client->encoder_ref);
 
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_CLIENT, client);
 	return 0;

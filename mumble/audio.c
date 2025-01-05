@@ -506,7 +506,7 @@ static int audiostream_play(lua_State *l) {
 	if (!sound->playing) {
 		sound->playing = true;
 
-		if (sound->refrence <= MUMBLE_UNREFERENCED) {
+		if (sound->refrence <= LUA_NOREF) {
 			// Push a copy of the audio stream and save a reference
 			lua_pushvalue(l, 1);
 			audio_transmission_reference(l, sound);

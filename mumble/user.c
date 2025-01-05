@@ -529,7 +529,7 @@ static int user_gc(lua_State *l) {
 		free(user->texture_hash);
 	}
 	list_clear(&user->listens);
-	mumble_unref(l, user->data);
+	mumble_unref(l, &user->data);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_USER, user);
 	return 0;
 }
