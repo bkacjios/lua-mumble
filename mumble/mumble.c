@@ -29,28 +29,15 @@ int MUMBLE_THREAD_REG;
 static uv_signal_t mumble_signal;
 static void mumble_client_cleanup(MumbleClient *client);
 static void mumble_client_free(MumbleClient *client);
+static void mumble_close();
 
 static LinkNode* mumble_clients = NULL;
 
 static void mumble_signal_event(uv_signal_t* handle, int signum) {
 	if (signum == SIGINT) {
-		printf(NEWLINE);
-		mumble_log(LOG_WARN, "exiting loop");
 		uv_signal_stop(handle);
 		uv_close((uv_handle_t*) handle, NULL);
-
-		LinkNode* current = mumble_clients;
-
-		if (current) {
-			// Stop any clients
-			while (current != NULL) {
-				LinkNode* next = current->next;
-				mumble_client_cleanup(current->data);
-				current = next;
-			}
-		}
-
-		uv_stop(uv_default_loop());
+		mumble_close();
 	}
 }
 
@@ -801,12 +788,15 @@ void mumble_create_audio_timer(MumbleClient *client) {
 }
 
 static int mumble_loop(lua_State *l) {
+	uv_signal_init(uv_default_loop(), &mumble_signal);
+	uv_signal_start(&mumble_signal, mumble_signal_event, SIGINT);
+
 	uv_run(uv_default_loop(), UV_RUN_DEFAULT);
 	return 0;
 }
 
 static int mumble_stop(lua_State *l) {
-	uv_stop(uv_default_loop());
+	mumble_close();
 	return 0;
 }
 
@@ -1408,8 +1398,6 @@ const luaL_Reg mumble[] = {
 int luaopen_mumble(lua_State *l) {
 	signal(SIGPIPE, SIG_IGN);
 	mumble_init(l);
-	uv_signal_init(uv_default_loop(), &mumble_signal);
-	uv_signal_start(&mumble_signal, mumble_signal_event, SIGINT);
 	return 0;
 }
 
@@ -1722,6 +1710,23 @@ void mumble_init(lua_State *l) {
 		lua_setfield(l, -2, "registry");
 	}
 	lua_pop(l, 1);
+}
+
+static void mumble_close() {
+	LinkNode* current = mumble_clients;
+
+	if (current) {
+		// Stop any clients
+		while (current != NULL) {
+			LinkNode* next = current->next;
+			mumble_client_cleanup(current->data);
+			current = next;
+		}
+	}
+
+	printf(NEWLINE);
+	mumble_log(LOG_WARN, "exiting loop");
+	uv_stop(uv_default_loop());
 }
 
 void mumble_weak_table(lua_State *l) {
