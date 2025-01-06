@@ -1133,7 +1133,6 @@ void mumble_client_raw_get(MumbleClient* client) {
 }
 
 bool mumble_user_isnil(lua_State* l, MumbleClient* client, uint32_t session) {
-
 	mumble_pushref(l, client->users);
 	lua_pushinteger(l, session);
 	lua_gettable(l, -2);
@@ -1150,6 +1149,7 @@ void mumble_user_raw_get(MumbleClient* client, uint32_t session) {
 }
 
 void mumble_user_remove(MumbleClient* client, uint32_t session) {
+	mumble_log(LOG_TRACE, "removing user session: %u", session);
 	lua_State* l = client->l;
 	mumble_pushref(l, client->users);
 	lua_pushinteger(l, session);
@@ -1211,6 +1211,7 @@ MumbleChannel* mumble_channel_get(MumbleClient* client, uint32_t channel_id) {
 }
 
 void mumble_channel_remove(MumbleClient* client, uint32_t channel_id) {
+	mumble_log(LOG_TRACE, "removing channel_id: %u", channel_id);
 	lua_State* l = client->l;
 	mumble_pushref(l, client->channels);
 	lua_pushinteger(l, channel_id);

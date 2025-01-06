@@ -572,7 +572,6 @@ void packet_user_remove(MumbleClient *client, MumblePacket *packet) {
 		lua_setfield(l, -2, "ban");
 	}
 	mumble_hook_call(client, "OnUserRemove", 1);
-	mumble_user_remove(client, user->session);
 
 	if (client->session == user->session) {
 		char* type = (user->has_ban && user->ban) ? "banned" : "kicked";
@@ -589,6 +588,8 @@ void packet_user_remove(MumbleClient *client, MumblePacket *packet) {
 		}
 		lua_pop(l, 1);
 		mumble_disconnect(client, message, false);
+	} else {
+		mumble_user_remove(client, user->session);
 	}
 
 	mumble_proto__user_remove__free_unpacked(user, NULL);

@@ -72,7 +72,7 @@
 #define LOG_TRACE 5
 
 #ifdef DEBUG
-#define LOG_LEVEL LOG_DEBUG
+#define LOG_LEVEL LOG_TRACE
 #else
 #define LOG_LEVEL LOG_ERROR
 #endif
