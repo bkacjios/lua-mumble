@@ -963,6 +963,8 @@ int mumble_hook_call_ret(MumbleClient *client, const char* hook, int nargs, int 
 		return 0;
 	}
 
+	mumble_log(LOG_TRACE, "%s: %p calling hook \"%s\"", METATABLE_CLIENT, client, hook);
+
 	const int top = lua_gettop(l);
 	const int callargs = nargs + 1;
 	const int argpos = top - nargs;
