@@ -1415,7 +1415,11 @@ int luaopen_mumble(lua_State *l) {
 	lua_newtable(l);
 	MUMBLE_DATA_REG = mumble_ref(l);
 
-	luaL_register(l, "mumble", mumble);
+#if LUA_VERSION_NUM >= 502
+    luaL_newlib(l, mumble);
+#else
+    luaL_register(l, "mumble", mumble);
+#endif
 	{
 		// Create a table of all RejectType enums
 		lua_newtable(l);
@@ -1710,9 +1714,8 @@ int luaopen_mumble(lua_State *l) {
 		lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_REGISTRY);
 		lua_setfield(l, -2, "registry");
 	}
-	lua_pop(l, 1);
 
-	return 0;
+	return 1;
 }
 
 static void mumble_close() {

@@ -84,6 +84,19 @@
 #define lua_objlen lua_rawlen
 #endif
 
+#if LUA_VERSION_NUM >= 502
+#define luaL_register(L, libname, l) \
+    ((libname) == NULL ? luaL_setfuncs(L, (l), 0) : \
+    (lua_newtable(L), luaL_setfuncs(L, (l), 0), lua_pushvalue(L, -1), lua_setglobal(L, (libname))))
+#endif
+
+#if LUA_VERSION_NUM >= 503
+#define luaL_optlong(L, n, d) ((long)luaL_opt(L, luaL_checkinteger, (n), (lua_Integer)(d)))
+#define luaL_checkint(L, n) ((int)luaL_checkinteger(L, (n)))
+#define lua_objlen(L, idx) lua_rawlen(L, (idx))
+#define lua_dump(L, writer, data) lua_dump(L, writer, data, 1)
+#endif
+
 #define lua_stackguard_entry(L) int __lua_stackguard_entry = lua_gettop(L);
 #define lua_stackguard_exit(L) assert(__lua_stackguard_entry == lua_gettop(L));
 
