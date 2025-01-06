@@ -547,7 +547,7 @@ static int user_newindex(lua_State *l) {
 static int user_index(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
-	mumble_registry_pushref(l, user->data);
+	mumble_registry_pushref(l, MUMBLE_DATA_REG, user->data);
 	lua_pushvalue(l, 2);
 	lua_gettable(l, -2);
 
