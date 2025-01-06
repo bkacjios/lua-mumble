@@ -129,37 +129,63 @@ buffer_rw(Float, float);
 buffer_rw(Double, double);
 
 uint8_t buffer_writeVarInt(ByteBuffer* buffer, uint64_t value) {
+	int flag = 0;
+	if ((value & 0x8000000000000000LL) && (~value < 0x100000000LL)) {
+		value = ~value;
+		if (value <= 0x3) {
+			// Special case for -1 to -4. The most significant bits of the first byte must be (in binary) 111111
+			// followed by the 2 bits representing the absolute value of the encoded number. Shortcase for -1 to -4
+			buffer_adjust(buffer, 1);
+			buffer->data[buffer->write_head++] = 0xFC | value;
+			return 1;
+		} else {
+			// Add flag byte, whose most significant bits are (in binary) 111110 that indicates
+			// that what follows is the varint encoding of the absolute value of i, but that the
+			// value itself is supposed to be negative.
+			buffer_adjust(buffer, 1);
+			buffer->data[buffer->write_head++] = 0xF8;
+			flag = 1;
+		}
+	}
 	if (value < 0x80) {
+		// Encode as 7-bit, positive number -> most significant bit of first byte must be zero
 		buffer_adjust(buffer, 1);
 		buffer->data[buffer->write_head++] = value;
-		return 1;
+		return 1 + flag;
 	} else if (value < 0x4000) {
+		// Encode as 14-bit, positive number -> most significant bits of first byte must be (in binary) 10
 		buffer_adjust(buffer, 2);
 		buffer->data[buffer->write_head++] = (value >> 8) | 0x80;
 		buffer->data[buffer->write_head++] = value & 0xFF;
-		return 2;
+		return 2 + flag;
 	} else if (value < 0x200000) {
+		// Encode as 21-bit, positive number -> most significant bits of first byte must be (in binary) 110
 		buffer_adjust(buffer, 3);
 		buffer->data[buffer->write_head++] = (value >> 16) | 0xC0;
 		buffer->data[buffer->write_head++] = (value >> 8) & 0xFF;
 		buffer->data[buffer->write_head++] = value & 0xFF;
-		return 3;
+		return 3 + flag;
 	} else if (value < 0x10000000) {
+		// Encode as 28-bit, positive number -> most significant bits of first byte must be (in binary) 1110
 		buffer_adjust(buffer, 4);
 		buffer->data[buffer->write_head++] = (value >> 24) | 0xE0;
 		buffer->data[buffer->write_head++] = (value >> 16) & 0xFF;
 		buffer->data[buffer->write_head++] = (value >> 8) & 0xFF;
 		buffer->data[buffer->write_head++] = value & 0xFF;
-		return 4;
+		return 4 + flag;
 	} else if (value < 0x100000000) {
+		// Encode as 32-bit, positive number -> most significant bits of first byte must be (in binary) 111100
+		// Remaining bits in first byte remain unused
 		buffer_adjust(buffer, 5);
 		buffer->data[buffer->write_head++] = 0xF0;
 		buffer->data[buffer->write_head++] = (value >> 24) & 0xFF;
 		buffer->data[buffer->write_head++] = (value >> 16) & 0xFF;
 		buffer->data[buffer->write_head++] = (value >> 8) & 0xFF;
 		buffer->data[buffer->write_head++] = value & 0xFF;
-		return 5;
+		return 5 + flag;
 	} else {
+		// Encode as 64-bit, positive number -> most significant bits of first byte must be (in binary) 111101
+		// Remaining bits in first byte remain unused
 		buffer_adjust(buffer, 9);
 		buffer->data[buffer->write_head++] = 0xF4;
 		buffer->data[buffer->write_head++] = (value >> 56) & 0xFF;
@@ -170,7 +196,7 @@ uint8_t buffer_writeVarInt(ByteBuffer* buffer, uint64_t value) {
 		buffer->data[buffer->write_head++] = (value >> 16) & 0xFF;
 		buffer->data[buffer->write_head++] = (value >> 8) & 0xFF;
 		buffer->data[buffer->write_head++] = value & 0xFF;
-		return 9;
+		return 9 + flag;
 	}
 }
 
@@ -221,8 +247,10 @@ uint8_t buffer_readVarInt(ByteBuffer* buffer, uint64_t* output) {
 			size += 9;
 			break;
 		case 0xF8:
-			*output = ~*output;
-			size += 1;
+			// Handle negative flag
+			buffer_available(buffer, 1);
+			size += buffer_readVarInt(buffer, output); // Decode the positive value
+			*output = ~*output; // Negate to restore the original value
 			break;
 		case 0xFC:
 			*output = v & 0x03;

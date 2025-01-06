@@ -60,11 +60,15 @@ uint64_t util_get_varint(uint8_t buffer[], int *len) {
 	} else if ((v & 0xF0) == 0xF0) {
 		switch (v & 0xFC) {
 		case 0xF0:
-			i = buffer[1] << 24 | buffer[2] << 16 | buffer[3] << 8 | buffer[4];
+			i = (uint64_t)buffer[1] << 24 | (uint64_t)buffer[2] << 16 |
+			    (uint64_t)buffer[3] << 8 | (uint64_t)buffer[4];
 			*len += 5;
 			break;
 		case 0xF4:
-			i = (uint64_t)buffer[1] << 56 | (uint64_t)buffer[2] << 48 | (uint64_t)buffer[3] << 40 | (uint64_t)buffer[4] << 32 | buffer[5] << 24 | buffer[6] << 16 | buffer[7] << 8 | buffer[8];
+			i = (uint64_t)buffer[1] << 56 | (uint64_t)buffer[2] << 48 |
+			    (uint64_t)buffer[3] << 40 | (uint64_t)buffer[4] << 32 |
+			    (uint64_t)buffer[5] << 24 | (uint64_t)buffer[6] << 16 |
+			    (uint64_t)buffer[7] << 8 | (uint64_t)buffer[8];
 			*len += 9;
 			break;
 		case 0xF8:
