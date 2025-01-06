@@ -189,7 +189,8 @@ uint8_t buffer_readVarInt(ByteBuffer* buffer, uint64_t* output) {
 		size += 1;
 	} else if ((v & 0xC0) == 0x80) {
 		buffer_available(buffer, 1);
-		*output = (v & 0x3F) << 8 | buffer->data[buffer->read_head++];
+		byte1 = buffer->data[buffer->read_head++];
+		*output = (v & 0x3F) << 8 | byte1;
 		size += 2;
 	} else if ((v & 0xF0) == 0xF0) {
 		switch (v & 0xFC) {
@@ -199,7 +200,8 @@ uint8_t buffer_readVarInt(ByteBuffer* buffer, uint64_t* output) {
 			byte2 = buffer->data[buffer->read_head++];
 			byte3 = buffer->data[buffer->read_head++];
 			byte4 = buffer->data[buffer->read_head++];
-			*output = byte1 << 24 | byte2 << 16 | byte3 << 8 | byte4;
+			*output = (uint64_t)byte1 << 24 | (uint64_t)byte2 << 16 |
+			          (uint64_t)byte3 << 8 | (uint64_t)byte4;
 			size += 5;
 			break;
 		case 0xF4:
@@ -212,8 +214,10 @@ uint8_t buffer_readVarInt(ByteBuffer* buffer, uint64_t* output) {
 			byte6 = buffer->data[buffer->read_head++];
 			byte7 = buffer->data[buffer->read_head++];
 			byte8 = buffer->data[buffer->read_head++];
-			*output = (uint64_t)byte1 << 56 | (uint64_t)byte2 << 48 | (uint64_t)byte3 << 40 |
-			          (uint64_t)byte4 << 32 | byte5 << 24 | byte6 << 16 | byte7 << 8 | byte8;
+			*output = (uint64_t)byte1 << 56 | (uint64_t)byte2 << 48 |
+			          (uint64_t)byte3 << 40 | (uint64_t)byte4 << 32 |
+			          (uint64_t)byte5 << 24 | (uint64_t)byte6 << 16 |
+			          (uint64_t)byte7 << 8 | (uint64_t)byte8;
 			size += 9;
 			break;
 		case 0xF8:
