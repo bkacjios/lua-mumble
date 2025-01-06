@@ -450,7 +450,7 @@ static int channel_gc(lua_State *l) {
 		free(channel->description_hash);
 	}
 	list_clear(&channel->links);
-	mumble_unref(l, &channel->data);
+	mumble_registry_unref(l, MUMBLE_DATA_REG, &channel->data);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_CHAN, channel);
 	return 0;
 }
@@ -464,7 +464,7 @@ static int channel_tostring(lua_State *l) {
 static int channel_newindex(lua_State *l) {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
-	mumble_pushref(l, channel->data);
+	mumble_registry_pushref(l, MUMBLE_DATA_REG, channel->data);
 	lua_pushvalue(l, 2);
 	lua_pushvalue(l, 3);
 	lua_settable(l, -3);
@@ -474,7 +474,7 @@ static int channel_newindex(lua_State *l) {
 static int channel_index(lua_State *l) {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 
-	mumble_pushref(l, channel->data);
+	mumble_registry_pushref(l, MUMBLE_DATA_REG, channel->data);
 	lua_pushvalue(l, 2);
 	lua_gettable(l, -2);
 

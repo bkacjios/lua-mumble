@@ -13,6 +13,7 @@ extern int MUMBLE_CLIENTS;
 extern int MUMBLE_REGISTRY;
 extern int MUMBLE_TIMER_REG;
 extern int MUMBLE_THREAD_REG;
+extern int MUMBLE_DATA_REG;
 
 void mumble_init(lua_State *l);
 extern int luaopen_mumble(lua_State *l);

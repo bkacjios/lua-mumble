@@ -529,7 +529,7 @@ static int user_gc(lua_State *l) {
 		free(user->texture_hash);
 	}
 	list_clear(&user->listens);
-	mumble_unref(l, &user->data);
+	mumble_registry_unref(l, MUMBLE_DATA_REG, &user->data);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_USER, user);
 	return 0;
 }
@@ -537,7 +537,7 @@ static int user_gc(lua_State *l) {
 static int user_newindex(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
-	mumble_pushref(l, user->data);
+	mumble_registry_pushref(l, MUMBLE_DATA_REG, user->data);
 	lua_pushvalue(l, 2);
 	lua_pushvalue(l, 3);
 	lua_settable(l, -3);
@@ -547,7 +547,7 @@ static int user_newindex(lua_State *l) {
 static int user_index(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 
-	mumble_pushref(l, user->data);
+	mumble_registry_pushref(l, user->data);
 	lua_pushvalue(l, 2);
 	lua_gettable(l, -2);
 

@@ -39,8 +39,6 @@ void on_send(uv_udp_send_t* req, int status) {
 
 	if (status < 0) {
 		mumble_log(LOG_ERROR, "[UDP] Error sending UDP packet: %s", uv_strerror(status));
-	} else {
-		mumble_log(LOG_TRACE, "[UDP] Sent UDP packet successfully");
 	}
 }
 
