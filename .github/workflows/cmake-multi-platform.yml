@@ -52,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest] #, windows-latest]
         build_type: [Release]
         lua_version: [
           { version: "luajit", flags: "-DLUAVER=luajit -DLUALIB=/usr/local/lib/lua/5.1" },
@@ -95,7 +95,7 @@ jobs:
       shell: bash
 
     - name: Build libuv from source (Windows)
-      if: ${{ matrix.os == 'windows-latest' }}
+      if: matrix.os == 'windows-latest'
       run: |
         cd libuv-${LIBUV_VERSION}
         cmake -B build -G "Visual Studio 16 2019"

@@ -1400,6 +1400,19 @@ const luaL_Reg mumble[] = {
 };
 
 int luaopen_mumble(lua_State *l) {
+
+#if defined(LUAJIT)
+	lua_getglobal(l, "jit");
+	int notjit = lua_isnil(l, -1);
+	lua_pop(l, 1);
+	if (notjit) {
+		lua_getglobal(l, "_VERSION");
+		const char* version = lua_tostring(l, -1);
+		lua_pop(l, 1);
+		return luaL_error(l, "mumble compiled for LuaJIT, but is running under vanilla %s", version);
+	}
+#endif
+
 	lua_newtable(l);
 	MUMBLE_REGISTRY = luaL_ref(l, LUA_REGISTRYINDEX);
 
@@ -1416,9 +1429,9 @@ int luaopen_mumble(lua_State *l) {
 	MUMBLE_DATA_REG = mumble_ref(l);
 
 #if LUA_VERSION_NUM >= 502
-    luaL_newlib(l, mumble);
+	luaL_newlib(l, mumble);
 #else
-    luaL_register(l, "mumble", mumble);
+	luaL_register(l, "mumble", mumble);
 #endif
 	{
 		// Create a table of all RejectType enums
