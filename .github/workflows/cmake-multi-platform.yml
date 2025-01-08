@@ -10,7 +10,7 @@ jobs:
   create_or_update_release:
     runs-on: ubuntu-latest
     outputs:
-      release_tag: ${{ steps.release_tag.outputs.release_tag }}  # Expose release tag as output
+      release_tag: ${{ steps.release_tag.outputs.release_tag }}
 
     steps:
     - uses: actions/checkout@v4
@@ -18,9 +18,9 @@ jobs:
     - name: Set Release Tag to Current Date
       id: release_tag
       run: |
-        RELEASE_TAG="v$(date +'%Y-%m-%d')"  # Use only the current date for the release tag (e.g., v20250104)
+        RELEASE_TAG="v$(date +'%Y-%m-%d')"
         echo "Release tag: $RELEASE_TAG"
-        echo "::set-output name=release_tag::$RELEASE_TAG"  # Set the release tag as an output variable
+        echo "::set-output name=release_tag::$RELEASE_TAG"
 
     - name: Check if Release Already Exists
       id: release_exists
@@ -29,12 +29,9 @@ jobs:
         EXISTING_RELEASE=$(gh release view $RELEASE_TAG --json tagName --jq ".tagName" || echo "null")
         echo "Existing release tag: $EXISTING_RELEASE"
         echo "Wanted release tag  : $RELEASE_TAG"
-        # Check if release exists and if the tag matches
         if [ "$EXISTING_RELEASE" == "$RELEASE_TAG" ]; then
-          echo "Release tag $RELEASE_TAG already exists. Skipping creation."
           echo "release_exists=true" >> $GITHUB_ENV
         else
-          echo "Release does not exist or tags do not match. Creating new release."
           echo "release_exists=false" >> $GITHUB_ENV
         fi
       env:
@@ -44,7 +41,6 @@ jobs:
       if: env.release_exists == 'false'
       run: |
         RELEASE_TAG="${{ steps.release_tag.outputs.release_tag }}"
-        echo "Creating release with tag $RELEASE_TAG"
         gh release create $RELEASE_TAG --title "Release $RELEASE_TAG" --notes "Release created on $RELEASE_TAG"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -56,73 +52,46 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest] #, windows-latest]
+        os: [ubuntu-latest]
         build_type: [Release]
-        include:
-          - os: ubuntu-latest
-            c_compiler: gcc
-            cpp_compiler: g++
-          # - os: ubuntu-latest
-          #   c_compiler: clang
-          #   cpp_compiler: clang++
-
-          # For Windows, use MSVC as the compiler
-          # - os: windows-latest
-          #   c_compiler: msvc
-          #   cpp_compiler: msvc
+        lua_version: [
+          { version: "luajit", flags: "-DLUAVER=luajit -DLUALIB=/usr/local/lib/lua/5.1" },
+          { version: "lua51", flags: "-DLUAVER=lua51 -DLUALIB=/usr/local/lib/lua/5.1" },
+          { version: "lua52", flags: "-DLUAVER=lua52 -DLUALIB=/usr/local/lib/lua/5.2" },
+          { version: "lua53", flags: "-DLUAVER=lua53 -DLUALIB=/usr/local/lib/lua/5.3" }
+        ]
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install Dependencies (Including gh)
+    - name: Install Dependencies (Linux)
       run: |
-        if [ "$RUNNER_OS" == "Linux" ]; then
-          sudo apt-get update
-          sudo apt-get install -y \
-            libssl-dev \
-            libluajit-5.1-dev \
-            protobuf-c-compiler \
-            libprotobuf-c-dev \
-            libopus-dev \
-            libsndfile1-dev \
-            libuv1-dev \
-            gh
-        elif [ "$RUNNER_OS" == "Windows" ]; then
-          echo "Windows dependencies installed via vcpkg"
-        fi
-      shell: bash
+        sudo apt-get update
+        sudo apt-get install -y \
+          libssl-dev \
+          libluajit-5.1-dev \
+          liblua5.1-0-dev \
+          liblua5.3-dev \
+          liblua5.4-dev \
+          protobuf-c-compiler \
+          libprotobuf-c-dev \
+          libopus-dev \
+          libsndfile1-dev \
+          libuv1-dev \
+          gh
 
     - name: Set reusable strings
       id: strings
       shell: bash
       run: |
-        echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
-
-    - name: Install vcpkg for MSVC (Windows only)
-      if: matrix.os == 'windows-latest'
-      uses: lukka/run-vcpkg@v11
-      with:
-        runVcpkgInstall: true 
-        doNotUpdateVcpkg: true
-        vcpkgJsonGlob: "**/vcpkg.json"
-      env:
-        VCPKG_DEFAULT_TRIPLET: "x64-windows"
+        echo "build-output-dir=${{ github.workspace }}/build/${{ matrix.lua_version.version }}" >> "$GITHUB_OUTPUT"
 
     - name: Configure CMake
       run: |
-        if [ "$RUNNER_OS" == "Windows" ]; then
-          cmake -B ${{ steps.strings.outputs.build-output-dir }} \
-            -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
-            -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
-            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -G "Visual Studio 16 2019"
-        else
-          cmake -B ${{ steps.strings.outputs.build-output-dir }} \
-            -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
-            -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
-            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -S ${{ github.workspace }}
-        fi
+        cmake -B ${{ steps.strings.outputs.build-output-dir }} \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+          -S ${{ github.workspace }} \
+          ${{ matrix.lua_version.flags }}
       shell: bash
 
     - name: Build
@@ -133,76 +102,21 @@ jobs:
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       run: ctest --build-config ${{ matrix.build_type }}
 
-    - name: Zip GCC .so Files
-      if: matrix.c_compiler == 'gcc'
+    - name: Zip Build Files
       run: |
-        GCC_SO_FILES=$(find ${{ steps.strings.outputs.build-output-dir }} -name '*.so' -type f)
-        echo "Found GCC .so files: $GCC_SO_FILES"
-        ZIP_FILE="release-gcc.zip"
-        zip -r $ZIP_FILE $GCC_SO_FILES
-        echo "Zipped GCC .so files into $ZIP_FILE"
+        ZIP_FILE="release-${{ matrix.lua_version.version }}.zip"
+        find ${{ steps.strings.outputs.build-output-dir }} -name "*.so" -exec zip -j $ZIP_FILE {} +
+        echo "Zipped library files into $ZIP_FILE"
       working-directory: ${{ github.workspace }}
 
-    - name: Zip Clang .so Files
-      if: matrix.c_compiler == 'clang'
-      run: |
-        CLANG_SO_FILES=$(find ${{ steps.strings.outputs.build-output-dir }} -name '*.so' -type f)
-        echo "Found Clang .so files: $CLANG_SO_FILES"
-        ZIP_FILE="release-clang.zip"
-        zip -r $ZIP_FILE $CLANG_SO_FILES
-        echo "Zipped Clang .so files into $ZIP_FILE"
-      working-directory: ${{ github.workspace }}
-
-    - name: Zip MSVC Files
-      if: matrix.c_compiler == 'msvc'
-      run: |
-        MSVC_DLL_FILES=$(find ${{ steps.strings.outputs.build-output-dir }} -name '*.dll' -type f)
-        echo "Found MSVC .dll files: $MSVC_DLL_FILES"
-        ZIP_FILE="release-msvc.zip"
-        Compress-Archive -Path $MSVC_DLL_FILES -DestinationPath $ZIP_FILE
-        echo "Zipped MSVC .dll files into $ZIP_FILE"
-      shell: powershell
-
-    - name: Upload GCC .so Zip to Release
-      if: matrix.c_compiler == 'gcc'
+    - name: Upload Zip to Release
       run: |
         RELEASE_TAG="${{ needs.create_or_update_release.outputs.release_tag }}"
-        ZIP_FILE="release-gcc.zip"
+        ZIP_FILE="release-${{ matrix.lua_version.version }}.zip"
         if [ -f "$ZIP_FILE" ]; then
-          echo "Uploading $ZIP_FILE to release $RELEASE_TAG"
           gh release upload $RELEASE_TAG $ZIP_FILE --clobber
         else
           echo "Error: $ZIP_FILE does not exist."
-          exit 1
-        fi
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Upload Clang .so Zip to Release
-      if: matrix.c_compiler == 'clang'
-      run: |
-        RELEASE_TAG="${{ needs.create_or_update_release.outputs.release_tag }}"
-        ZIP_FILE="release-clang.zip"
-        if [ -f "$ZIP_FILE" ]; then
-          echo "Uploading $ZIP_FILE to release $RELEASE_TAG"
-          gh release upload $RELEASE_TAG $ZIP_FILE --clobber
-        else
-          echo "Error: $ZIP_FILE does not exist."
-          exit 1
-        fi
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Upload MSVC .dll Zip to Release
-      if: matrix.c_compiler == 'msvc'
-      run: |
-        RELEASE_TAG="${{ needs.create_or_update_release.outputs.release_tag }}"
-        ZIP_FILE="release-msvc.zip"
-        if [ -f "$ZIP_FILE" ]; then
-          echo "Uploading $ZIP_FILE to release $RELEASE_TAG"
-          gh release upload $RELEASE_TAG $ZIP_FILE --clobber
-        else
-          echo "Error: $ZIP_FILE not found."
           exit 1
         fi
       env:
