@@ -69,8 +69,6 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          gh \
-          cmake \
           libssl-dev \
           libluajit-5.1-dev \
           liblua5.1-0-dev \
@@ -86,17 +84,7 @@ jobs:
     - name: Install Dependencies (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        choco install -y \
-          gh \
-          cmake \
-          openssl \
-          luajit \
-          lua51 \
-          lua52 \
-          lua53 \
-          protoc \
-          opus-tools \
-          libsndfile
+        choco install -y cmake openssl luajit lua51 lua52 lua53 protoc opus-tools libsndfile
 
     - name: Download libuv from GitHub
       if: matrix.os == 'windows-latest'
