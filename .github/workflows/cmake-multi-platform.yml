@@ -52,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest]
         build_type: [Release]
         lua_version: [
           { version: "luajit", flags: "-DLUAVER=luajit -DLUALIB=/usr/local/lib/lua/5.1" },
@@ -65,9 +65,12 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Install Dependencies (Linux)
+      if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
         sudo apt-get install -y \
+          gh \
+          cmake \
           libssl-dev \
           libluajit-5.1-dev \
           liblua5.1-0-dev \
@@ -78,21 +81,64 @@ jobs:
           libprotobuf-c-dev \
           libopus-dev \
           libsndfile1-dev \
-          libuv1-dev \
-          gh
+          libuv1-dev
+
+    - name: Install Dependencies (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        choco install -y \
+          gh \
+          cmake \
+          openssl \
+          luajit \
+          lua51 \
+          lua52 \
+          lua53 \
+          protoc \
+          opus-tools \
+          libsndfile
+
+    - name: Download libuv from GitHub
+      if: matrix.os == 'windows-latest'
+      run: |
+        LIBUV_VERSION=$(curl -s https://api.github.com/repos/libuv/libuv/releases/latest | jq -r .tag_name)
+        curl -L -o libuv.zip https://github.com/libuv/libuv/archive/${LIBUV_VERSION}.zip
+        unzip libuv.zip
+      shell: bash
+
+    - name: Build libuv from source (Windows)
+      if: ${{ matrix.os == 'windows-latest' }}
+      run: |
+        cd libuv-${LIBUV_VERSION}
+        cmake -B build -G "Visual Studio 16 2019"
+        cmake --build build --config Release
+        cp -r libuv-${LIBUV_VERSION}/build/Release/*.lib libuv-${LIBUV_VERSION}/build/Release/*.dll ${{ github.workspace }}/libuv_build
+      shell: bash
 
     - name: Set reusable strings
       id: strings
-      shell: bash
       run: |
         echo "build-output-dir=${{ github.workspace }}/build/${{ matrix.lua_version.version }}" >> "$GITHUB_OUTPUT"
+      shell: bash
 
-    - name: Configure CMake
+    - name: Configure CMake (Linux)
+      if: matrix.os == 'ubuntu-latest'
       run: |
         cmake -B ${{ steps.strings.outputs.build-output-dir }} \
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
           -S ${{ github.workspace }} \
           ${{ matrix.lua_version.flags }}
+      shell: bash
+
+    - name: Configure CMake (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        cmake -B ${{ steps.strings.outputs.build-output-dir }} \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+          -S ${{ github.workspace }} \
+          ${{ matrix.lua_version.flags }} \
+          -DLIBUV_INCLUDE_DIR=${{ github.workspace }}/libuv-${LIBUV_VERSION} \
+          -DLIBUV_LIBRARY=${{ github.workspace }}/libuv_build
       shell: bash
 
     - name: Build
