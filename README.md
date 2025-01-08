@@ -636,7 +636,7 @@ Number write_head = buffer.write_head, same as buffer:seek("write")
 -- If the mode is set to "both" the read and write values will be returned.
 Number position = buffer:seek([String mode ["read", "write", "both"] = "read", String whence ["set", "cur", "end"] = "cur", offset = 0])
 
--- Write the given string to the buffer
+-- Write the given string as raw data to the buffer
 -- Returns how many bytes were written to the buffer
 Number written = buffer:write(String data)
 
@@ -724,7 +724,7 @@ mumble.thread.controller = mumble.thread.controller:join()
 mumble.thread.worker = mumble.thread.worker:sleep(Number milliseconds)
 
 -- Keep the thread open until singnaled to close.
--- Allows us to receive messages using mumble.worker.onMessage.
+-- Allows us to receive messages using mumble.worker:onMessage()
 mumble.thread.worker = mumble.thread.worker:loop()
 
 -- Signals the thread to exit its loop.
@@ -952,7 +952,6 @@ mumble.audiostream:fadeOut(Number duration = 1)
 -- Will attempt to seek to a given position via sample numbers.
 -- See: https://www.lua.org/pil/21.3.html
 -- Returns the offset that it has seeked to.
--- Mode defaults to "read"
 -- Whence defaults to "cur"
 -- Offset defaults to 0
 Number samples = mumble.audiostream:seek(String whence ["set", "cur", "end"] = "cur", Number offset = 0)
