@@ -13,19 +13,15 @@ client:hook("OnServerSync", function(client, event)
 	local timer = mumble.timer()
 
 	-- A timer that will start after 1 second and repeat every 1 second thereafter
-	-- Once our counter hits 3, disconnect and break out of the main client loop
+	-- Once our counter hits 3, disconnect and break out of the main mumble loop
 	timer:start(function(t)
 		print(t:getCount())
 		if t:getCount() >= 3 then
 			print("Stopping timer..")
 			t:stop()
-			client:disconnect()
+			mumble.stop()
 		end
 	end, 1, 1)
-end)
-
-client:hook("OnDisconnect", function(client, reason)
-	mumble.stop()
 end)
 
 mumble.loop()
