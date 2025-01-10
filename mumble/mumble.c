@@ -1309,7 +1309,7 @@ void mumble_handle_speaking_hooks_protobuf(MumbleClient* client, MumbleUDP__Audi
 	lua_setfield(l, -2, "context");
 	lua_pushinteger(l, opus_packet_get_nb_channels(audio->opus_data.data));
 	lua_setfield(l, -2, "channels");
-	lua_pushinteger(l, opus_packet_get_nb_channels(audio->opus_data.data));
+	lua_pushinteger(l, opus_packet_get_bandwidth(audio->opus_data.data));
 	lua_setfield(l, -2, "bandwidth");
 	lua_pushinteger(l, opus_packet_get_samples_per_frame(audio->opus_data.data, AUDIO_SAMPLE_RATE));
 	lua_setfield(l, -2, "samples_per_frame");
@@ -1374,7 +1374,7 @@ void mumble_handle_speaking_hooks_legacy(MumbleClient* client, uint8_t buffer[],
 	lua_setfield(l, -2, "data");
 	lua_pushinteger(l, opus_packet_get_nb_channels(buffer + read));
 	lua_setfield(l, -2, "channels");
-	lua_pushinteger(l, opus_packet_get_nb_channels(buffer + read));
+	lua_pushinteger(l, opus_packet_get_bandwidth(buffer + read));
 	lua_setfield(l, -2, "bandwidth");
 	lua_pushinteger(l, opus_packet_get_samples_per_frame(buffer + read, AUDIO_SAMPLE_RATE));
 	lua_setfield(l, -2, "samples_per_frame");

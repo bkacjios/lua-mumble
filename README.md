@@ -158,11 +158,11 @@ mumble.client:transmit(Number codec, String encoded_audio_packet, Boolean speaki
 -- If audiostream = nil, it will pass along an error string as to why it couldn't open the file
 mumble.audiostream audiostream, [ String error ] = mumble.client:openAudio(String audio file path, Number volume = 1.0)
 
--- Creates a buffer that you can write raw 48000hz, 32bit float, stereo PCM data that will be output by the client as soon as it can.
+-- Creates a buffer that you can write raw, 32bit float, PCM data that will be output by the client as soon as it can.
 -- Creating multiple buffers will result in each buffer being mixed together during transmission, for simultaneous audio streaming.
 -- You should only ever use buffer:writeFloat(), but the other buffer methods are always available for whatever reason.
 -- When audio data is streamed, it can trigger the following hooks: OnUserStartSpeaking, OnUserSpeak, OnUserStopSpeaking
-mumble.buffer buffer = mumble.client:createAudioBuffer()
+mumble.buffer buffer = mumble.client:createAudioBuffer([Number samplerate = 48000, Number channels = 2])
 
 -- Gets a table of all currently playing audio streams
 Table audiostreams = mumble.client:getAudioStreams()
