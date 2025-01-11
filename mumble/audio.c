@@ -479,7 +479,7 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 				for (int j = 0; j < context->channels; j++) {
 					float sample;
 					buffer_readFloat(buffer, &sample);
-					input_buffer[i * context->channels + j] = soft_clip(sample * client->volume);
+					input_buffer[i * context->channels + j] = sample;
 				}
 			}
 		}
