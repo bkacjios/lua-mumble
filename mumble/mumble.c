@@ -1287,7 +1287,7 @@ void mumble_handle_speaking_hooks_protobuf(MumbleClient* client, MumbleUDP__Audi
 		state_change = true;
 	}
 
-	if ((one_frame || state_change) && speaking) {
+	if (one_frame || (state_change && speaking)) {
 		mumble_user_raw_get(client, session);
 		mumble_hook_call(client, "OnUserStartSpeaking", 1);
 	}
@@ -1315,7 +1315,7 @@ void mumble_handle_speaking_hooks_protobuf(MumbleClient* client, MumbleUDP__Audi
 	lua_setfield(l, -2, "samples_per_frame");
 	mumble_hook_call(client, "OnUserSpeak", 1);
 
-	if ((one_frame || state_change) && !speaking) {
+	if (one_frame || (state_change && !speaking)) {
 		mumble_user_raw_get(client, session);
 		mumble_hook_call(client, "OnUserStopSpeaking", 1);
 	}
@@ -1354,7 +1354,7 @@ void mumble_handle_speaking_hooks_legacy(MumbleClient* client, uint8_t buffer[],
 		state_change = true;
 	}
 
-	if ((one_frame || state_change) && speaking) {
+	if (one_frame || (state_change && speaking)) {
 		mumble_user_raw_get(client, session);
 		mumble_hook_call(client, "OnUserStartSpeaking", 1);
 	}
@@ -1380,7 +1380,7 @@ void mumble_handle_speaking_hooks_legacy(MumbleClient* client, uint8_t buffer[],
 	lua_setfield(l, -2, "samples_per_frame");
 	mumble_hook_call(client, "OnUserSpeak", 1);
 
-	if ((one_frame || state_change) && !speaking) {
+	if (one_frame || (state_change && !speaking)) {
 		mumble_user_raw_get(client, session);
 		mumble_hook_call(client, "OnUserStopSpeaking", 1);
 	}
