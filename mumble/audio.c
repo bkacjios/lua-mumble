@@ -5,6 +5,7 @@
 #include "log.h"
 
 #include <math.h>
+#include <unistd.h>
 
 uint8_t util_set_varint(uint8_t buffer[], const uint64_t value) {
 	if (value < 0x80) {
@@ -163,8 +164,8 @@ void audio_transmission_unreference(lua_State*l, AudioStream *sound) {
 	list_remove(&sound->client->stream_list, sound->refrence);
 	mumble_registry_unref(l, sound->client->audio_streams, &sound->refrence);
 	sound->playing = false;
-	sound->fade_volume = 1.0f,
-	       sound->fade_frames = 0;
+	sound->fade_volume = 1.0f;
+	sound->fade_frames = 0;
 	sound->fade_frames_left = 0;
 	sound->fade_stop = false;
 	if (sound->file) {
@@ -172,13 +173,67 @@ void audio_transmission_unreference(lua_State*l, AudioStream *sound) {
 	}
 }
 
+void mumble_audio_idle(uv_idle_t* handle) {
+	uint64_t now = uv_hrtime();
+
+	MumbleClient* client = (MumbleClient*) handle->data;
+	lua_State *l = client->l;
+
+	audio_transmission_event(l, client);
+
+	uint64_t process_time_us = (uv_hrtime() - now) / 1000;
+	uint64_t next_timer_us = client->audio_frames * 1000;
+
+	mumble_log(LOG_TRACE, "audio transmission took: %lu us", process_time_us);
+	mumble_log(LOG_TRACE, "next timer length: %lu us", next_timer_us - process_time_us);
+
+	if (process_time_us < next_timer_us) {
+		// Sleep until next audio event.
+		// I think this is bad since we would be slowing down the event loop
+		usleep(next_timer_us - process_time_us);
+	}
+}
+
 void mumble_audio_timer(uv_timer_t* handle) {
+	uint64_t start_time = uv_hrtime();
+
 	MumbleClient* client = (MumbleClient*) handle->data;
 	lua_State *l = client->l;
 
 	if (client->connected) {
+		// TODO: buffer audio outside of this event, so we always have audio data at the ready.
+		// I think audio stuttering issues are caused by this being somewhat CPU intensive.
 		audio_transmission_event(l, client);
 	}
+
+	uint64_t end_time = uv_hrtime();
+
+	// Convert processing time from nanoseconds to microseconds
+	uint64_t process_time_us = (end_time - start_time) / 1000;
+
+	mumble_log(LOG_DEBUG, "audio transmission took: %lu us", process_time_us);
+
+	// Compute remaining time until the next event
+	uint64_t remaining_us = client->audio_frames * 1000 - process_time_us;
+	uint64_t sleep_us = remaining_us % 1000;
+
+	if (sleep_us > 0) {
+		// sleep until the nearest millisecond
+		mumble_log(LOG_DEBUG, "sleeping for extra %lu us", sleep_us);
+		usleep(sleep_us);
+		end_time += sleep_us * 1000;
+	}
+
+	// Update last audio event timestamp
+	client->audio_timer_last = end_time;
+
+	// Adjust next timer to exclude the time we just slept
+	uint64_t next_timer_ms = (remaining_us - sleep_us) / 1000;
+
+	mumble_log(LOG_DEBUG, "next timer length: %lu ms", next_timer_ms);
+
+	// Schedule the next timer event
+	uv_timer_start(&client->audio_timer, mumble_audio_timer, next_timer_ms, 0);
 }
 
 static void handle_audio_stream_end(lua_State *l, MumbleClient *client, AudioStream *sound, bool *didLoop) {

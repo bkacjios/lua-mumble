@@ -306,7 +306,6 @@ void socket_read_event_udp(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf,
 
 	// Check if we received any data
 	if (nread == 0) {
-		mumble_log(LOG_TRACE, "[UDP] No data received");
 		return;
 	}
 
@@ -661,6 +660,7 @@ int mumble_client_connect(lua_State *l) {
 
 	client->socket_tcp.data = (void*) client;
 	client->socket_udp.data = (void*) client;
+	client->audio_idle.data = (void*) client;
 	client->audio_timer.data = (void*) client;
 	client->ping_timer.data = (void*) client;
 
@@ -781,11 +781,17 @@ uint64_t mumble_adjust_audio_bandwidth(MumbleClient *client) {
 }
 
 void mumble_create_audio_timer(MumbleClient *client) {
-	uint64_t time = mumble_adjust_audio_bandwidth(client);
-
+#ifdef AUDIO_TIMER_IDLE_LOOP
+	mumble_adjust_audio_bandwidth(client);
+	// Use an idle loop for audio processing, allowing for higher precision than timers
+	uv_idle_init(uv_default_loop(), &client->audio_idle);
+	uv_idle_start(&client->audio_idle, mumble_audio_idle);
+#else
 	// Create a timer for audio data
+	uint64_t time = mumble_adjust_audio_bandwidth(client);
 	uv_timer_init(uv_default_loop(), &client->audio_timer);
-	uv_timer_start(&client->audio_timer, mumble_audio_timer, time, time);
+	uv_timer_start(&client->audio_timer, mumble_audio_timer, time, 0);
+#endif
 }
 
 static int mumble_loop(lua_State *l) {
@@ -850,6 +856,10 @@ static void mumble_client_cleanup(MumbleClient *client) {
 
 	if (uv_is_active((uv_handle_t*) &client->ping_timer)) {
 		uv_timer_stop(&client->ping_timer);
+	}
+
+	if (uv_is_active((uv_handle_t*) &client->audio_idle)) {
+		uv_idle_stop(&client->audio_idle);
 	}
 
 	if (uv_is_active((uv_handle_t*) &client->audio_timer)) {

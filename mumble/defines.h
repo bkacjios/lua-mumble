@@ -28,13 +28,16 @@
 #define AUDIO_FRAME_SIZE_LARGE	60
 
 // 10 = Lower latency, 60 = Better quality
-#define AUDIO_DEFAULT_FRAMES AUDIO_FRAME_SIZE_LARGE
+#define AUDIO_DEFAULT_FRAMES AUDIO_FRAME_SIZE_SMALL
 
 // How many channels the audio file playback should handle
 #define AUDIO_PLAYBACK_CHANNELS 2
 
 // The sample rate in which all audio files should be encoded to
 #define AUDIO_SAMPLE_RATE 48000
+
+// Experimental idle loop audio timer
+//#define AUDIO_TIMER_IDLE_LOOP
 
 // The max amount of PCM frames we will ever have
 #define MAX_PCM_FRAMES AUDIO_FRAME_SIZE_LARGE * AUDIO_SAMPLE_RATE / 1000

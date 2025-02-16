@@ -154,6 +154,9 @@ struct MumbleClient {
 	double				ducking_volume;
 
 	uv_timer_t			audio_timer;
+	uv_idle_t			audio_idle;
+	uint64_t			audio_timer_last;
+
 	uv_timer_t			ping_timer;
 
 	AudioFrame			audio_output[MAX_PCM_FRAMES];

@@ -10,11 +10,6 @@
 #include <openssl/ssl.h>
 #include <math.h>
 
-typedef struct {
-	uv_udp_send_t req;
-	int is_done;
-} send_context_t;
-
 #define SAFE_STRDUP(dest, src) \
 	do { \
 		if ((dest) != NULL) { \
@@ -32,43 +27,50 @@ typedef struct {
 	} while (0)
 
 void on_send(uv_udp_send_t* req, int status) {
-	send_context_t* context = (send_context_t*)req->data;
-
-	// Signal that the send operation is complete
-	context->is_done = 1;
+	uint8_t* encrypted = (uint8_t*) req->data;
 
 	if (status < 0) {
 		mumble_log(LOG_ERROR, "[UDP] Error sending UDP packet: %s", uv_strerror(status));
 	}
+
+	free(encrypted);
+	free(req);
 }
 
 int packet_sendudp(MumbleClient* client, const void *message, const int length) {
-	uint8_t encrypted[length + 4];
+	uint8_t* encrypted = malloc(length + 4);
+
+	if (!encrypted) {
+		mumble_log(LOG_ERROR, "failed to malloc encrypted data buffer: %s", strerror(errno));
+		return 0;
+	}
+
 	if (crypt_isValid(client->crypt) && crypt_encrypt(client->crypt, message, encrypted, length)) {
 		uv_buf_t buf = uv_buf_init((char*)encrypted, length + 4);
 
-        send_context_t context;
-        context.is_done = 0;
+		uv_udp_send_t* req = malloc(sizeof(uv_udp_send_t));
 
-        // Prepare the request
-        uv_udp_send_t req;
-        req.data = &context;
-
-		int ret = uv_udp_send(&req, &client->socket_udp, &buf, 1, NULL, on_send);
-
-		if (ret < 0) {
-			mumble_log(LOG_ERROR, "[UDP] Unable to send UDP packet: %s", uv_strerror(ret));
+		if (!req) {
+			mumble_log(LOG_ERROR, "failed to malloc send request: %s", strerror(errno));
+			free(encrypted);
 			return 0;
 		}
 
-		// Wait until the send operation is done (helps prevent the audio timer from stuttering)
-		while (!context.is_done) {
-			uv_run(uv_default_loop(), UV_RUN_ONCE);
+		req->data = encrypted;
+
+		int ret = uv_udp_send(req, &client->socket_udp, &buf, 1, NULL, on_send);
+
+		if (ret < 0) {
+			mumble_log(LOG_ERROR, "[UDP] Unable to send UDP packet: %s", uv_strerror(ret));
+			free(encrypted);
+			free(req);
+			return 0;
 		}
 
 		return ret;
 	} else {
 		mumble_log(LOG_ERROR, "[UDP] Unable to encrypt UDP packet");
+		free(encrypted);
 		return 0;
 	}
 }
