@@ -787,6 +787,7 @@ void mumble_create_audio_timer(MumbleClient *client) {
 	uv_idle_init(uv_default_loop(), &client->audio_idle);
 	uv_idle_start(&client->audio_idle, mumble_audio_idle);
 #else
+	client->audio_timer_last = 0;
 	// Create a timer for audio data
 	uint64_t time = mumble_adjust_audio_bandwidth(client);
 	uv_timer_init(uv_default_loop(), &client->audio_timer);
