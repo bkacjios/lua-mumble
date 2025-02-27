@@ -110,7 +110,8 @@ static int channel_getUsers(lua_State *l) {
 	int i = 1;
 
 	while (current != NULL) {
-		if (current->index == channel->channel_id) {
+		MumbleUser *user = current->data;
+		if (user->channel_id == channel->channel_id) {
 			lua_pushinteger(l, i++);
 			mumble_user_raw_get(channel->client, current->index);
 			lua_settable(l, -3);
