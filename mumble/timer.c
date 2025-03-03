@@ -76,8 +76,8 @@ static int timer_start(lua_State *l) {
 	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	luaL_checktype(l, 2, LUA_TFUNCTION);
 
-	uint64_t after = (uint64_t) luaL_optnumber(l, 3, 0) * 1000;
-	uint64_t repeat = (uint64_t) luaL_optnumber(l, 4, 0) * 1000;
+	uint64_t after = luaL_optnumber(l, 3, 0) * 1000;
+	uint64_t repeat = luaL_optnumber(l, 4, 0) * 1000;
 
 	ltimer->after = after;
 
@@ -141,7 +141,7 @@ static int timer_get(lua_State *l) {
 static int timer_setDuration(lua_State *l) {
 	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 
-	ltimer->after = (uint64_t) luaL_checknumber(l, 2) * 1000;
+	ltimer->after = luaL_checknumber(l, 2) * 1000;
 
 	// Return ourself
 	lua_settop(l, 1);
