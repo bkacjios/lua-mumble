@@ -621,6 +621,10 @@ String byte = buffer[Number index]
 -- Returns the capacity of the buffer, which is the total amount of space allocated
 Number capacity = buffer.capacity
 
+-- Returns if the buffer has no data available to be read.
+-- Works by checking if the read head position equals the write head position.
+Boolean isEmpty = buffer:isEmpty()
+
 -- Returns the current read_head position in the buffer
 Number read_head = buffer.read_head, same as buffer:seek("read")
 
