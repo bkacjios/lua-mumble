@@ -1874,6 +1874,7 @@ void mumble_pushref(lua_State *l, int ref) {
 }
 
 void mumble_unref(lua_State *l, int *ref) {
+	if (*ref == LUA_NOREF) return;
 	lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_REGISTRY);
 	luaL_unref(l, -1, *ref);
 	lua_pop(l, 1);
@@ -1896,6 +1897,7 @@ void mumble_registry_pushref(lua_State *l, int t, int ref) {
 }
 
 void mumble_registry_unref(lua_State *l, int t, int *ref) {
+	if (*ref == LUA_NOREF) return;
 	mumble_pushref(l, t);
 	luaL_unref(l, -1, *ref);
 	lua_pop(l, 1);

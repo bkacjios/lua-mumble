@@ -22,10 +22,10 @@ static void mumble_client_check(lua_State *l, bool connected, const char *status
 		lua_Debug ar;
 
 		if (!lua_getstack(l, 0, &ar))
-			luaL_error(l, "attempt to call method on %s mumble.client", status);
+			luaL_error(l, "attempt to call method on %s %s", status, METATABLE_CLIENT);
 
 		lua_getinfo(l, "nS", &ar);
-		luaL_error(l, "attempt to call %s '%s' on %s mumble.client", ar.namewhat, ar.name, status);
+		luaL_error(l, "attempt to call %s '%s' on %s %s", ar.namewhat, ar.name, status, METATABLE_CLIENT);
 	}
 }
 

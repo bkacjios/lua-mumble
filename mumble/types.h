@@ -36,7 +36,7 @@ typedef struct MumbleOpusDecoder MumbleOpusDecoder;
 struct MumbleTimer {
 	uv_timer_t timer;
 	lua_State* l;
-	bool running;
+	bool closed;
 	uint32_t count;
 	int self;
 	int callback;
