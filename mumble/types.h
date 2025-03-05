@@ -83,8 +83,8 @@ struct MumbleThreadWorker {
 	uv_loop_t loop;
 	MumbleThreadController* controller;
 	uv_async_t async_message;
-	pthread_mutex_t mutex;
-	pthread_cond_t cond;
+	uv_mutex_t mutex;
+	uv_cond_t cond;
 	volatile bool finished;
 	LinkQueue*	message_queue;
 	int message;
@@ -108,8 +108,8 @@ struct MumbleThreadController {
 	uv_thread_t thread;
 	uv_async_t async_finish;
 	uv_async_t async_message;
-	pthread_mutex_t mutex;
-	pthread_cond_t cond;
+	uv_mutex_t mutex;
+	uv_cond_t cond;
 	volatile bool started;
 	char* bytecode;
 	const char* filename;
@@ -168,7 +168,6 @@ struct MumbleClient {
 	int					encoder_ref;
 
 	OpusDecoder*		decoder;
-	int					decoder_ref;
 
 	uint8_t				audio_target;
 

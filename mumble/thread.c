@@ -68,8 +68,8 @@ void mumble_thread_worker_start(void *arg) {
 	luaL_getmetatable(l, METATABLE_THREAD_WORKER);
 	lua_setmetatable(l, -2);
 
-	pthread_mutex_init(&worker->mutex, NULL);
-	pthread_cond_init(&worker->cond, NULL);
+	uv_mutex_init(&worker->mutex);
+	uv_cond_init(&worker->cond);
 
 	lua_pushvalue(l, -1);
 	worker->self = mumble_registry_ref(l, MUMBLE_THREAD_REG);
@@ -79,11 +79,11 @@ void mumble_thread_worker_start(void *arg) {
 	worker->async_message.data = worker;
 	uv_async_init(&worker->loop, &worker->async_message, mumble_thread_worker_message);
 
-	pthread_mutex_lock(&controller->mutex);
+	uv_mutex_lock(&controller->mutex);
 	controller->worker = worker;
 	controller->started = true; // Mark work as started
-	pthread_cond_signal(&controller->cond); // Signal the waiting thread
-	pthread_mutex_unlock(&controller->mutex);
+	uv_cond_signal(&controller->cond); // Signal the waiting thread
+	uv_mutex_unlock(&controller->mutex);
 
 	// Call the worker with our custom error handler function
 	if (lua_pcall(l, 1, 0, -3) != 0) {
@@ -96,12 +96,14 @@ void mumble_thread_worker_start(void *arg) {
 
 	uv_async_send(&controller->async_finish);
 
-	pthread_mutex_lock(&worker->mutex);
+	uv_mutex_lock(&worker->mutex);
 	worker->finished = true; // Mark work as finished
-	pthread_cond_signal(&worker->cond); // Signal the waiting thread
-	pthread_mutex_unlock(&worker->mutex);
+	uv_cond_signal(&worker->cond); // Signal the waiting thread
+	uv_mutex_unlock(&worker->mutex);
 
 	mumble_registry_unref(l, MUMBLE_THREAD_REG, &worker->self);
+
+	lua_settop(l, 0);
 
 	lua_stackguard_exit(l);
 
@@ -149,7 +151,7 @@ void mumble_thread_worker_finish(uv_async_t *handle) {
 void mumble_thread_controller_message(uv_async_t *handle) {
 	MumbleThreadController* controller = (MumbleThreadController*) handle->data;
 
-	pthread_mutex_lock(&controller->mutex);
+	uv_mutex_lock(&controller->mutex);
 
 	lua_State* l = controller->l;
 
@@ -187,13 +189,13 @@ void mumble_thread_controller_message(uv_async_t *handle) {
 		lua_pop(l, 1);
 	}
 
-	pthread_mutex_unlock(&controller->mutex);
+	uv_mutex_unlock(&controller->mutex);
 }
 
 void mumble_thread_worker_message(uv_async_t *handle) {
 	MumbleThreadWorker* worker = (MumbleThreadWorker*) handle->data;
 
-	pthread_mutex_lock(&worker->mutex);
+	uv_mutex_lock(&worker->mutex);
 
 	lua_State* l = worker->l;
 
@@ -230,7 +232,7 @@ void mumble_thread_worker_message(uv_async_t *handle) {
 		lua_pop(l, 1);
 	}
 
-	pthread_mutex_unlock(&worker->mutex);
+	uv_mutex_unlock(&worker->mutex);
 }
 
 int mumble_thread_new(lua_State *l) {
@@ -266,8 +268,8 @@ int mumble_thread_new(lua_State *l) {
 
 	controller->message_queue = queue_new();
 
-	pthread_mutex_init(&controller->mutex, NULL);
-	pthread_cond_init(&controller->cond, NULL);
+	uv_mutex_init(&controller->mutex);
+	uv_cond_init(&controller->cond);
 
 	lua_pushvalue(l, -1); // Reference a copy of our userdata to prevent garbage collection
 	controller->self = mumble_registry_ref(l, MUMBLE_THREAD_REG); // Pop it off as a reference
@@ -288,20 +290,20 @@ int mumble_thread_new(lua_State *l) {
 static int thread_controller_join(lua_State *l) {
 	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
 
-	pthread_mutex_lock(&controller->mutex);
+	uv_mutex_lock(&controller->mutex);
 	while (!controller->started) {
 		// Wait for worker to start
-		pthread_cond_wait(&controller->cond, &controller->mutex);
+		uv_cond_wait(&controller->cond, &controller->mutex);
 	}
 	MumbleThreadWorker *worker = controller->worker;
-	pthread_mutex_unlock(&controller->mutex);
+	uv_mutex_unlock(&controller->mutex);
 
-	pthread_mutex_lock(&worker->mutex);
+	uv_mutex_lock(&worker->mutex);
 	while (!worker->finished) {
 		// Now wait for it to finish
-		pthread_cond_wait(&worker->cond, &worker->mutex);
+		uv_cond_wait(&worker->cond, &worker->mutex);
 	}
-	pthread_mutex_unlock(&worker->mutex);
+	uv_mutex_unlock(&worker->mutex);
 
 	uv_thread_join(&controller->thread);
 
@@ -328,29 +330,29 @@ static int thread_controller_onFinish(lua_State *l) {
 static int thread_controller_send(lua_State *l) {
 	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
 
-	pthread_mutex_lock(&controller->mutex);
+	uv_mutex_lock(&controller->mutex);
 	while (!controller->started) {
 		// We can't send until the worker has started
-		pthread_cond_wait(&controller->cond, &controller->mutex);
+		uv_cond_wait(&controller->cond, &controller->mutex);
 	}
 	MumbleThreadWorker *worker = controller->worker;
-	pthread_mutex_unlock(&controller->mutex);
+	uv_mutex_unlock(&controller->mutex);
 
 	switch (lua_type(l, 2)) {
 	case LUA_TSTRING:
 		// Initialize with raw data
 		size_t size;
 		char* data = (char*) luaL_checklstring(l, 2, &size);
-		pthread_mutex_lock(&worker->mutex);
+		uv_mutex_lock(&worker->mutex);
 		queue_push(worker->message_queue, strndup(data, size), size);
-		pthread_mutex_unlock(&worker->mutex);
+		uv_mutex_unlock(&worker->mutex);
 		break;
 	case LUA_TUSERDATA:
 		ByteBuffer *buffer = luaL_checkudata(l, 2, METATABLE_BUFFER);
-		pthread_mutex_lock(&worker->mutex);
+		uv_mutex_lock(&worker->mutex);
 		size_t length = buffer_length(buffer);
 		queue_push(worker->message_queue, strndup((char*) buffer->data + buffer->read_head, length), length);
-		pthread_mutex_unlock(&worker->mutex);
+		uv_mutex_unlock(&worker->mutex);
 		break;
 	default:
 		const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
@@ -396,8 +398,8 @@ static int thread_controller_gc(lua_State *l) {
 	if (uv_is_active((uv_handle_t*) &controller->async_message)) {
 		uv_close((uv_handle_t*) &controller->async_message, NULL);
 	}
-	pthread_mutex_destroy(&controller->mutex);
-	pthread_cond_destroy(&controller->cond);
+	uv_mutex_destroy(&controller->mutex);
+	uv_cond_destroy(&controller->cond);
 	if (controller->message_queue) {
 		free(controller->message_queue);
 	}
@@ -424,16 +426,16 @@ static int thread_worker_send(lua_State *l) {
 		// Initialize with raw data
 		size_t size;
 		char* data = (char*) luaL_checklstring(l, 2, &size);
-		pthread_mutex_lock(&controller->mutex);
+		uv_mutex_lock(&controller->mutex);
 		queue_push(controller->message_queue, strndup(data, size), size);
-		pthread_mutex_unlock(&controller->mutex);
+		uv_mutex_unlock(&controller->mutex);
 		break;
 	case LUA_TUSERDATA:
 		ByteBuffer *buffer = luaL_checkudata(l, 2, METATABLE_BUFFER);
-		pthread_mutex_lock(&controller->mutex);
+		uv_mutex_lock(&controller->mutex);
 		size_t length = buffer_length(buffer);
 		queue_push(controller->message_queue, strndup((char*) buffer->data + buffer->read_head, length), length);
-		pthread_mutex_unlock(&controller->mutex);
+		uv_mutex_unlock(&controller->mutex);
 		break;
 	default:
 		const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
@@ -503,8 +505,8 @@ static int thread_worker_gc(lua_State *l) {
 	if (worker->message_queue) {
 		free(worker->message_queue);
 	}
-	pthread_mutex_destroy(&worker->mutex);
-	pthread_cond_destroy(&worker->cond);
+	uv_mutex_destroy(&worker->mutex);
+	uv_cond_destroy(&worker->cond);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_THREAD_WORKER, worker);
 	return 0;
 }
