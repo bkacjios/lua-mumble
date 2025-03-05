@@ -134,6 +134,7 @@ static int timer_start(lua_State *l) {
 
 	// Start our timer
 	uv_timer_start(&ltimer->timer, mumble_lua_timer, after, repeat);
+	ltimer->count = 0;
 	ltimer->paused = false;
 
 	// Return ourself
