@@ -9,10 +9,10 @@
 typedef struct MumbleClient MumbleClient;
 
 typedef struct {
-    MumbleClient* client;
-    opus_int32 samplerate;
-    int channels;
-    size_t start_offset;
+	MumbleClient* client;
+	opus_int32 samplerate;
+	int channels;
+	bool playing;
 } AudioContext;
 
 typedef struct {

@@ -552,6 +552,8 @@ static int mumble_client_new(lua_State *l) {
 	client->user_list = NULL;
 	client->channel_list = NULL;
 	client->audio_pipes = NULL;
+
+	client->recording = false;
 	return 1;
 }
 
@@ -654,6 +656,15 @@ int mumble_client_connect(lua_State *l) {
 	}
 
 	client->encoder_ref = mumble_ref(l);
+
+	client->decoder = opus_decoder_create(AUDIO_SAMPLE_RATE, AUDIO_PLAYBACK_CHANNELS, &err);
+
+	if (err != OPUS_OK) {
+		mumble_client_free(client);
+		lua_pushboolean(l, false);
+		lua_pushfstring(l, "could not initialize opus decoder: %s", opus_strerror(err));
+		return 2;
+	}
 
 	opus_encoder_ctl(client->encoder, OPUS_SET_VBR(0));
 	opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(AUDIO_DEFAULT_BITRATE));
@@ -836,6 +847,10 @@ static void mumble_client_free(MumbleClient *client) {
 	if (client->server_host_tcp) {
 		freeaddrinfo(client->server_host_tcp);
 		client->server_host_tcp = NULL;
+	}
+
+	if (client->decoder != NULL) {
+		opus_decoder_destroy(client->decoder);
 	}
 }
 
@@ -1124,6 +1139,7 @@ MumbleUser* mumble_user_get(MumbleClient* client, uint32_t session) {
 			user->texture_hash_len = 0;
 			user->hash = NULL;
 			user->listens = NULL;
+			user->recording_file = NULL;
 		}
 		luaL_getmetatable(l, METATABLE_USER);
 		lua_setmetatable(l, -2);
@@ -1281,6 +1297,73 @@ int mumble_push_address(lua_State* l, ProtobufCBinaryData address) {
 	return 1;
 }
 
+void mumble_update_recording_status(MumbleClient* client) {
+	LinkNode* current = client->user_list;
+
+	bool isRecordingUser = false;
+
+	while (current != NULL) {
+		MumbleUser *user = current->data;
+
+		if (user->recording_file != NULL) {
+			isRecordingUser = true;
+			break;
+		}
+
+		current = current->next;
+	}
+
+	if (client->recording != isRecordingUser) {
+		client->recording = isRecordingUser;
+
+		MumbleProto__UserState msg = MUMBLE_PROTO__USER_STATE__INIT;
+
+		msg.has_session = true;
+		msg.session = client->session;
+
+		msg.has_recording = true;
+		msg.recording = client->recording;
+
+		packet_send(client, PACKET_USERSTATE, &msg);
+	}
+}
+
+void mumble_handle_record_silence(MumbleClient* client, MumbleUser* user) {
+	if (user->recording_file != NULL) {
+		uint64_t now = uv_now(uv_default_loop());
+		uint64_t silence_duration = now - user->last_spoke;
+
+		// Convert duration to number of samples
+		int silence_samples = (silence_duration / 1000.0) * AUDIO_SAMPLE_RATE * AUDIO_PLAYBACK_CHANNELS;
+
+		if (silence_samples > 0) {
+			float *silence_buffer = (float *)calloc(silence_samples, sizeof(float));
+			if (silence_buffer) {
+				sf_write_float(user->recording_file, silence_buffer, silence_samples);
+				free(silence_buffer);
+			} else {
+				mumble_log(LOG_ERROR, "Failed to allocate memory for silence buffer (%d samples)", silence_samples);
+			}
+		}
+	}
+}
+
+static void mumble_handle_record(MumbleClient* client, MumbleUser* user, const unsigned char* encoded, size_t endoded_len) {
+	if (user->recording_file != NULL) {
+		// Save PCM data to recording file
+		int samples = opus_decoder_get_nb_samples(client->decoder, encoded, endoded_len) * AUDIO_PLAYBACK_CHANNELS;
+
+		float pcm[samples];
+		opus_int32 pcmlen = opus_decode_float(client->decoder, encoded, endoded_len, pcm, samples, 0);
+
+		if (pcmlen < 0) {
+			mumble_log(LOG_ERROR, "opus decoding error: %s", opus_strerror(pcmlen));
+		} else {
+			sf_write_float(user->recording_file, pcm, samples);
+		}
+	}
+}
+
 void mumble_handle_speaking_hooks_protobuf(MumbleClient* client, MumbleUDP__Audio *audio, uint32_t session) {
 	lua_State* l = client->l;
 	lua_stackguard_entry(l);
@@ -1301,7 +1384,10 @@ void mumble_handle_speaking_hooks_protobuf(MumbleClient* client, MumbleUDP__Audi
 	if (one_frame || (state_change && speaking)) {
 		mumble_user_raw_get(client, session);
 		mumble_hook_call(client, "OnUserStartSpeaking", 1);
+		mumble_handle_record_silence(client, user);
 	}
+
+	mumble_handle_record(client, user, audio->opus_data.data, audio->opus_data.len);
 
 	lua_newtable(l);
 	lua_pushnumber(l, LEGACY_UDP_OPUS);
@@ -1329,6 +1415,7 @@ void mumble_handle_speaking_hooks_protobuf(MumbleClient* client, MumbleUDP__Audi
 	if (one_frame || (state_change && !speaking)) {
 		mumble_user_raw_get(client, session);
 		mumble_hook_call(client, "OnUserStopSpeaking", 1);
+		user->last_spoke = uv_now(uv_default_loop());
 	}
 
 	lua_stackguard_exit(l);
@@ -1368,7 +1455,10 @@ void mumble_handle_speaking_hooks_legacy(MumbleClient* client, uint8_t buffer[],
 	if (one_frame || (state_change && speaking)) {
 		mumble_user_raw_get(client, session);
 		mumble_hook_call(client, "OnUserStartSpeaking", 1);
+		mumble_handle_record_silence(client, user);
 	}
+
+	mumble_handle_record(client, user, buffer + read, payload_len);
 
 	lua_newtable(l);
 	lua_pushnumber(l, codec);
@@ -1394,6 +1484,7 @@ void mumble_handle_speaking_hooks_legacy(MumbleClient* client, uint8_t buffer[],
 	if (one_frame || (state_change && !speaking)) {
 		mumble_user_raw_get(client, session);
 		mumble_hook_call(client, "OnUserStopSpeaking", 1);
+		user->last_spoke = uv_now(uv_default_loop());
 	}
 
 	lua_stackguard_exit(l);

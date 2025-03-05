@@ -166,6 +166,9 @@ struct MumbleClient {
 	OpusEncoder*		encoder;
 	int					encoder_ref;
 
+	OpusDecoder*		decoder;
+	int					decoder_ref;
+
 	uint8_t				audio_target;
 
 	uint32_t			tcp_packets;
@@ -186,6 +189,8 @@ struct MumbleClient {
 	LinkNode*			channel_list;
 	LinkNode*			user_list;
 	LinkNode*			audio_pipes;
+
+	bool				recording;
 };
 
 struct LinkNode {
@@ -237,6 +242,8 @@ struct MumbleUser {
 	size_t			texture_hash_len;
 	char*			hash;
 	LinkNode*		listens;
+	SNDFILE*		recording_file;
+	uint64_t		last_spoke;
 };
 
 typedef struct {

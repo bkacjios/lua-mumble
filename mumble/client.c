@@ -901,7 +901,7 @@ static int client_createAudioBuffer(lua_State *l) {
 	context->client = client;
 	context->channels = channels;
 	context->samplerate = samplerate;
-	context->start_offset = 0;
+	context->playing = true;
 	
 	buffer->context = context;
 

@@ -434,6 +434,17 @@ mumble.user:requestTextureBlob()
 -- Server will respond with a "OnUserState" with the requested data filled out
 -- After the hook is called, mumble.user:getComment() will also return the full data
 mumble.user:requestCommentBlob()
+
+-- Starts recording a users voice output to an ogg file.
+-- Will return nil and an error string if it failed to create the file.
+Boolean success, [String error] = mumble.user:startRecord(String oggFilePath)
+
+-- Will return true if we successfully stopped recording.
+-- Will return false if the user wasn't being recorded.
+Boolean success = mumble.user:stopRecord()
+
+-- Returns if the user is being recorded or not.
+Boolean isBeingRecorded = mumble.user:isBeingRecorded()
 ```
 
 ### mumble.channel

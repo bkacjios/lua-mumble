@@ -508,8 +508,71 @@ static int user_requestCommentBlob(lua_State *l) {
 	return 0;
 }
 
+static int user_startRecord(lua_State *l) {
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+
+	if (user->recording_file != NULL) {
+		lua_pushnil(l);
+		lua_pushstring(l, "user is already being recorded");
+		return 1;
+	}
+
+	const char *filepath = luaL_checkstring(l, 2);
+
+	SF_INFO sfinfo;
+	sfinfo.samplerate = AUDIO_SAMPLE_RATE;
+	sfinfo.channels = AUDIO_PLAYBACK_CHANNELS;
+	sfinfo.format = SF_FORMAT_OGG | SF_FORMAT_VORBIS;
+
+	SNDFILE *outfile = sf_open(filepath, SFM_WRITE, &sfinfo);
+	if (!outfile) {
+		lua_pushnil(l);
+		lua_pushfstring(l, "error opening file \"%s\" (%s)", filepath, sf_strerror(NULL));
+		return 2;
+	}
+
+	// Start recording at current timestamp
+	user->last_spoke = uv_now(uv_default_loop());
+	user->recording_file = outfile;
+
+	mumble_update_recording_status(user->client);
+
+	lua_pushboolean(l, true);
+	return 1;
+}
+
+static void user_handle_stop_recording(lua_State *l, MumbleUser *user) {
+	// Handle any silence, from the time the user last stopped talking, until the end of the recording
+	mumble_handle_record_silence(user->client, user);
+	sf_close(user->recording_file);
+	user->recording_file = NULL;
+}
+
+static int user_stopRecord(lua_State *l) {
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+
+	if (user->recording_file != NULL) {
+		user_handle_stop_recording(l, user);
+		mumble_update_recording_status(user->client);
+		lua_pushboolean(l, true);
+	} else {
+		lua_pushboolean(l, false);
+	}
+
+	return 1;
+}
+
+static int user_isBeingRecorded(lua_State *l) {
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+	lua_pushboolean(l, user->recording_file != NULL);
+	return 1;
+}
+
 static int user_gc(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+	if (user->recording_file) {
+		user_handle_stop_recording(l, user);
+	}
 	if (user->name) {
 		free(user->name);
 	}
@@ -602,6 +665,9 @@ const luaL_Reg mumble_user[] = {
 	{"sendPluginData", user_sendPluginData},
 	{"requestTextureBlob", user_requestTextureBlob},
 	{"requestCommentBlob", user_requestCommentBlob},
+	{"startRecord", user_startRecord},
+	{"stopRecord", user_stopRecord},
+	{"isBeingRecorded", user_isBeingRecorded},
 
 	{"__gc", user_gc},
 	{"__tostring", user_tostring},
