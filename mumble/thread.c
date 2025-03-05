@@ -34,12 +34,12 @@ void mumble_thread_worker_start(void *arg) {
 
 	lua_State *l = luaL_newstate();
 
-	lua_stackguard_entry(l);
-
 	luaL_openlibs(l);
 
 	// Open ourself in the new state, since we need the worker metatable
 	luaopen_mumble(l);
+
+	lua_stackguard_entry(l);
 
 	// Push our error handler
 	lua_pushcfunction(l, mumble_traceback);
@@ -102,8 +102,6 @@ void mumble_thread_worker_start(void *arg) {
 	uv_mutex_unlock(&worker->mutex);
 
 	mumble_registry_unref(l, MUMBLE_THREAD_REG, &worker->self);
-
-	lua_settop(l, 0);
 
 	lua_stackguard_exit(l);
 
