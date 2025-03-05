@@ -37,6 +37,7 @@ struct MumbleTimer {
 	uv_timer_t timer;
 	lua_State* l;
 	bool closed;
+	bool paused;
 	uint32_t count;
 	int self;
 	int callback;

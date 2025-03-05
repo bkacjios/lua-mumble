@@ -204,7 +204,7 @@ void mumble_audio_timer(uv_timer_t* handle) {
 
 	client->audio_timer_last = start_time;
 
-	mumble_log(LOG_DEBUG, "last audio event: %.3f ms ago", (double) last_time_us / 1000);
+	mumble_log(LOG_TRACE, "last audio event: %.3f ms ago", (double) last_time_us / 1000);
 
 	if (client->connected) {
 		// TODO: buffer audio outside of this event, so we always have audio data at the ready.
@@ -216,16 +216,17 @@ void mumble_audio_timer(uv_timer_t* handle) {
 	// Convert processing time from nanoseconds to microseconds
 	uint64_t process_time_us = (end_time - start_time) / 1000;
 
-	mumble_log(LOG_DEBUG, "audio transmission took: %.3f ms", (double) process_time_us / 1000);
+	mumble_log(LOG_TRACE, "audio transmission took: %.3f ms", (double) process_time_us / 1000);
 
 	// Compute remaining time until the next event
-	uint64_t remaining_us = client->audio_frames * 1000 - process_time_us;
+	uint64_t target_us = client->audio_frames * 1000;
+	uint64_t remaining_us = (process_time_us < target_us) ? (target_us - process_time_us) : 0;
 
 	// Convert to milliseconds and truncate
 	// it's better if the timer happens sooner, rather than later
 	uint64_t next_timer_ms = remaining_us / 1000;
 
-	mumble_log(LOG_DEBUG, "next timer length: %lu ms", next_timer_ms);
+	mumble_log(LOG_TRACE, "next timer length: %lu ms", next_timer_ms);
 
 	// Schedule the next timer event
 	uv_timer_start(&client->audio_timer, mumble_audio_timer, next_timer_ms, 0);

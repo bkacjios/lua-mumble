@@ -66,7 +66,8 @@ mumble.user = mumble.client:getSelf()
 
 -- A new timer object
 -- The timer itself will do a best-effort at avoiding drift, that is, if you configure a timer to trigger every 10 seconds, then it will normally trigger at exactly 10 second intervals. If, however, your program cannot keep up with the timer (because it takes longer than those 10 seconds to do stuff) the timer will not fire more than once per event loop iteration.
--- Timers will keep the reference active until mumble.timer:close() is called
+-- Timers will keep the reference active until mumble.timer:stop() is called, or the timer stops on its own.
+-- Timers will dereference themselves if the timer is stopped after the callback funciton call.
 mumble.timer = mumble.timer()
 
 -- A new buffer object
@@ -560,8 +561,20 @@ mumble.channel:create(String name, String description = "", Number position = 0,
 -- It will only be garabage collected once the timer stops on its own, or mumble.timer:stop() is called.
 mumble.timer = mumble.timer:start(Function callback(mumble.timer), Number after = 0, Number repeat = 0)
 
--- Stops the timer
+-- Stops the timer and readies the timer for garabage collection
 mumble.timer:stop()
+
+-- Pauses the timer
+-- Will error out if the timer is not repeating or hasn't been started previously.
+mumble.timer:pause()
+
+-- Restarts the timer and sets the iteration count back to 0
+-- Will error out if the timer is not repeating or hasn't been started previously.
+mumble.timer:again()
+
+-- Resumes the timer
+-- Will error out if the timer is not repeating or hasn't been started previously.
+mumble.timer:resume()
 
 -- Sets the timers delay and repeat values
 mumble.timer:set(Number after, [ Number repeat = 0 ])
@@ -591,10 +604,6 @@ Number count = mumble.timer:getCount()
 Number remain = mumble.timer:getRemain()
 
 mumble.timer = mumble.timer:set(Number after, Number repeat = 0)
-
--- Attempts to restart the timer.
--- Will error out if the timer is not repeating or hasn't been started previously.
-mumble.timer:again()
 
 -- Returns if the timer is currently running or not.
 Boolean active = mumble.timer:isActive()
