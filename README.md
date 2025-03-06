@@ -607,6 +607,9 @@ mumble.timer = mumble.timer:set(Number after, Number repeat = 0)
 
 -- Returns if the timer is currently running or not.
 Boolean active = mumble.timer:isActive()
+
+-- Returns if the timer is currently paused or not.
+Boolean paused = mumble.timer:isPaused()
 ```
 
 ### mumble.buffer

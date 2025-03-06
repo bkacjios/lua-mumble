@@ -270,6 +270,12 @@ static int timer_isActive(lua_State *l) {
 	return 1;
 }
 
+static int timer_isPaused(lua_State *l) {
+	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
+	lua_pushboolean(l, ltimer->paused);
+	return 1;
+}
+
 static int timer_gc(lua_State *l) {
 	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
 	mumble_timer_close(ltimer);
@@ -297,6 +303,7 @@ const luaL_Reg mumble_timer[] = {
 	{"getCount", timer_getCount},
 	{"getRemain", timer_getRemain},
 	{"isActive", timer_isActive},
+	{"isPaused", timer_isPaused},
 	{"__tostring", timer_tostring},
 	{"__gc", timer_gc},
 	{NULL, NULL}
