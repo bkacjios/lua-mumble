@@ -438,22 +438,67 @@ static void send_protobuf_audio(MumbleClient *client, uint8_t *encoded, opus_int
 	mumble_handle_speaking_hooks_protobuf(client, &audio, client->session);
 }
 
-static void encode_and_send_audio(MumbleClient *client, sf_count_t frame_size, bool end_frame) {
-	uint8_t encoded[PAYLOAD_SIZE_MAX];
-	opus_int32 encoded_len = opus_encode_float(client->encoder, (float *)client->audio_output, frame_size, encoded, PAYLOAD_SIZE_MAX);
+static void encode_audio_work(uv_work_t *req) {
+	audio_work_t *work = (audio_work_t *)req->data;
+	uint64_t start = uv_hrtime();
 
-	if (encoded_len <= 0) return;
+	work->encoded_len = opus_encode_float(work->client->encoder,
+	                                      (float *)work->client->audio_output,
+	                                      work->frame_size,
+	                                      work->encoded,
+	                                      PAYLOAD_SIZE_MAX);
 
-	if (client->legacy) {
-		send_legacy_audio(client, encoded, encoded_len, end_frame);
-	} else {
-		send_protobuf_audio(client, encoded, encoded_len, end_frame);
+	work->encode_time = (uv_hrtime() - start) / 1e6;
+}
+
+static void send_audio_after(uv_work_t *req, int status) {
+	audio_work_t *work = (audio_work_t *)req->data;
+
+	if (status == 0 && work->encoded_len > 0) {
+		mumble_log(LOG_TRACE, "audio encode: %.3f ms", work->encode_time);
+
+		uint64_t start = uv_hrtime();
+		if (work->client->legacy) {
+			send_legacy_audio(work->client, work->encoded, work->encoded_len, work->end_frame);
+		} else {
+			send_protobuf_audio(work->client, work->encoded, work->encoded_len, work->end_frame);
+		}
+		mumble_log(LOG_TRACE, "audio send: %.3f ms", (uv_hrtime() - start) / 1e6);
+
+		work->client->audio_sequence++;
 	}
 
-	client->audio_sequence++;
+	free(work);
+	free(req);
+}
+
+static void encode_and_send_audio(MumbleClient *client, sf_count_t frame_size, bool end_frame) {
+	audio_work_t *work = malloc(sizeof(audio_work_t));
+	if (!work) {
+		mumble_log(LOG_ERROR, "Failed to allocate memory for audio work");
+		return;
+	}
+
+	uv_work_t *req = malloc(sizeof(uv_work_t));
+	if (!req) {
+		free(work);
+		mumble_log(LOG_ERROR, "Failed to allocate memory for work request");
+		return;
+	}
+
+	req->data = work;
+	work->req = *req;
+	work->client = client;
+	work->frame_size = frame_size;
+	work->end_frame = end_frame;
+	work->encoded_len = 0;
+	work->encode_time = 0;
+
+	uv_queue_work(uv_default_loop(), req, encode_audio_work, send_audio_after);
 }
 
 void audio_transmission_event(lua_State *l, MumbleClient *client) {
+	uint64_t start = uv_hrtime();
 	lua_stackguard_entry(l);
 
 	sf_count_t biggest_read = 0;
@@ -501,8 +546,12 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 
 		size_t required_size = sizeof(float) * client->audio_frames * context->samplerate / 1000 * context->channels;
 		if (required_size > max_input_buffer_size) {
-			// Reallocate exactly how much PCM data that will be processed in this chunk
-			input_buffer = realloc(input_buffer, required_size);
+			float* new_input_buffer = realloc(input_buffer, required_size);
+			if (new_input_buffer == NULL) {
+				mumble_log(LOG_ERROR, "failed to resize audio input buffer");
+				continue;
+			}
+			input_buffer = new_input_buffer;
 			max_input_buffer_size = required_size;
 		}
 
@@ -551,6 +600,8 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 	}
 
 	free(input_buffer);
+
+	mumble_log(LOG_TRACE, "audio processing: %.3f ms", (uv_hrtime() - start) / 1e6);
 
 	// All streams output nothing
 	bool stream_ended = stream_active && !streamed_audio;

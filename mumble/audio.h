@@ -9,6 +9,16 @@
 
 #define METATABLE_AUDIOSTREAM	"mumble.audiostream"
 
+typedef struct {
+    uv_work_t req;
+    MumbleClient *client;
+    sf_count_t frame_size;
+    bool end_frame;
+    uint8_t encoded[PAYLOAD_SIZE_MAX];
+    opus_int32 encoded_len;
+    float encode_time;
+} audio_work_t;
+
 extern const luaL_Reg mumble_audiostream[];
 
 void audio_transmission_event(lua_State* l, MumbleClient *client);

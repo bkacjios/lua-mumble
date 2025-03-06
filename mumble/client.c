@@ -340,8 +340,8 @@ static int client_openAudio(lua_State *l) {
 	sound->refrence = LUA_NOREF;
 	sound->loop_count = 0;
 	sound->volume = volume;
-	sound->fade_volume = 1.0f,
-	       sound->fade_frames = 0;
+	sound->fade_volume = 1.0f;
+	sound->fade_frames = 0;
 	sound->fade_frames_left = 0;
 	sound->fade_stop = false;
 

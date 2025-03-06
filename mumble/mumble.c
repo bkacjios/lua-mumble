@@ -296,22 +296,22 @@ void mumble_handle_udp_packet(MumbleClient* client, unsigned char* unencrypted, 
 }
 
 void socket_read_event_udp(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf, const struct sockaddr* addr, unsigned flags) {
-    MumbleClient* client = (MumbleClient*) handle->data;
+	MumbleClient* client = (MumbleClient*) handle->data;
 
-    if (nread > 0) {
-        unsigned char unencrypted[nread];
-        memset(unencrypted, 0, sizeof(unencrypted));
+	if (nread > 0) {
+		unsigned char unencrypted[nread];
+		memset(unencrypted, 0, sizeof(unencrypted));
 
-        if (crypt_isValid(client->crypt) && crypt_decrypt(client->crypt, (unsigned char*) buf->base, unencrypted, nread)) {
-            mumble_handle_udp_packet(client, unencrypted, nread - 4, true);
-        } else {
-            mumble_log(LOG_ERROR, "[UDP] Unable to decrypt UDP packet.");
-        }
-    } else if (nread < 0) {
-        mumble_log(LOG_ERROR, "[UDP] Error receiving UDP packet: %s", uv_strerror(nread));
-    }
+		if (crypt_isValid(client->crypt) && crypt_decrypt(client->crypt, (unsigned char*) buf->base, unencrypted, nread)) {
+			mumble_handle_udp_packet(client, unencrypted, nread - 4, true);
+		} else {
+			mumble_log(LOG_ERROR, "[UDP] Unable to decrypt UDP packet: %x", &buf->base);
+		}
+	} else if (nread < 0) {
+		mumble_log(LOG_ERROR, "[UDP] Error receiving UDP packet: %s", uv_strerror(nread));
+	}
 
-    free(buf->base);
+	free(buf->base);
 }
 
 void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
