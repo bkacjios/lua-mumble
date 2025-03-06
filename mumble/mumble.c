@@ -816,6 +816,7 @@ static void mumble_client_free(MumbleClient *client) {
 
 	if (client->ssl) {
 		SSL_shutdown(client->ssl);
+		SSL_free(client->ssl);
 		client->ssl = NULL;
 	}
 
@@ -841,11 +842,12 @@ static void mumble_client_free(MumbleClient *client) {
 
 static void mumble_client_cleanup(MumbleClient *client) {
 	if (uv_is_active((uv_handle_t*) &client->socket_udp)) {
-		uv_udp_recv_stop(&client->socket_udp);
 		uv_close((uv_handle_t*) &client->socket_udp, NULL);
 	}
 
-	uv_cancel((uv_req_t*)&client->tcp_connect_req);
+	if (uv_is_active((uv_handle_t*) &client->tcp_connect_req)) {
+		uv_close((uv_handle_t*) &client->tcp_connect_req, NULL);
+	}
 
 	if (uv_is_active((uv_handle_t*) &client->ssl_poll)) {
 		uv_poll_stop(&client->ssl_poll);
