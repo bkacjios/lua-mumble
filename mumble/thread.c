@@ -401,6 +401,9 @@ static int thread_controller_gc(lua_State *l) {
 	if (controller->message_queue) {
 		free(controller->message_queue);
 	}
+	if (controller->thread) {
+		uv_thread_detach(&controller->thread);
+	}
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_THREAD_CONTROLLER, controller);
 	return 0;
 }
