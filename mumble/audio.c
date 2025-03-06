@@ -466,10 +466,10 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 
 	while (current != NULL) {
 		AudioStream *sound = current->data;
+		current = current->next;
 		if (sound != NULL && sound->playing) {
 			process_audio_stream(l, client, sound, frame_size, &biggest_read, &didLoop);
 		}
-		current = current->next;
 	}
 
 	current = client->audio_pipes;
