@@ -15,7 +15,6 @@ extern int MUMBLE_TIMER_REG;
 extern int MUMBLE_THREAD_REG;
 extern int MUMBLE_DATA_REG;
 
-void mumble_init(lua_State *l);
 extern int luaopen_mumble(lua_State *l);
 
 void mumble_audio_idle(uv_idle_t* handle);
@@ -26,7 +25,7 @@ uint64_t util_get_varint(uint8_t buffer[], int *len);
 
 void mumble_ping(MumbleClient* client);
 
-void mumble_create_audio_timer(MumbleClient *client);
+void mumble_create_audio_process(MumbleClient *client);
 int mumble_client_connect(lua_State *l);
 void mumble_disconnect(MumbleClient *client, const char* reason, bool garbagecollected);
 

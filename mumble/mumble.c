@@ -776,7 +776,7 @@ uint64_t mumble_adjust_audio_bandwidth(MumbleClient *client) {
 	return (uint64_t) frames * 10;
 }
 
-void mumble_create_audio_timer(MumbleClient *client) {
+void mumble_create_audio_process(MumbleClient *client) {
 #ifdef AUDIO_TIMER_IDLE_LOOP
 	mumble_adjust_audio_bandwidth(client);
 	// Use an idle loop for audio processing, allowing for higher precision than timers
