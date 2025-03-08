@@ -79,6 +79,7 @@ jobs:
           libprotobuf-c-dev \
           libopus-dev \
           libsndfile1-dev \
+          libsamplerate0-dev \
           libuv1-dev
 
     - name: Install Dependencies (Windows)
