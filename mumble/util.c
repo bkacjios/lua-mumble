@@ -315,6 +315,7 @@ void list_remove(LinkNode **head_ref, uint32_t index) {
 	// Unlink the node from linked list
 	prev->next = temp->next;
 
+	temp->next = NULL;
 	free(temp);               // free old head
 }
 
@@ -382,3 +383,4 @@ void* list_get(LinkNode* current, uint32_t index) {
 	}
 	return NULL;
 }
+

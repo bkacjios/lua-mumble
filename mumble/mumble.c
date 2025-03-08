@@ -12,6 +12,7 @@
 #include "target.h"
 #include "timer.h"
 #include "thread.h"
+#include "pipe.h"
 #include "packet.h"
 #include "ocb.h"
 #include "util.h"
@@ -25,6 +26,7 @@ int MUMBLE_CLIENTS;
 int MUMBLE_REGISTRY;
 int MUMBLE_TIMER_REG;
 int MUMBLE_THREAD_REG;
+int MUMBLE_PIPE_REG;
 int MUMBLE_DATA_REG;
 
 static uv_signal_t mumble_signal;
@@ -311,11 +313,13 @@ void socket_read_event_udp(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf,
 		mumble_log(LOG_ERROR, "[UDP] Error receiving UDP packet: %s", uv_strerror(nread));
 	}
 
-	free(buf->base);
+	if (buf->base) {
+		free(buf->base);
+	}
 }
 
 void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
-	buf->base = (char *)malloc(suggested_size);
+	buf->base = (char*) malloc(suggested_size);
 	buf->len = suggested_size;
 }
 
@@ -531,14 +535,24 @@ static int mumble_client_new(lua_State *l) {
 	client->udp_ping_avg = 0;
 	client->udp_ping_var = 0;
 
+	client->audio_idle_next = uv_hrtime();
+
 	client->tcp_udp_tunnel = true;
 
 	client->stream_list = NULL;
+
+	uv_mutex_init(&client->main_mutex);
+	uv_mutex_init(&client->inner_mutex);
+
 	client->user_list = NULL;
 	client->channel_list = NULL;
 	client->audio_pipes = NULL;
 
 	client->recording = false;
+
+	// Create a thread that buffers the reading of open audio files
+	client->audio_thread_running = true;
+	uv_thread_create(&client->audio_thread, mumble_audio_thread, client);
 	return 1;
 }
 
@@ -657,7 +671,6 @@ int mumble_client_connect(lua_State *l) {
 	client->socket_tcp.data = (void*) client;
 	client->socket_udp.data = (void*) client;
 	client->audio_idle.data = (void*) client;
-	client->audio_timer.data = (void*) client;
 	client->ping_timer.data = (void*) client;
 
 	uv_loop_t* loop = uv_default_loop();
@@ -680,6 +693,9 @@ int mumble_client_connect(lua_State *l) {
 		lua_pushfstring(l, "failed getting file descriptor for tcp socket: %s", uv_strerror(err));
 		return 1;
 	}
+
+	fcntl(client->socket_tcp_fd, F_SETFL, O_NONBLOCK);
+	SSL_set_mode(client->ssl, SSL_MODE_ASYNC | SSL_MODE_ENABLE_PARTIAL_WRITE);
 
 	if (SSL_set_fd(client->ssl, client->socket_tcp_fd) == 0) {
 		mumble_client_free(client);
@@ -764,11 +780,26 @@ uint64_t mumble_adjust_audio_bandwidth(MumbleClient *client) {
 		opus_encoder_ctl(client->encoder, OPUS_SET_BITRATE(bitrate));
 
 		if (bitrate >= 64000) {
-			opus_encoder_ctl(client->encoder, OPUS_SET_APPLICATION(OPUS_APPLICATION_RESTRICTED_LOWDELAY));
-		} else if (bitrate >= 32000) {
 			opus_encoder_ctl(client->encoder, OPUS_SET_APPLICATION(OPUS_APPLICATION_AUDIO));
+			opus_encoder_ctl(client->encoder, OPUS_SET_SIGNAL(OPUS_AUTO));    // Let Opus decide dynamically
+			opus_encoder_ctl(client->encoder, OPUS_SET_BANDWIDTH(OPUS_BANDWIDTH_FULLBAND));  // Full-range audio
+			opus_encoder_ctl(client->encoder, OPUS_SET_VBR(1));               // Enable VBR for efficiency
+			opus_encoder_ctl(client->encoder, OPUS_SET_VBR_CONSTRAINT(1));    // Constrained VBR for more stable bitrate
+			opus_encoder_ctl(client->encoder, OPUS_SET_COMPLEXITY(10));       // Best quality
+			opus_encoder_ctl(client->encoder, OPUS_SET_PACKET_LOSS_PERC(5));  // Some resilience to packet loss
+			opus_encoder_ctl(client->encoder, OPUS_SET_INBAND_FEC(1));        // Enable FEC (helps recover lost packets)
+			opus_encoder_ctl(client->encoder, OPUS_SET_DTX(0));               // Disable DTX to avoid cutting quiet music
 		} else {
 			opus_encoder_ctl(client->encoder, OPUS_SET_APPLICATION(OPUS_APPLICATION_VOIP));
+			opus_encoder_ctl(client->encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE)); // Optimize for speech
+			opus_encoder_ctl(client->encoder, OPUS_SET_BANDWIDTH(OPUS_BANDWIDTH_SUPERWIDEBAND)); // Reduce bandwidth to save bitrate
+			opus_encoder_ctl(client->encoder, OPUS_SET_VBR(1));               // Enable VBR to maximize efficiency
+			opus_encoder_ctl(client->encoder, OPUS_SET_VBR_CONSTRAINT(1));    // Keep bitrate stable
+			opus_encoder_ctl(client->encoder, OPUS_SET_COMPLEXITY(5));        // Reduce CPU usage for low-bitrate mode
+			opus_encoder_ctl(client->encoder, OPUS_SET_PACKET_LOSS_PERC(10)); // Increase loss resilience
+			opus_encoder_ctl(client->encoder, OPUS_SET_INBAND_FEC(1));        // Helps recover lost packets
+			opus_encoder_ctl(client->encoder, OPUS_SET_DTX(1));               // Enable DTX to reduce bitrate usage
+
 		}
 	}
 
@@ -777,18 +808,11 @@ uint64_t mumble_adjust_audio_bandwidth(MumbleClient *client) {
 }
 
 void mumble_create_audio_process(MumbleClient *client) {
-#ifdef AUDIO_TIMER_IDLE_LOOP
+	client->audio_idle_last = uv_hrtime();
+	// Create a timer for audio data
 	mumble_adjust_audio_bandwidth(client);
-	// Use an idle loop for audio processing, allowing for higher precision than timers
 	uv_idle_init(uv_default_loop(), &client->audio_idle);
 	uv_idle_start(&client->audio_idle, mumble_audio_idle);
-#else
-	client->audio_timer_last = uv_hrtime();
-	// Create a timer for audio data
-	uint64_t time = mumble_adjust_audio_bandwidth(client);
-	uv_timer_init(uv_default_loop(), &client->audio_timer);
-	uv_timer_start(&client->audio_timer, mumble_audio_timer, time, 0);
-#endif
 }
 
 static int mumble_loop(lua_State *l) {
@@ -838,6 +862,16 @@ static void mumble_client_free(MumbleClient *client) {
 	if (client->decoder != NULL) {
 		opus_decoder_destroy(client->decoder);
 	}
+
+	if (client->audio_thread) {
+		uv_mutex_lock(&client->main_mutex);
+		client->audio_thread_running = false;
+		uv_mutex_unlock(&client->main_mutex);
+		uv_thread_join(&client->audio_thread);
+	}
+
+	uv_mutex_destroy(&client->main_mutex);
+	uv_mutex_destroy(&client->inner_mutex);
 }
 
 static void mumble_client_cleanup(MumbleClient *client) {
@@ -865,10 +899,7 @@ static void mumble_client_cleanup(MumbleClient *client) {
 		uv_idle_stop(&client->audio_idle);
 	}
 
-	if (uv_is_active((uv_handle_t*) &client->audio_timer)) {
-		uv_timer_stop(&client->audio_timer);
-	}
-
+	uv_mutex_lock(&client->main_mutex);
 	LinkNode* current = client->stream_list;
 
 	if (current) {
@@ -879,6 +910,7 @@ static void mumble_client_cleanup(MumbleClient *client) {
 			current = next;
 		}
 	}
+	uv_mutex_unlock(&client->main_mutex);
 
 	current = client->user_list;
 
@@ -929,8 +961,8 @@ void mumble_disconnect(MumbleClient *client, const char* reason, bool garbagecol
 		mumble_hook_call(client, "OnDisconnect", 1);
 	}
 
-	mumble_client_free(client);
 	mumble_client_cleanup(client);
+	mumble_client_free(client);
 
 	// lua_pushcfunction(l, mumble_traceback);
 	// lua_insert(l, 1);
@@ -1515,6 +1547,9 @@ int luaopen_mumble(lua_State *l) {
 	MUMBLE_THREAD_REG = mumble_ref(l);
 
 	lua_newtable(l);
+	MUMBLE_PIPE_REG = mumble_ref(l);
+
+	lua_newtable(l);
 	MUMBLE_DATA_REG = mumble_ref(l);
 
 #if LUA_VERSION_NUM >= 502
@@ -1804,7 +1839,7 @@ int luaopen_mumble(lua_State *l) {
 		}
 		luaL_register(l, NULL, mumble_buffer);
 
-		// If you call the voice target metatable as a function it will return a new voice target object
+		// If you call the buffer metatable as a function it will return a new buffer object
 		lua_newtable(l);
 		{
 			lua_pushcfunction(l, mumble_buffer_new);
@@ -1812,6 +1847,23 @@ int luaopen_mumble(lua_State *l) {
 		}
 		lua_setmetatable(l, -2);
 		lua_setfield(l, -2, "buffer");
+
+		// Register pipe metatable
+		luaL_newmetatable(l, METATABLE_PIPE);
+		{
+			lua_pushvalue(l, -1);
+			lua_setfield(l, -2, "__index");
+		}
+		luaL_register(l, NULL, mumble_pipe);
+
+		// If you call the pipe metatable as a function it will return a new pipe object
+		lua_newtable(l);
+		{
+			lua_pushcfunction(l, mumble_pipe_new);
+			lua_setfield(l, -2, "__call");
+		}
+		lua_setmetatable(l, -2);
+		lua_setfield(l, -2, "pipe");
 
 		lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_REGISTRY);
 		lua_setfield(l, -2, "registry");

@@ -441,6 +441,7 @@ static int channel_create(lua_State *l) {
 
 static int channel_gc(lua_State *l) {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_CHAN, channel);
 	if (channel->name) {
 		free(channel->name);
 	}
@@ -452,7 +453,6 @@ static int channel_gc(lua_State *l) {
 	}
 	list_clear(&channel->links);
 	mumble_registry_unref(l, MUMBLE_DATA_REG, &channel->data);
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_CHAN, channel);
 	return 0;
 }
 

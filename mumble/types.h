@@ -7,6 +7,7 @@
 #include <sndfile.h>
 #include <opus/opus.h>
 #include <openssl/evp.h>
+#include <samplerate.h>
 
 #include <stdbool.h>
 
@@ -70,12 +71,12 @@ struct AudioStream {
 	float fade_volume;
 	float fade_from_volume;
 	float fade_to_volume;
-};
-
-struct AudioBuffer {
-	MumbleClient* client;
-	opus_int32 samplerate;
-	ByteBuffer* buffer;
+	float* buffer;
+	size_t read_position;
+	size_t write_position;
+	size_t buffer_size;
+	uv_mutex_t mutex;
+	SRC_STATE *src_state;
 };
 
 struct MumbleThreadWorker {
@@ -154,9 +155,9 @@ struct MumbleClient {
 	bool				ducking;
 	double				ducking_volume;
 
-	uv_timer_t			audio_timer;
 	uv_idle_t			audio_idle;
-	uint64_t			audio_timer_last;
+	uint64_t			audio_idle_next;
+	uint64_t			audio_idle_last;
 
 	uv_timer_t			ping_timer;
 
@@ -186,11 +187,18 @@ struct MumbleClient {
 	mumble_crypt*		crypt;
 
 	LinkNode*			stream_list;
+
 	LinkNode*			channel_list;
 	LinkNode*			user_list;
 	LinkNode*			audio_pipes;
 
 	bool				recording;
+
+	uv_thread_t			audio_thread;
+	bool				audio_thread_running;
+	
+	uv_mutex_t			main_mutex;
+	uv_mutex_t			inner_mutex;
 };
 
 struct LinkNode {

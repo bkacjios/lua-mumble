@@ -328,6 +328,14 @@ static int client_openAudio(lua_State *l) {
 		return 2;
 	}
 
+	int error;
+	SRC_STATE *src_state = src_new(SRC_SINC_BEST_QUALITY, info.channels, &error);
+	if (src_state == NULL) {
+		lua_pushnil(l);
+		lua_pushfstring(l, "error creating resampler state: %s", src_strerror(error));
+		return 2;
+	}
+
 	AudioStream *sound = lua_newuserdata(l, sizeof(AudioStream));
 	luaL_getmetatable(l, METATABLE_AUDIOSTREAM);
 	lua_setmetatable(l, -2);
@@ -344,7 +352,12 @@ static int client_openAudio(lua_State *l) {
 	sound->fade_frames = 0;
 	sound->fade_frames_left = 0;
 	sound->fade_stop = false;
-
+	sound->buffer_size = (AUDIO_SAMPLE_RATE * AUDIO_BUFFER_SIZE * AUDIO_PLAYBACK_CHANNELS * sizeof(float)) / 1000;
+	sound->buffer = calloc(sound->buffer_size, sizeof(float));
+	sound->read_position = 0;
+	sound->write_position = 0;
+	sound->src_state = src_state;
+	uv_mutex_init(&sound->mutex);
 	return 1;
 }
 
@@ -898,11 +911,18 @@ static int client_createAudioBuffer(lua_State *l) {
 
 	if (context == NULL) return luaL_error(l, "error creating buffer context: %s", strerror(errno));
 
+	int error;
+	SRC_STATE *src_state = src_new(SRC_SINC_BEST_QUALITY, channels, &error);
+	if (src_state == NULL) {
+		return luaL_error(l, "error creating resampler state: %s", src_strerror(errno));
+	}
+
 	context->client = client;
 	context->channels = channels;
 	context->samplerate = samplerate;
 	context->playing = true;
-	
+	context->src_state = src_state;
+
 	buffer->context = context;
 
 	// We keep a list of it, but we aren't referencing it.
@@ -925,6 +945,8 @@ static int client_isTunnelingUDP(lua_State *l) {
 
 static int client_gc(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_CLIENT, client);
+
 	mumble_disconnect(client, "garbage collected", true);
 
 	mumble_unref(l, &client->hooks);
@@ -932,8 +954,6 @@ static int client_gc(lua_State *l) {
 	mumble_unref(l, &client->channels);
 	mumble_unref(l, &client->audio_streams);
 	mumble_unref(l, &client->encoder_ref);
-
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_CLIENT, client);
 	return 0;
 }
 

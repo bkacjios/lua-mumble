@@ -396,7 +396,7 @@ void packet_server_sync(MumbleClient *client, MumblePacket *packet) {
 
 		client->max_bandwidth = sync->max_bandwidth;
 
-		mumble_create_audio_timer(client);
+		mumble_create_audio_process(client);
 	}
 	if (sync->welcome_text != NULL) {
 		lua_pushstring(l, sync->welcome_text);

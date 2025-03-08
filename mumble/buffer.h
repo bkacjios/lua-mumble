@@ -5,12 +5,14 @@
 
 #include <opus/opus.h>
 #include <stdbool.h>
+#include <samplerate.h>
 
 typedef struct MumbleClient MumbleClient;
 
 typedef struct {
 	MumbleClient* client;
 	opus_int32 samplerate;
+	SRC_STATE *src_state;
 	int channels;
 	bool playing;
 } AudioContext;

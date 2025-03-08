@@ -13,12 +13,13 @@ extern int MUMBLE_CLIENTS;
 extern int MUMBLE_REGISTRY;
 extern int MUMBLE_TIMER_REG;
 extern int MUMBLE_THREAD_REG;
+extern int MUMBLE_PIPE_REG;
 extern int MUMBLE_DATA_REG;
 
 extern int luaopen_mumble(lua_State *l);
 
+void mumble_audio_thread(void *arg);
 void mumble_audio_idle(uv_idle_t* handle);
-void mumble_audio_timer(uv_timer_t* handle);
 void mumble_ping_timer(uv_timer_t* handle);
 
 uint64_t util_get_varint(uint8_t buffer[], int *len);

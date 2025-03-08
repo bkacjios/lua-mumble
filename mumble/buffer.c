@@ -54,6 +54,9 @@ static int buffer_adjust(ByteBuffer* buffer, uint64_t size) {
 void buffer_free(ByteBuffer* buffer) {
 	if (buffer->context) {
 		list_remove_data(&buffer->context->client->audio_pipes, buffer);
+		if (buffer->context->src_state) {
+			src_delete(buffer->context->src_state);
+		}
 		free(buffer->context);
 		buffer->context = NULL;
 	}
@@ -686,8 +689,8 @@ int luabuffer_tostring(lua_State *l) {
 
 int luabuffer_gc(lua_State *l) {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
-	buffer_free(buffer);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_BUFFER, buffer);
+	buffer_free(buffer);
 	return 0;
 }
 

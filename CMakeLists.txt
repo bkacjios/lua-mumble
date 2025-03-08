@@ -6,7 +6,7 @@ set(LUAVER "luajit" CACHE STRING "Lua version to compile for (luajit, lua5.1, lu
 set(LUALIB "/usr/local/lib/lua/5.1" CACHE PATH "Directory to install the Lua module")
 
 # Set dependencies
-set(DEPENDENCIES libssl ${LUAVER} libprotobuf-c opus sndfile libuv)
+set(DEPENDENCIES libssl ${LUAVER} libprotobuf-c opus sndfile libuv samplerate)
 
 # Include directories and libraries
 find_package(PkgConfig REQUIRED)

@@ -387,6 +387,7 @@ static int thread_controller_tostring(lua_State *l) {
 
 static int thread_controller_gc(lua_State *l) {
 	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_THREAD_CONTROLLER, controller);
 	if (controller->bytecode) {
 		free(controller->bytecode);
 	}
@@ -404,7 +405,6 @@ static int thread_controller_gc(lua_State *l) {
 	if (controller->thread) {
 		uv_thread_detach(&controller->thread);
 	}
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_THREAD_CONTROLLER, controller);
 	return 0;
 }
 
@@ -499,6 +499,7 @@ static int thread_worker_tostring(lua_State *l) {
 
 static int thread_worker_gc(lua_State *l) {
 	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_THREAD_WORKER, worker);
 	uv_loop_close(&worker->loop);
 	if (uv_is_active((uv_handle_t*) &worker->async_message)) {
 		uv_close((uv_handle_t*) &worker->async_message, NULL);
@@ -508,7 +509,6 @@ static int thread_worker_gc(lua_State *l) {
 	}
 	uv_mutex_destroy(&worker->mutex);
 	uv_cond_destroy(&worker->cond);
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_THREAD_WORKER, worker);
 	return 0;
 }
 

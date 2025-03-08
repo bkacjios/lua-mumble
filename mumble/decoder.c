@@ -188,11 +188,11 @@ static int decoder_tostring(lua_State *l) {
 
 static int decoder_gc(lua_State *l) {
 	MumbleOpusDecoder *wrapper = luaL_checkudata(l, 1, METATABLE_DECODER);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_DECODER, wrapper);
 	if (wrapper->decoder != NULL) {
 		mumble_log(LOG_TRACE, "destroying wrapper->decoder: %p", wrapper->decoder);
 		opus_decoder_destroy(wrapper->decoder);
 	}
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_DECODER, wrapper);
 	return 0;
 }
 

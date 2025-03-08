@@ -570,6 +570,7 @@ static int user_isBeingRecorded(lua_State *l) {
 
 static int user_gc(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_USER, user);
 	if (user->recording_file) {
 		user_handle_stop_recording(l, user);
 	}
@@ -593,7 +594,6 @@ static int user_gc(lua_State *l) {
 	}
 	list_clear(&user->listens);
 	mumble_registry_unref(l, MUMBLE_DATA_REG, &user->data);
-	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_USER, user);
 	return 0;
 }
 

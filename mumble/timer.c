@@ -278,8 +278,8 @@ static int timer_isPaused(lua_State *l) {
 
 static int timer_gc(lua_State *l) {
 	MumbleTimer *ltimer = luaL_checkudata(l, 1, METATABLE_TIMER);
-	mumble_timer_close(ltimer);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_TIMER, ltimer);
+	mumble_timer_close(ltimer);
 	return 0;
 }
 

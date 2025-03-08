@@ -6,14 +6,14 @@ A lua module to connect to a mumble server and interact with it
 
 ### Ubuntu
 ```bash
-sudo apt-get install cmake pkgconf libluajit-5.1-dev protobuf-c-compiler libprotobuf-c-dev libssl-dev libopus-dev libuv1-dev libsndfile1-dev
+sudo apt-get install cmake pkgconf libluajit-5.1-dev protobuf-c-compiler libprotobuf-c-dev libssl-dev libopus-dev libuv1-dev libsndfile1-dev libsamplerate0-dev
 ```
 
 Note: `liblua5.1-0-dev` can be substituted with `libluajit-5.1-dev`, `liblua5.2-dev`, or `liblua5.3-dev` depending on your needs.
 
 ### Arch Linux
 ```bash
-sudo pacman -S cmake pkgconf luajit protobuf-c openssl libsndfile opus libuv
+sudo pacman -S cmake pkgconf luajit protobuf-c openssl libsndfile opus libuv libsamplerate
 ```
 
 Note: `luajit` can be substituted with `lua5.1`, `lua5.2` or `lua5.3` depending on your needs.

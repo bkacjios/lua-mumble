@@ -11,7 +11,7 @@ ifndef LUALIB
 LUALIB = /usr/local/lib/lua/5.1
 endif
 
-DEPENDENCIES = libssl $(LUAVER) libprotobuf-c opus sndfile libuv
+DEPENDENCIES = libssl $(LUAVER) libprotobuf-c opus sndfile libuv samplerate
 
 LIBRARIES = $(shell pkg-config --libs $(DEPENDENCIES))
 INCLUDES = $(shell pkg-config --cflags $(DEPENDENCIES))
