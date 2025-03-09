@@ -15,7 +15,7 @@ DEPENDENCIES = libssl $(LUAVER) libprotobuf-c opus sndfile libuv samplerate
 
 LIBRARIES = $(shell pkg-config --libs $(DEPENDENCIES))
 INCLUDES = $(shell pkg-config --cflags $(DEPENDENCIES))
-CFLAGS = -fPIC -I. -Wall
+CFLAGS ?= -fPIC -I. -Wall
 
 ifneq (,$(findstring luajit,$(LUAVER)))
 	CFLAGS += -DLUAJIT
