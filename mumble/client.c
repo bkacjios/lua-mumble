@@ -329,7 +329,7 @@ static int client_openAudio(lua_State *l) {
 	}
 
 	int error;
-	SRC_STATE *src_state = src_new(SRC_SINC_BEST_QUALITY, info.channels, &error);
+	SRC_STATE *src_state = src_new(SRC_SINC_BEST_QUALITY, AUDIO_PLAYBACK_CHANNELS, &error);
 	if (src_state == NULL) {
 		lua_pushnil(l);
 		lua_pushfstring(l, "error creating resampler state: %s", src_strerror(error));
@@ -912,7 +912,7 @@ static int client_createAudioBuffer(lua_State *l) {
 	if (context == NULL) return luaL_error(l, "error creating buffer context: %s", strerror(errno));
 
 	int error;
-	SRC_STATE *src_state = src_new(SRC_SINC_BEST_QUALITY, channels, &error);
+	SRC_STATE *src_state = src_new(SRC_SINC_FASTEST, AUDIO_PLAYBACK_CHANNELS, &error);
 	if (src_state == NULL) {
 		return luaL_error(l, "error creating resampler state: %s", src_strerror(errno));
 	}
