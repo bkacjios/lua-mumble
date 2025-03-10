@@ -7,6 +7,7 @@ typedef struct MumblePipe MumblePipe;
 struct MumblePipe {
 	uv_pipe_t* pipe;
 	lua_State* l;
+	char* path;
 	int self;
 	int callback;
 };
