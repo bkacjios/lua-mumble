@@ -551,6 +551,8 @@ static int mumble_client_new(lua_State *l) {
 
 	client->recording = false;
 
+	client->audio_stream_active = false;
+
 	// Create a thread that buffers the reading of open audio files
 	client->audio_thread_running = true;
 	uv_thread_create(&client->audio_thread, mumble_audio_thread, client);

@@ -196,6 +196,7 @@ struct MumbleClient {
 
 	uv_thread_t			audio_thread;
 	bool				audio_thread_running;
+	bool				audio_stream_active;
 	
 	uv_mutex_t			main_mutex;
 	uv_mutex_t			inner_mutex;

@@ -701,7 +701,6 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 	mumble_hook_call(client, "OnAudioStream", 3);
 
 	// Keep track of when an audio buffer is outputting data
-	static bool stream_active = false;
 	bool streamed_audio = false;
 
 	while (current != NULL) {
@@ -735,31 +734,21 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 			continue;
 		}
 
-		streamed_audio = true;
 		sf_count_t input_frame_size = (sf_count_t)(client->audio_frames * (float)context->samplerate / 1000.0);
 		size_t input_frames_actual = length / sizeof(float) / context->channels;
 		sf_count_t input_frames = input_frames_actual < input_frame_size ? input_frames_actual : input_frame_size;
-		size_t missing_frames = (didLoop || biggest_read > 0) ? 0 : (input_frame_size - input_frames);
 		double resample_ratio = (double)AUDIO_SAMPLE_RATE / context->samplerate;
 
-		// Handle the audio output for streamed frames
-		for (int i = 0; i < input_frame_size; i++) {
-			if (i < missing_frames) {
-				// Insert silence for each channel
-				for (int j = 0; j < context->channels; j++) {
-					input_buffer[i * context->channels + j] = 0.0;
-				}
-			} else {
-				for (int j = 0; j < context->channels; j++) {
-					float sample;
-					buffer_readFloat(buffer, &sample);
-					input_buffer[i * context->channels + j] = sample;
-				}
+		for (int i = 0; i < input_frames; i++) {
+			for (int j = 0; j < context->channels; j++) {
+				float sample;
+				buffer_readFloat(buffer, &sample);
+				input_buffer[i * context->channels + j] = sample;
 			}
 		}
 
 		if (context->channels == 1) {
-			float *stereo_buffer = convert_mono_to_multi(input_buffer, input_frame_size, AUDIO_PLAYBACK_CHANNELS);
+			float *stereo_buffer = convert_mono_to_multi(input_buffer, input_frames, AUDIO_PLAYBACK_CHANNELS);
 			if (!stereo_buffer) {
 				free(input_buffer);
 				continue;
@@ -767,7 +756,7 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 			free(input_buffer);
 			input_buffer = stereo_buffer;
 		} else if (context->channels > 2) {
-			float *stereo_buffer = downmix_to_stereo(input_buffer, input_frame_size, context->channels);
+			float *stereo_buffer = downmix_to_stereo(input_buffer, input_frames, context->channels);
 			if (!stereo_buffer) {
 				free(input_buffer);
 				continue;
@@ -777,9 +766,10 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 		}
 
 		float *output_audio = NULL;
-		int resampled_frames = resample_audio(context->src_state, input_buffer, &output_audio, input_frame_size, output_frames, resample_ratio, false);
+		int resampled_frames = resample_audio(context->src_state, input_buffer, &output_audio, input_frames, output_frames, resample_ratio, false);
 		free(input_buffer);
 		if (resampled_frames > 0) {
+			streamed_audio = true;
 			for (int i = 0; i < resampled_frames; i++) {
 				client->audio_output[i].l += output_audio[i * 2];
 				client->audio_output[i].r += output_audio[i * 2 + 1];
@@ -797,7 +787,7 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 	}
 
 	// All streams output nothing
-	bool stream_ended = stream_active && !streamed_audio;
+	bool stream_ended = client->audio_stream_active && !streamed_audio;
 
 	// Something isn't looping, and either we stopped reading data or a buffer stream stopped sening data.
 	bool end_frame = !didLoop && (biggest_read < output_frames && stream_ended);
@@ -807,7 +797,7 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 		encode_and_send_audio(client, output_frames, end_frame);
 	}
 
-	stream_active = streamed_audio;
+	client->audio_stream_active = streamed_audio;
 
 	lua_stackguard_exit(l);
 }
