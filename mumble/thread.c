@@ -7,6 +7,7 @@
 
 #include <lualib.h>
 #include <unistd.h>
+#include <pthread.h>
 
 void mumble_thread_worker_message(uv_async_t *handle);
 
@@ -384,6 +385,13 @@ static int thread_controller_tostring(lua_State *l) {
 	lua_pushfstring(l, "%s: %p", METATABLE_THREAD_CONTROLLER, lua_topointer(l, 1));
 	return 1;
 }
+
+#if UV_VERSION_MAJOR < 1 || (UV_VERSION_MAJOR == 1 && UV_VERSION_MINOR < 50)
+// This was added in libuv 1.50
+int uv_thread_detach(uv_thread_t *tid) {
+	return pthread_detach(*tid);
+}
+#endif
 
 static int thread_controller_gc(lua_State *l) {
 	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
