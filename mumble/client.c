@@ -1,6 +1,7 @@
 #include "mumble.h"
 
 #include "audio.h"
+#include "audiostream.h"
 #include "client.h"
 #include "channel.h"
 #include "packet.h"

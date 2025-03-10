@@ -1,13 +1,6 @@
 #pragma once
 
 #include "types.h"
-#include <lauxlib.h>
-#include <stdint.h>
-
-#define VOICEPACKET_NORMAL 0
-#define VOICEPACKET_OPUS 4
-
-#define METATABLE_AUDIOSTREAM	"mumble.audiostream"
 
 typedef struct {
     uv_work_t req;
@@ -19,9 +12,9 @@ typedef struct {
     float encode_time;
 } audio_work_t;
 
-extern const luaL_Reg mumble_audiostream[];
-
 void audio_transmission_event(lua_State* l, MumbleClient *client);
+
+void audio_transmission_reference(lua_State *l, AudioStream *sound);
 void audio_transmission_unreference(lua_State*l, AudioStream *sound);
 
 uint8_t util_set_varint_size(const uint64_t value);

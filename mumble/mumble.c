@@ -1,6 +1,7 @@
 #include "mumble.h"
 
 #include "audio.h"
+#include "audiostream.h"
 #include "acl.h"
 #include "buffer.h"
 #include "banentry.h"
