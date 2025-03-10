@@ -88,7 +88,7 @@ void mumble_thread_worker_start(void *arg) {
 
 	// Call the worker with our custom error handler function
 	if (lua_pcall(l, 1, 0, -3) != 0) {
-		mumble_log(LOG_ERROR, "%s", lua_tostring(l, -1));
+		mumble_log(LOG_ERROR, "%s: %s", METATABLE_THREAD_WORKER, lua_tostring(l, -1));
 		lua_pop(l, 1); // Pop the error
 	}
 
@@ -176,7 +176,7 @@ void mumble_thread_controller_message(uv_async_t *handle) {
 
 			// Call the callback with our custom error handler function
 			if (lua_pcall(l, 2, 0, -4) != 0) {
-				mumble_log(LOG_ERROR, "%s", lua_tostring(l, -1));
+				mumble_log(LOG_ERROR, "%s: %s", METATABLE_THREAD_CONTROLLER, lua_tostring(l, -1));
 				lua_pop(l, 1); // Pop the error
 			}
 
