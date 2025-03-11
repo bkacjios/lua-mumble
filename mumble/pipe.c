@@ -10,7 +10,7 @@ static void mumble_pipe_on_read(uv_stream_t *handle, ssize_t nread, const uv_buf
 static void mumble_pipe_close_cb(uv_handle_t* handle) {
 	MumblePipe* lpipe = (MumblePipe*)handle->data;
 	if (lpipe->pipe) {
-		free(lpipe->pipe);  // Safe to free now
+		free(lpipe->pipe); // Safe to free now
 	}
 }
 
@@ -69,17 +69,17 @@ static void mumble_pipe_reopen(uv_handle_t* handle) {
 		return;
 	}
 
-	free(lpipe->pipe);
-	lpipe->pipe = new_pipe;
-	lpipe->pipe->data = lpipe;
-
 	// Restart reading on the new pipe
-	error = uv_read_start((uv_stream_t*)lpipe->pipe, mumble_pipe_alloc_buffer, mumble_pipe_on_read);
+	error = uv_read_start((uv_stream_t*) new_pipe, mumble_pipe_alloc_buffer, mumble_pipe_on_read);
 	if (error != 0) {
-		mumble_log(LOG_ERROR, "failed to restart reading from pipe %s (%s)", lpipe->path, uv_strerror(error));
+		mumble_log(LOG_ERROR, "failed to restart reading from pipe %s (%s)", new_pipe, uv_strerror(error));
 		mumble_pipe_close(lpipe);
 		return;
 	}
+
+	free(lpipe->pipe);
+	lpipe->pipe = new_pipe;
+	lpipe->pipe->data = lpipe;
 
 	mumble_log(LOG_TRACE, "%s: %p pipe successfully reopened for reading", METATABLE_PIPE, lpipe);
 }
