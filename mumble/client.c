@@ -325,7 +325,16 @@ static int client_openAudio(lua_State *l) {
 
 	if (!file) {
 		lua_pushnil(l);
-		lua_pushfstring(l, "error opening file \"%s\" (%s)", filepath, sf_strerror(NULL));
+		lua_pushfstring(l, "failed to open audio file: %s (%s)", filepath, sf_strerror(NULL));
+		return 2;
+	}
+
+	size_t buffer_size = (AUDIO_SAMPLE_RATE * AUDIO_BUFFER_SIZE * AUDIO_PLAYBACK_CHANNELS * sizeof(float)) / 1000;
+	float* buffer = malloc(buffer_size);
+
+	if (buffer == NULL) {
+		lua_pushnil(l);
+		lua_pushfstring(l, "failed creating audio buffer: %s", strerror(errno));
 		return 2;
 	}
 
@@ -333,7 +342,7 @@ static int client_openAudio(lua_State *l) {
 	SRC_STATE *src_state = src_new(SRC_SINC_BEST_QUALITY, AUDIO_PLAYBACK_CHANNELS, &error);
 	if (src_state == NULL) {
 		lua_pushnil(l);
-		lua_pushfstring(l, "error creating resampler state: %s", src_strerror(error));
+		lua_pushfstring(l, "failed creating audio resampler: %s", src_strerror(error));
 		return 2;
 	}
 
@@ -353,8 +362,8 @@ static int client_openAudio(lua_State *l) {
 	sound->fade_frames = 0;
 	sound->fade_frames_left = 0;
 	sound->fade_stop = false;
-	sound->buffer_size = (AUDIO_SAMPLE_RATE * AUDIO_BUFFER_SIZE * AUDIO_PLAYBACK_CHANNELS * sizeof(float)) / 1000;
-	sound->buffer = calloc(sound->buffer_size, sizeof(float));
+	sound->buffer_size = buffer_size;
+	sound->buffer = buffer;
 	sound->read_position = 0;
 	sound->write_position = 0;
 	sound->src_state = src_state;

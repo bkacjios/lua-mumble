@@ -14,6 +14,7 @@ ByteBuffer* buffer_new(uint64_t size) {
 }
 
 ByteBuffer* buffer_init(ByteBuffer* buffer, uint64_t size) {
+	buffer->original_capacity = size;
 	buffer->capacity = size;
 	buffer->read_head = 0;
 	buffer->write_head = 0;
@@ -35,18 +36,36 @@ ByteBuffer* buffer_init_data(ByteBuffer* buffer, void* data, uint64_t size) {
 static int buffer_adjust(ByteBuffer* buffer, uint64_t size) {
 	uint64_t new_head = buffer->write_head + size;
 	if (new_head > buffer->capacity) {
-		uint64_t new_capacity = buffer->capacity;
-		new_capacity = new_head * 1.5 > new_capacity ? (new_head * 1.5) : new_capacity;
-		void* new_data = realloc(buffer->data, new_capacity);
-		if (new_data != NULL) {
-			mumble_log(LOG_DEBUG, "%s: %p resizing from %llu to %llu bytes", METATABLE_BUFFER, buffer, buffer->capacity, new_capacity);
-			buffer->data = new_data;
-			buffer->capacity = new_capacity;
-			return 1;
-		} else {
-			mumble_log(LOG_ERROR, "%s: %p failed to resize buffer", METATABLE_BUFFER, buffer);
-			return 0;
-		}
+		uint64_t grow_1_5x = buffer->capacity + (buffer->capacity >> 1); // 1.5x
+		uint64_t grow_2x = buffer->capacity * 2; // 2x growth
+		uint64_t grow_headroom = new_head + (new_head >> 1); // new_head * 1.5
+
+		// Choose the maximum value that ensures we have enough space
+		uint64_t new_capacity = grow_1_5x;
+		if (new_capacity < new_head) new_capacity = grow_2x;
+		if (new_capacity < new_head) new_capacity = grow_headroom;
+
+		return buffer_resize(buffer, new_capacity);
+	}
+	return 0;
+}
+
+int buffer_resize(ByteBuffer* buffer, size_t new_capacity) {
+	void* new_data = realloc(buffer->data, new_capacity);
+	if (new_data != NULL) {
+		mumble_log(LOG_DEBUG, "%s: %p resizing from %llu to %llu bytes", METATABLE_BUFFER, buffer, buffer->capacity, new_capacity);
+		buffer->data = new_data;
+		buffer->capacity = new_capacity;
+		return 1;
+	} else {
+		mumble_log(LOG_ERROR, "%s: %p failed to resize buffer", METATABLE_BUFFER, buffer);
+		return 0;
+	}
+}
+
+int buffer_shrink(ByteBuffer* buffer) {
+	if (buffer->capacity > buffer->original_capacity) {
+		return buffer_resize(buffer, buffer->original_capacity);
 	}
 	return 0;
 }
@@ -64,6 +83,7 @@ void buffer_free(ByteBuffer* buffer) {
 		free(buffer->data);
 		buffer->data = NULL;
 	}
+	buffer->original_capacity = 0;
 	buffer->capacity = 0;
 	buffer->write_head = 0;
 	buffer->read_head = 0;
@@ -71,9 +91,8 @@ void buffer_free(ByteBuffer* buffer) {
 
 void buffer_pack(ByteBuffer* buffer) {
 	if (buffer->read_head == buffer->write_head) {
-		// Compact the buffer if all data has been read
-		buffer->write_head = 0;
-		buffer->read_head = 0;
+		// Reset the buffer if all data has been read
+		buffer_reset(buffer);
 	} else if (buffer->read_head > 0) {
 		// Move remaining data to the front of the buffer
 		uint64_t remaining = buffer->write_head - buffer->read_head;
@@ -94,6 +113,10 @@ void buffer_flip(ByteBuffer* buffer) {
 
 uint64_t buffer_length(ByteBuffer* buffer) {
 	return buffer->write_head - buffer->read_head;
+}
+
+bool buffer_isEmpty(ByteBuffer* buffer) {
+	return buffer->write_head == buffer->read_head;
 }
 
 uint64_t buffer_write(ByteBuffer* buffer, const void* data, uint64_t size) {
@@ -573,7 +596,7 @@ int luabuffer_readBool(lua_State *l) {
 
 int luabuffer_isEmpty(lua_State *l) {
 	ByteBuffer *buffer = luaL_checkudata(l, 1, METATABLE_BUFFER);
-	lua_pushboolean(l, buffer->write_head == buffer->read_head);
+	lua_pushboolean(l, buffer_isEmpty(buffer));
 	return 1;
 }
 

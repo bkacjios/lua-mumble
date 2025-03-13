@@ -1396,7 +1396,9 @@ void mumble_handle_speaking_hooks_protobuf(MumbleClient* client, MumbleUDP__Audi
 	MumbleUser* user = mumble_user_get(client, session);
 
 	bool state_change = false;
-	bool one_frame = (user->speaking == false && speaking == false); // This will only be true if the user only sent exactly one audio packet
+
+	// This will only be true if the user only sent exactly one audio packet
+	bool one_frame = (user->speaking == false && speaking == false);
 
 	if (user->speaking != speaking) {
 		user->speaking = speaking;
@@ -1467,7 +1469,9 @@ void mumble_handle_speaking_hooks_legacy(MumbleClient* client, uint8_t buffer[],
 	}
 
 	bool state_change = false;
-	bool one_frame = (user->speaking == false && speaking == false); // This will only be true if the user only sent exactly one audio packet
+
+	// This will only be true if the user only sent exactly one audio packet
+	bool one_frame = (user->speaking == false && speaking == false);
 
 	if (user->speaking != speaking) {
 		user->speaking = speaking;

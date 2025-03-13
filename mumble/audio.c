@@ -678,6 +678,7 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 
 	memset(client->audio_output, 0, sizeof(client->audio_output));
 
+	// Handle any playing audio files
 	while (current != NULL) {
 		uv_mutex_lock(&client->inner_mutex);
 		AudioStream *sound = current->data;
@@ -765,25 +766,25 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 			input_buffer = stereo_buffer;
 		}
 
-		float *output_audio = NULL;
-		int resampled_frames = resample_audio(context->src_state, input_buffer, &output_audio, input_frames, output_frames, resample_ratio, false);
+		float *resampled_audio = NULL;
+		int resampled_frames = resample_audio(context->src_state, input_buffer, &resampled_audio, input_frames, output_frames, resample_ratio, false);
 		free(input_buffer);
 		if (resampled_frames > 0) {
 			streamed_audio = true;
 			for (int i = 0; i < resampled_frames; i++) {
-				client->audio_output[i].l += output_audio[i * 2];
-				client->audio_output[i].r += output_audio[i * 2 + 1];
+				client->audio_output[i].l += resampled_audio[i * 2];
+				client->audio_output[i].r += resampled_audio[i * 2 + 1];
 			}
-			free(output_audio);
+			free(resampled_audio);
 		}
-
-		// Move any remaining audio data to the front
-		buffer_pack(buffer);
 
 		// Update biggest_read if necessary
 		if (resampled_frames > biggest_read) {
 			biggest_read = resampled_frames;
 		}
+
+		// Move any remaining audio data to the front
+		buffer_pack(buffer);
 	}
 
 	// All streams output nothing

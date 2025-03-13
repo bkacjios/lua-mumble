@@ -18,6 +18,7 @@ typedef struct {
 } AudioContext;
 
 typedef struct {
+	uint64_t original_capacity;
 	uint64_t capacity;
 	uint64_t read_head;
 	uint64_t write_head;
@@ -50,12 +51,16 @@ ByteBuffer* buffer_new(uint64_t size);
 ByteBuffer* buffer_init(ByteBuffer* buffer, uint64_t size);
 ByteBuffer* buffer_init_data(ByteBuffer* buffer, void* data, uint64_t size);
 
+int buffer_resize(ByteBuffer* buffer, size_t new_capacity);
+int buffer_shrink(ByteBuffer* buffer);
+
 void buffer_free(ByteBuffer* buffer);
 void buffer_pack(ByteBuffer* buffer);
 void buffer_reset(ByteBuffer* buffer);
 void buffer_flip(ByteBuffer* buffer);
 
 uint64_t buffer_length(ByteBuffer* buffer);
+bool buffer_isEmpty(ByteBuffer* buffer);
 
 uint64_t buffer_write(ByteBuffer* buffer, const void* data, uint64_t size);
 uint64_t buffer_read(ByteBuffer* buffer, void* output, uint64_t size);

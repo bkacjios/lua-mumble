@@ -1334,19 +1334,21 @@ void packet_user_stats(MumbleClient *client, MumblePacket *packet) {
 
 	if (stats->version != NULL) {
 		lua_newtable(l);
-		if (stats->version->has_version_v1) {
-			lua_pushinteger(l, stats->version->version_v1);
-			lua_setfield(l, -2, "version");
-		} else if (stats->version->has_version_v2) {
-			lua_pushinteger(l, stats->version->version_v2);
-			lua_setfield(l, -2, "version");
+		{
+			if (stats->version->has_version_v1) {
+				lua_pushinteger(l, stats->version->version_v1);
+				lua_setfield(l, -2, "version");
+			} else if (stats->version->has_version_v2) {
+				lua_pushinteger(l, stats->version->version_v2);
+				lua_setfield(l, -2, "version");
+			}
+			lua_pushstring(l, stats->version->release);
+			lua_setfield(l, -2, "release");
+			lua_pushstring(l, stats->version->os);
+			lua_setfield(l, -2, "os");
+			lua_pushstring(l, stats->version->os_version);
+			lua_setfield(l, -2, "os_version");
 		}
-		lua_pushstring(l, stats->version->release);
-		lua_setfield(l, -2, "release");
-		lua_pushstring(l, stats->version->os);
-		lua_setfield(l, -2, "os");
-		lua_pushstring(l, stats->version->os_version);
-		lua_setfield(l, -2, "os_version");
 		lua_setfield(l, -2, "version");
 	}
 
@@ -1387,6 +1389,46 @@ void packet_user_stats(MumbleClient *client, MumblePacket *packet) {
 		lua_pushboolean(l, stats->opus);
 		lua_setfield(l, -2, "opus");
 	}
+
+	if (stats->rolling_stats != NULL) {
+		lua_newtable(l);
+		{
+			if (stats->rolling_stats->has_time_window) {
+				lua_pushinteger(l, stats->rolling_stats->time_window);
+				lua_setfield(l, -2, "time_window");
+			}
+			if (stats->rolling_stats->from_client != NULL) {
+				lua_newtable(l);
+				{
+					lua_pushinteger(l, stats->rolling_stats->from_client->good);
+					lua_setfield(l, -2, "good");
+					lua_pushinteger(l, stats->rolling_stats->from_client->late);
+					lua_setfield(l, -2, "late");
+					lua_pushinteger(l, stats->rolling_stats->from_client->lost);
+					lua_setfield(l, -2, "lost");
+					lua_pushinteger(l, stats->rolling_stats->from_client->resync);
+					lua_setfield(l, -2, "resync");
+				}
+				lua_setfield(l, -2, "from_client");
+			}
+			if (stats->rolling_stats->from_server != NULL) {
+				lua_newtable(l);
+				{
+					lua_pushinteger(l, stats->rolling_stats->from_server->good);
+					lua_setfield(l, -2, "good");
+					lua_pushinteger(l, stats->rolling_stats->from_server->late);
+					lua_setfield(l, -2, "late");
+					lua_pushinteger(l, stats->rolling_stats->from_server->lost);
+					lua_setfield(l, -2, "lost");
+					lua_pushinteger(l, stats->rolling_stats->from_server->resync);
+					lua_setfield(l, -2, "resync");
+				}
+				lua_setfield(l, -2, "from_server");
+			}
+		}
+		lua_setfield(l, -2, "rolling_stats");
+	}
+
 	mumble_hook_call(client, "OnUserStats", 1);
 
 	mumble_proto__user_stats__free_unpacked(stats, NULL);
