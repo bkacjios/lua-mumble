@@ -230,6 +230,7 @@ static int audiostream_gc(lua_State *l) {
 	}
 	if (sound->buffer) {
 		free(sound->buffer);
+		sound->buffer = NULL;
 	}
 	if (sound->src_state) {
 		src_delete(sound->src_state);

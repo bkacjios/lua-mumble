@@ -36,9 +36,9 @@
 // The sample rate in which all audio files should be encoded to
 #define AUDIO_SAMPLE_RATE 48000
 
-// How many seconds of audio we will process ahead of time
+// How many milliseconds of audio we will process ahead of time
 // For audio files only
-#define AUDIO_BUFFER_SIZE 1000
+#define AUDIO_BUFFER_SIZE 2000
 
 // The max amount of PCM frames we will ever have
 #define MAX_PCM_FRAMES AUDIO_FRAME_SIZE_LARGE * AUDIO_SAMPLE_RATE / 1000

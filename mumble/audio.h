@@ -3,8 +3,8 @@
 #include "types.h"
 
 typedef struct {
-    uv_work_t req;
-    MumbleClient *client;
+    uv_work_t* req;
+    MumbleClient* client;
     sf_count_t frame_size;
     bool end_frame;
     uint8_t encoded[PAYLOAD_SIZE_MAX];

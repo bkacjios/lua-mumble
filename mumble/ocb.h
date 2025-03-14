@@ -4,7 +4,6 @@
 // Mumble source tree or at <https://www.mumble.info/LICENSE>.
 
 #pragma once
-
 #include <openssl/aes.h>
 #include <openssl/evp.h>
 #include <stdbool.h>
@@ -16,44 +15,52 @@
 typedef struct mumble_crypt mumble_crypt;
 
 struct mumble_crypt {
-	unsigned char raw_key[AES_KEY_SIZE_BYTES];
-	unsigned char encrypt_iv[AES_BLOCK_SIZE];
-	unsigned char decrypt_iv[AES_BLOCK_SIZE];
-	unsigned char decrypt_history[0x100];
+	uint8_t raw_key[AES_KEY_SIZE_BYTES];
+	uint8_t encrypt_iv[AES_BLOCK_SIZE];
+	uint8_t decrypt_iv[AES_BLOCK_SIZE];
+	uint8_t decrypt_history[0x100];
 
 	EVP_CIPHER_CTX *enc_ctx_ocb_enc;
 	EVP_CIPHER_CTX *dec_ctx_ocb_enc;
 	EVP_CIPHER_CTX *enc_ctx_ocb_dec;
 	EVP_CIPHER_CTX *dec_ctx_ocb_dec;
 
-	unsigned int uiGood;
-	unsigned int uiLate;
-	unsigned int uiLost;
-	unsigned int uiResync;
+	size_t uiGood;
+	size_t uiLate;
+	size_t uiLost;
+	size_t uiResync;
 
 	bool bInit;
 };
 
 mumble_crypt* crypt_new();
+void crypt_init(mumble_crypt *crypt);
+void crypt_uninitialize(mumble_crypt *crypt);
 void crypt_free(mumble_crypt *crypt);
 
 bool crypt_isValid(mumble_crypt *crypt);
 void crypt_genKey(mumble_crypt *crypt);
-bool crypt_setKey(mumble_crypt *crypt, ProtobufCBinaryData rkey, ProtobufCBinaryData eiv, ProtobufCBinaryData div);
-bool crypt_setRawKey(mumble_crypt *crypt, ProtobufCBinaryData rkey);
-bool crypt_setEncryptIV(mumble_crypt *crypt, ProtobufCBinaryData iv);
-bool crypt_setDecryptIV(mumble_crypt *crypt, ProtobufCBinaryData iv);
 
-const unsigned char* crypt_getRawKey(mumble_crypt *crypt);
-const unsigned char* crypt_getEncryptIV(mumble_crypt *crypt);
-const unsigned char* crypt_getDecryptIV(mumble_crypt *crypt);
+bool crypt_setKey(mumble_crypt *crypt, const uint8_t *rkey, size_t rkey_len,
+                  const uint8_t *eiv, size_t eiv_len,
+                  const uint8_t *div, size_t div_len);
 
-unsigned int crypt_getGood(mumble_crypt *crypt);
-unsigned int crypt_getLate(mumble_crypt *crypt);
-unsigned int crypt_getLost(mumble_crypt *crypt);
+bool crypt_setRawKey(mumble_crypt *crypt, const uint8_t *rkey, size_t rkey_len);
 
-bool crypt_ocb_encrypt(mumble_crypt *crypt, const unsigned char* plain, unsigned char* encrypted, unsigned int len, const unsigned char* nonce, unsigned char* tag, bool modifyPlainOnXEXStarAttack);
-bool crypt_ocb_decrypt(mumble_crypt *crypt, const unsigned char* encrypted, unsigned char* plain, unsigned int len, const unsigned char* nonce, unsigned char* tag);
+bool crypt_setEncryptIV(mumble_crypt *crypt, const uint8_t *iv, size_t iv_len);
 
-bool crypt_decrypt(mumble_crypt *crypt, const unsigned char* source, unsigned char* dst, unsigned int crypted_length);
-bool crypt_encrypt(mumble_crypt *crypt, const unsigned char* source, unsigned char* dst, unsigned int plain_length);
+bool crypt_setDecryptIV(mumble_crypt *crypt, const uint8_t *iv, size_t iv_len);
+
+const uint8_t* crypt_getRawKey(mumble_crypt *crypt);
+const uint8_t* crypt_getEncryptIV(mumble_crypt *crypt);
+const uint8_t* crypt_getDecryptIV(mumble_crypt *crypt);
+
+size_t crypt_getGood(mumble_crypt *crypt);
+size_t crypt_getLate(mumble_crypt *crypt);
+size_t crypt_getLost(mumble_crypt *crypt);
+
+bool crypt_ocb_encrypt(mumble_crypt *crypt, const uint8_t* plain, uint8_t* encrypted, size_t len, const uint8_t* nonce, uint8_t* tag, bool modifyPlainOnXEXStarAttack);
+bool crypt_ocb_decrypt(mumble_crypt *crypt, const uint8_t* encrypted, uint8_t* plain, size_t len, const uint8_t* nonce, uint8_t* tag);
+
+bool crypt_decrypt(mumble_crypt *crypt, const uint8_t* source, uint8_t* dst, size_t crypted_length);
+bool crypt_encrypt(mumble_crypt *crypt, const uint8_t* source, uint8_t* dst, size_t plain_length);

@@ -6,6 +6,7 @@
 #include "buffer.h"
 #include "banentry.h"
 #include "channel.h"
+#include "crypt.h"
 #include "encoder.h"
 #include "decoder.h"
 #include "client.h"
@@ -1871,6 +1872,23 @@ int luaopen_mumble(lua_State *l) {
 		}
 		lua_setmetatable(l, -2);
 		lua_setfield(l, -2, "pipe");
+
+		// Register crypt metatable
+		luaL_newmetatable(l, METATABLE_CRYPT);
+		{
+			lua_pushvalue(l, -1);
+			lua_setfield(l, -2, "__index");
+		}
+		luaL_register(l, NULL, mumble_ocb_aes128);
+
+		// If you call the crypt metatable as a function it will return a new crypt object
+		lua_newtable(l);
+		{
+			lua_pushcfunction(l, mumble_crypt_new);
+			lua_setfield(l, -2, "__call");
+		}
+		lua_setmetatable(l, -2);
+		lua_setfield(l, -2, "crypt");
 
 		lua_rawgeti(l, LUA_REGISTRYINDEX, MUMBLE_REGISTRY);
 		lua_setfield(l, -2, "registry");

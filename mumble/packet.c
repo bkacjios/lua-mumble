@@ -77,8 +77,8 @@ int packet_sendudp(MumbleClient* client, const void *message, const int length) 
 
 int packet_sendex(MumbleClient* client, int type, const void *message, const ProtobufCMessage* base, const int length) {
 	static MumblePacket packet_out;
-	size_t payload_size;
-	size_t total_size;
+	size_t payload_size = 0;
+	size_t total_size = 0;
 	switch (type) {
 	case PACKET_VERSION:
 		payload_size = mumble_proto__version__get_packed_size(message);
@@ -1067,12 +1067,14 @@ void packet_crypt_setup(MumbleClient *client, MumblePacket *packet) {
 
 	lua_newtable(l);
 	if (crypt->has_key && crypt->has_client_nonce && crypt->has_server_nonce) {
-		if (!crypt_setKey(client->crypt, crypt->key, crypt->client_nonce, crypt->server_nonce)) {
+		if (!crypt_setKey(client->crypt, crypt->key.data, crypt->key.len,
+		                  crypt->client_nonce.data, crypt->client_nonce.len,
+		                  crypt->server_nonce.data, crypt->server_nonce.len)) {
 			mumble_log(LOG_ERROR, "[OCB] CryptState: cipher resync failed (Invalid key/nonce from the server)");
 		}
 	} else if (crypt->has_server_nonce) {
 		client->resync++;
-		if (!crypt_setDecryptIV(client->crypt, crypt->server_nonce)) {
+		if (!crypt_setDecryptIV(client->crypt, crypt->server_nonce.data, crypt->server_nonce.len)) {
 			mumble_log(LOG_ERROR, "[OCB] CryptState: cipher resync failed (Invalid nonce from the server)");
 		}
 	} else {

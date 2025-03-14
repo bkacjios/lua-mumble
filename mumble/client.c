@@ -320,7 +320,8 @@ static int client_openAudio(lua_State *l) {
 	const char* filepath	= luaL_checkstring(l, 2);
 	float volume			= (float) luaL_optnumber(l, 3, 1);
 
-	SF_INFO info = {0};
+	SF_INFO info;
+	memset(&info, 0, sizeof(SF_INFO));
 	SNDFILE* file = sf_open(filepath, SFM_READ, &info);
 
 	if (!file) {
@@ -329,8 +330,8 @@ static int client_openAudio(lua_State *l) {
 		return 2;
 	}
 
-	size_t buffer_size = (AUDIO_SAMPLE_RATE * AUDIO_BUFFER_SIZE * AUDIO_PLAYBACK_CHANNELS * sizeof(float)) / 1000;
-	float* buffer = malloc(buffer_size);
+	size_t buffer_size = AUDIO_SAMPLE_RATE * (AUDIO_BUFFER_SIZE / 1000.0) * AUDIO_PLAYBACK_CHANNELS;
+	float* buffer = malloc(buffer_size * sizeof(float));
 
 	if (buffer == NULL) {
 		lua_pushnil(l);

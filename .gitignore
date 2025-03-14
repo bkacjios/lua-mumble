@@ -6,6 +6,7 @@ config/
 *.so
 *.lua
 !examples/*.lua
+!tests/*.lua
 *.log
 *.pem
 *.d
@@ -13,3 +14,4 @@ config/
 *.mp3
 *.wav
 gitversion.h
+vgcore.*

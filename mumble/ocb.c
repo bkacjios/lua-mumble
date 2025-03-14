@@ -19,9 +19,12 @@
 
 mumble_crypt* crypt_new() {
 	mumble_crypt* crypt = malloc(sizeof(mumble_crypt));
-
 	if (crypt == NULL) return crypt;
+	crypt_init(crypt);
+	return crypt;
+}
 
+void crypt_init(mumble_crypt *crypt) {
 	for (int i = 0; i < 0x100; i++)
 		crypt->decrypt_history[i] = 0;
 
@@ -35,15 +38,18 @@ mumble_crypt* crypt_new() {
 	crypt->dec_ctx_ocb_enc = EVP_CIPHER_CTX_new();
 	crypt->enc_ctx_ocb_dec = EVP_CIPHER_CTX_new();
 	crypt->dec_ctx_ocb_dec = EVP_CIPHER_CTX_new();
-
-	return crypt;
 }
 
-void crypt_free(mumble_crypt *crypt) {
+void crypt_uninitialize(mumble_crypt *crypt) {
 	EVP_CIPHER_CTX_free(crypt->enc_ctx_ocb_enc);
 	EVP_CIPHER_CTX_free(crypt->dec_ctx_ocb_enc);
 	EVP_CIPHER_CTX_free(crypt->enc_ctx_ocb_dec);
 	EVP_CIPHER_CTX_free(crypt->dec_ctx_ocb_dec);
+	crypt->bInit = false;
+}
+
+void crypt_free(mumble_crypt *crypt) {
+	crypt_uninitialize(crypt);;
 	free(crypt);
 }
 
@@ -58,67 +64,69 @@ void crypt_genKey(mumble_crypt *crypt) {
 	crypt->bInit = true;
 }
 
-bool crypt_setKey(mumble_crypt *crypt, ProtobufCBinaryData rkey, ProtobufCBinaryData eiv, ProtobufCBinaryData div) {
-	if (rkey.len == AES_KEY_SIZE_BYTES && eiv.len == AES_BLOCK_SIZE && div.len == AES_BLOCK_SIZE) {
-		memcpy(crypt->raw_key, rkey.data, AES_KEY_SIZE_BYTES);
-		memcpy(crypt->encrypt_iv, eiv.data, AES_BLOCK_SIZE);
-		memcpy(crypt->decrypt_iv, div.data, AES_BLOCK_SIZE);
+bool crypt_setKey(mumble_crypt *crypt, const uint8_t *rkey, size_t rkey_len,
+                  const uint8_t *eiv, size_t eiv_len,
+                  const uint8_t *div, size_t div_len) {
+	if (rkey_len == AES_KEY_SIZE_BYTES && eiv_len == AES_BLOCK_SIZE && div_len == AES_BLOCK_SIZE) {
+		memcpy(crypt->raw_key, rkey, AES_KEY_SIZE_BYTES);
+		memcpy(crypt->encrypt_iv, eiv, AES_BLOCK_SIZE);
+		memcpy(crypt->decrypt_iv, div, AES_BLOCK_SIZE);
 		crypt->bInit = true;
 		return true;
 	}
 	return false;
 }
 
-bool crypt_setRawKey(mumble_crypt *crypt, ProtobufCBinaryData rkey) {
-	if (rkey.len == AES_KEY_SIZE_BYTES) {
-		memcpy(crypt->raw_key, rkey.data, AES_KEY_SIZE_BYTES);
+bool crypt_setRawKey(mumble_crypt *crypt, const uint8_t *rkey, size_t rkey_len) {
+	if (rkey_len == AES_KEY_SIZE_BYTES) {
+		memcpy(crypt->raw_key, rkey, AES_KEY_SIZE_BYTES);
 		return true;
 	}
 	return false;
 }
 
-bool crypt_setEncryptIV(mumble_crypt *crypt, ProtobufCBinaryData iv) {
-	if (iv.len == AES_BLOCK_SIZE) {
-		memcpy(crypt->encrypt_iv, iv.data, AES_BLOCK_SIZE);
+bool crypt_setEncryptIV(mumble_crypt *crypt, const uint8_t *iv, size_t iv_len) {
+	if (iv_len == AES_BLOCK_SIZE) {
+		memcpy(crypt->encrypt_iv, iv, AES_BLOCK_SIZE);
 		return true;
 	}
 	return false;
 }
 
-bool crypt_setDecryptIV(mumble_crypt *crypt, ProtobufCBinaryData iv) {
-	if (iv.len == AES_BLOCK_SIZE) {
-		memcpy(crypt->decrypt_iv, iv.data, AES_BLOCK_SIZE);
+bool crypt_setDecryptIV(mumble_crypt *crypt, const uint8_t *iv, size_t iv_len) {
+	if (iv_len == AES_BLOCK_SIZE) {
+		memcpy(crypt->decrypt_iv, iv, AES_BLOCK_SIZE);
 		return true;
 	}
 	return false;
 }
 
-const unsigned char* crypt_getRawKey(mumble_crypt *crypt) {
+const uint8_t* crypt_getRawKey(mumble_crypt *crypt) {
 	return crypt->raw_key;
 }
 
-const unsigned char* crypt_getEncryptIV(mumble_crypt *crypt) {
+const uint8_t* crypt_getEncryptIV(mumble_crypt *crypt) {
 	return crypt->encrypt_iv;
 }
 
-const unsigned char* crypt_getDecryptIV(mumble_crypt *crypt) {
+const uint8_t* crypt_getDecryptIV(mumble_crypt *crypt) {
 	return crypt->decrypt_iv;
 }
 
-unsigned int crypt_getGood(mumble_crypt *crypt) {
+size_t crypt_getGood(mumble_crypt *crypt) {
 	return crypt->uiGood;
 }
 
-unsigned int crypt_getLate(mumble_crypt *crypt) {
+size_t crypt_getLate(mumble_crypt *crypt) {
 	return crypt->uiLate;
 }
 
-unsigned int crypt_getLost(mumble_crypt *crypt) {
+size_t crypt_getLost(mumble_crypt *crypt) {
 	return crypt->uiLost;
 }
 
-bool crypt_encrypt(mumble_crypt *crypt, const unsigned char *source, unsigned char *dst, unsigned int plain_length) {
-	unsigned char tag[AES_BLOCK_SIZE];
+bool crypt_encrypt(mumble_crypt *crypt, const uint8_t *source, uint8_t *dst, size_t plain_length) {
+	uint8_t tag[AES_BLOCK_SIZE];
 
 	// First, increase our IV.
 	for (int i = 0; i < AES_BLOCK_SIZE; i++)
@@ -136,16 +144,16 @@ bool crypt_encrypt(mumble_crypt *crypt, const unsigned char *source, unsigned ch
 	return true;
 }
 
-bool crypt_decrypt(mumble_crypt *crypt, const unsigned char *source, unsigned char *dst, unsigned int crypted_length) {
+bool crypt_decrypt(mumble_crypt *crypt, const uint8_t *source, uint8_t *dst, size_t crypted_length) {
 	if (crypted_length < 4)
 		return false;
 
-	unsigned int plain_length = crypted_length - 4;
+	size_t plain_length = crypted_length - 4;
 
-	unsigned char saveiv[AES_BLOCK_SIZE];
-	unsigned char ivbyte = source[0];
+	uint8_t saveiv[AES_BLOCK_SIZE];
+	uint8_t ivbyte = source[0];
 	bool restore         = false;
-	unsigned char tag[AES_BLOCK_SIZE];
+	uint8_t tag[AES_BLOCK_SIZE];
 
 	int lost = 0;
 	int late = 0;
@@ -286,24 +294,24 @@ static void inline ZERO(keyblock *block) {
 		int outlen = 0;                                                                             \
 		EVP_EncryptInit_ex(enc_ctx, EVP_aes_128_ecb(), NULL, key, NULL);                            \
 		EVP_CIPHER_CTX_set_padding(enc_ctx, 0);                                                     \
-		EVP_EncryptUpdate(enc_ctx, (unsigned char*)dst, &outlen,               \
-						  (const unsigned char*)src, AES_BLOCK_SIZE);          \
-		EVP_EncryptFinal_ex(enc_ctx, ((unsigned char*)dst + outlen), &outlen); \
+		EVP_EncryptUpdate(enc_ctx, (uint8_t*)dst, &outlen,               \
+						  (const uint8_t*)src, AES_BLOCK_SIZE);          \
+		EVP_EncryptFinal_ex(enc_ctx, ((uint8_t*)dst + outlen), &outlen); \
 	}
 #define AESdecrypt_ctx(src, dst, key, dec_ctx)                                                      \
 	{                                                                                               \
 		int outlen = 0;                                                                             \
 		EVP_DecryptInit_ex(dec_ctx, EVP_aes_128_ecb(), NULL, key, NULL);                            \
 		EVP_CIPHER_CTX_set_padding(dec_ctx, 0);                                                     \
-		EVP_DecryptUpdate(dec_ctx, (unsigned char*)dst, &outlen,               \
-						  (const unsigned char*)src, AES_BLOCK_SIZE);          \
-		EVP_DecryptFinal_ex(dec_ctx, ((unsigned char*)dst + outlen), &outlen); \
+		EVP_DecryptUpdate(dec_ctx, (uint8_t*)dst, &outlen,               \
+						  (const uint8_t*)src, AES_BLOCK_SIZE);          \
+		EVP_DecryptFinal_ex(dec_ctx, ((uint8_t*)dst + outlen), &outlen); \
 	}
 
 #define AESencrypt(src, dst, key) AESencrypt_ctx(src, dst, key, crypt->enc_ctx_ocb_enc)
 #define AESdecrypt(src, dst, key) AESdecrypt_ctx(src, dst, key, crypt->dec_ctx_ocb_enc)
 
-bool crypt_ocb_encrypt(mumble_crypt *crypt, const unsigned char *plain, unsigned char *encrypted, unsigned int len, const unsigned char *nonce, unsigned char *tag, bool modifyPlainOnXEXStarAttack) {
+bool crypt_ocb_encrypt(mumble_crypt *crypt, const uint8_t *plain, uint8_t *encrypted, size_t len, const uint8_t *nonce, uint8_t *tag, bool modifyPlainOnXEXStarAttack) {
 	keyblock checksum, delta, tmp, pad;
 	bool success = true;
 
@@ -317,7 +325,7 @@ bool crypt_ocb_encrypt(mumble_crypt *crypt, const unsigned char *plain, unsigned
 		// must be all 0 except for the last byte (which may be 0 - 128).
 		bool flipABit = false; // *plain is const, so we can't directly modify it
 		if (len - AES_BLOCK_SIZE <= AES_BLOCK_SIZE) {
-			unsigned char sum = 0;
+			uint8_t sum = 0;
 			for (int i = 0; i < AES_BLOCK_SIZE - 1; ++i) {
 				sum |= plain[i];
 			}
@@ -358,7 +366,7 @@ bool crypt_ocb_encrypt(mumble_crypt *crypt, const unsigned char *plain, unsigned
 	XOR(tmp, tmp, delta);
 	AESencrypt(tmp, pad, crypt->raw_key);
 	memcpy(tmp, plain, len);
-	memcpy((unsigned char *)tmp + len, (const unsigned char *)pad + len,
+	memcpy((uint8_t *)tmp + len, (const uint8_t *)pad + len,
 	       AES_BLOCK_SIZE - len);
 	XOR(checksum, checksum, tmp);
 	XOR(tmp, pad, tmp);
@@ -377,7 +385,7 @@ bool crypt_ocb_encrypt(mumble_crypt *crypt, const unsigned char *plain, unsigned
 #define AESencrypt(src, dst, key) AESencrypt_ctx(src, dst, key, crypt->enc_ctx_ocb_dec)
 #define AESdecrypt(src, dst, key) AESdecrypt_ctx(src, dst, key, crypt->dec_ctx_ocb_dec)
 
-bool crypt_ocb_decrypt(mumble_crypt *crypt, const unsigned char *encrypted, unsigned char *plain, unsigned int len, const unsigned char *nonce, unsigned char *tag) {
+bool crypt_ocb_decrypt(mumble_crypt *crypt, const uint8_t *encrypted, uint8_t *plain, size_t len, const uint8_t *nonce, uint8_t *tag) {
 	keyblock checksum, delta, tmp, pad;
 	bool success = true;
 

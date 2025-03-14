@@ -253,9 +253,9 @@ int process_audio(AudioStream* sound, float **output_data, size_t available_spac
 	double resample_ratio = (double)AUDIO_SAMPLE_RATE / input_rate;
 
 	// How many frames are available to be written to in our 48k stereo buffer
-	size_t available_output_frames = available_space / AUDIO_PLAYBACK_CHANNELS;
+	size_t available_output_frames = available_space / (AUDIO_PLAYBACK_CHANNELS * sizeof(float));
 	// How many input frames we should read before resampling to 48k and mixing to stereo
-	sf_count_t input_frames = available_output_frames / resample_ratio;
+	sf_count_t input_frames = (sf_count_t)((double)available_output_frames / resample_ratio);
 	// How many frames we estimate will be output after resampling to 48k
 	sf_count_t output_frames = (sf_count_t)((double)input_frames * resample_ratio);
 
@@ -328,8 +328,8 @@ void mumble_audio_thread(void *arg) {
 				bool playing = sound->playing;
 				size_t buffer_size = sound->buffer_size;
 				size_t available_space = (sound->read_position > sound->write_position) ?
-				                         (sound->read_position - sound->write_position - 1) :
-				                         (sound->buffer_size - sound->write_position + sound->read_position - 1);
+				                         (sound->read_position - sound->write_position) :
+				                         (sound->buffer_size - sound->write_position + sound->read_position);
 				size_t first_chunk = sound->buffer_size - sound->write_position;
 				uv_mutex_unlock(&sound->mutex);
 
@@ -339,32 +339,38 @@ void mumble_audio_thread(void *arg) {
 						continue;
 					}
 
-					size_t frames_read;
+					mumble_log(LOG_TRACE, "sound->buffer_size (samples): %lu", buffer_size);
+					mumble_log(LOG_TRACE, "available_space (samples): %lu", available_space);
 
+					size_t frames_read;
 					float* output_audio = NULL;
-					// Process the audio data, will resample all audio to 48000hz and remix to stereo if needed.
-					process_audio(sound, &output_audio, available_space, &frames_read);
+					// Process the audio data.
+					// Make sure process_audio is aware that available_space is in samples (convert to bytes if necessary inside process_audio)
+					process_audio(sound, &output_audio, available_space * sizeof(float), &frames_read);
+
+					// Calculate the total number of samples to copy
+					size_t copy_size = frames_read * AUDIO_PLAYBACK_CHANNELS;
+
+					mumble_log(LOG_TRACE, "frames_read: %lu", frames_read);
+					mumble_log(LOG_TRACE, "copy_size (samples): %lu", copy_size);
 
 					if (frames_read > 0 && output_audio) {
 						uv_mutex_lock(&sound->mutex);
-						if (first_chunk >= frames_read * AUDIO_PLAYBACK_CHANNELS) {
-							// Simple case: Copy all at once
-							memcpy(sound->buffer + sound->write_position, output_audio, frames_read * AUDIO_PLAYBACK_CHANNELS * sizeof(float));
+						if (first_chunk >= copy_size) {
+							// Simple case: Copy all at once (convert sample count to byte count for memcpy)
+							memcpy(sound->buffer + sound->write_position, output_audio, copy_size * sizeof(float));
 						} else {
 							// Copy first part until the end of the buffer
 							memcpy(sound->buffer + sound->write_position, output_audio, first_chunk * sizeof(float));
 							// Copy second part from the beginning of the buffer
-							memcpy(sound->buffer, output_audio + first_chunk, (frames_read * AUDIO_PLAYBACK_CHANNELS - first_chunk) * sizeof(float));
+							memcpy(sound->buffer, output_audio + first_chunk, (copy_size - first_chunk) * sizeof(float));
 						}
-
-						// Correctly wrap around the write position
-						sound->write_position = (sound->write_position + frames_read * AUDIO_PLAYBACK_CHANNELS) % sound->buffer_size;
+						// Update the write pointer in terms of float elements
+						sound->write_position = (sound->write_position + copy_size) % sound->buffer_size;
 						uv_mutex_unlock(&sound->mutex);
-					}
-
-					if (output_audio) {
 						free(output_audio);
 					}
+
 				}
 			}
 		}
@@ -648,7 +654,7 @@ static void encode_and_send_audio(MumbleClient *client, sf_count_t frame_size, b
 	}
 
 	req->data = work;
-	work->req = *req;
+	work->req = req;
 	work->client = client;
 	work->frame_size = frame_size;
 	work->end_frame = end_frame;

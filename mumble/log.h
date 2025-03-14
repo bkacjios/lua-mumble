@@ -1,5 +1,6 @@
 #pragma once
 
+#include "defines.h"
 #include <lauxlib.h>
 
 void mumble_log(int level, const char* fmt, ...);
