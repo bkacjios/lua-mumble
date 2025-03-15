@@ -33,6 +33,7 @@ typedef struct AudioTimer AudioTimer;
 typedef struct QueueNode QueueNode;
 typedef struct LinkQueue LinkQueue;
 typedef struct MumbleOpusDecoder MumbleOpusDecoder;
+typedef struct MumblePacket MumblePacket;
 
 struct MumbleTimer {
 	uv_timer_t timer;
@@ -49,6 +50,21 @@ struct AudioFrame {
 	float l;
 	float r;
 };
+
+struct MumblePacket {
+	uint16_t type;
+	size_t length;
+	size_t header_len;
+	uint8_t *header;
+	size_t body_len;
+	uint8_t *body;
+};
+
+typedef struct {
+	uint8_t *buffer;
+	int length;
+	int header_length;
+} VoicePacket;
 
 struct MumbleOpusDecoder {
 	OpusDecoder *decoder;
@@ -172,6 +188,8 @@ struct MumbleClient {
 
 	uint8_t				audio_target;
 
+	MumblePacket		tcp_read_packet;
+
 	uint32_t			tcp_packets;
 	double				tcp_ping_avg;
 	double				tcp_ping_var;
@@ -254,18 +272,3 @@ struct MumbleUser {
 	SNDFILE*		recording_file;
 	uint64_t		last_spoke;
 };
-
-typedef struct {
-	uint16_t type;
-	size_t length;
-	size_t header_len;
-	uint8_t *header;
-	size_t body_len;
-	uint8_t *body;
-} MumblePacket;
-
-typedef struct {
-	uint8_t *buffer;
-	int length;
-	int header_length;
-} VoicePacket;

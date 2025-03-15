@@ -76,7 +76,7 @@ int packet_sendudp(MumbleClient* client, const void *message, const int length) 
 }
 
 int packet_sendex(MumbleClient* client, int type, const void *message, const ProtobufCMessage* base, const int length) {
-	static MumblePacket packet_out;
+	uint8_t *packet_out;
 	size_t payload_size = 0;
 	size_t total_size = 0;
 	switch (type) {
@@ -146,9 +146,9 @@ int packet_sendex(MumbleClient* client, int type, const void *message, const Pro
 	}
 
 	total_size = PACKET_HEADER_SIZE + payload_size;
-	packet_out.body = malloc(sizeof(uint8_t) * total_size);
+	packet_out = malloc(sizeof(uint8_t) * total_size);
 
-	if (packet_out.body == NULL) {
+	if (packet_out == NULL) {
 		mumble_log(LOG_ERROR, "failed to malloc packet buffer: %s", strerror(errno));
 		return 2;
 	}
@@ -156,78 +156,78 @@ int packet_sendex(MumbleClient* client, int type, const void *message, const Pro
 	if (payload_size > 0) {
 		switch (type) {
 		case PACKET_VERSION:
-			mumble_proto__version__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__version__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_UDPTUNNEL:
-			memmove(packet_out.body + PACKET_HEADER_SIZE, message, length);
+			memmove(packet_out + PACKET_HEADER_SIZE, message, length);
 			break;
 		case PACKET_AUTHENTICATE:
-			mumble_proto__authenticate__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__authenticate__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_PING:
-			mumble_proto__ping__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__ping__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_CHANNELREMOVE:
-			mumble_proto__channel_remove__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__channel_remove__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_CHANNELSTATE:
-			mumble_proto__channel_state__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__channel_state__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_USERREMOVE:
-			mumble_proto__user_remove__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__user_remove__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_USERSTATE:
-			mumble_proto__user_state__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__user_state__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_BANLIST:
-			mumble_proto__ban_list__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__ban_list__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_TEXTMESSAGE:
-			mumble_proto__text_message__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__text_message__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_ACL:
-			mumble_proto__acl__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__acl__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_QUERYUSERS:
-			mumble_proto__query_users__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__query_users__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_CRYPTSETUP:
-			mumble_proto__crypt_setup__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__crypt_setup__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_PERMISSIONQUERY:
-			mumble_proto__permission_query__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__permission_query__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_USERLIST:
-			mumble_proto__user_list__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__user_list__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_VOICETARGET:
-			mumble_proto__voice_target__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__voice_target__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_CODECVERSION:
-			mumble_proto__codec_version__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__codec_version__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_USERSTATS:
-			mumble_proto__user_stats__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__user_stats__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_REQUESTBLOB:
-			mumble_proto__request_blob__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__request_blob__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_PLUGINDATA:
-			mumble_proto__plugin_data_transmission__pack(message, packet_out.body + PACKET_HEADER_SIZE);
+			mumble_proto__plugin_data_transmission__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		default:
 			mumble_log(LOG_WARN, "attempted to pack unspported packet #%i", type);
 			break;
 		}
 	}
-	*(uint16_t *)packet_out.body = htons(type);
-	*(uint32_t *)(packet_out.body + 2) = htonl(payload_size);
+	*(uint16_t *)packet_out = htons(type);
+	*(uint32_t *)(packet_out + 2) = htonl(payload_size);
 
 	mumble_log(LOG_TRACE, "[TCP] Sending %s: %p", base != NULL ? base->descriptor->name : "MumbleProto.UDPTunnel", message);
 
-	int written = SSL_write(client->ssl, packet_out.body, total_size);
+	int written = SSL_write(client->ssl, packet_out, total_size);
 
-	free(packet_out.body);
+	free(packet_out);
 
 	return written == total_size ? 0 : -1;
 }

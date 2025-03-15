@@ -360,8 +360,8 @@ void socket_read_event_tcp(uv_poll_t* handle, int status, int events) {
 	lua_State* l = client->l;
 
 	if (events & UV_READABLE && client->connected) {
-		// Static since this process might take a few iterations to complete
-		static MumblePacket packet;
+		// This process might take a few read events to fully complete
+		MumblePacket packet = client->tcp_read_packet;
 
 		// Setup for a new packet to be read
 		if (!packet.header) {

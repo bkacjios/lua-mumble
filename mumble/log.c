@@ -59,13 +59,20 @@ static void mumble_print(int level, const char* message) {
 	const char* llevel = get_log_level_info(level, &lcolor);
 	FILE* out = (level == LOG_ERROR) ? stderr : stdout;
 
+	// Get current time with microseconds resolution
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	struct tm *tm_info = localtime(&tv.tv_sec);
+	char time_buffer[30]; // Buffer for "YYYY-MM-DD HH:MM:SS"
+	strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S", tm_info);
+
 	// Print the log type and color information without formatting
-	fprintf(out, "[\x1b[34;1mMUMBLE\x1b[0m - %s%5s\x1b[0m] ", lcolor, llevel);
+	fprintf(out, "[\x1b[1m%s.%03ld\x1b[0m \x1b[34;1mMUMBLE\x1b[0m - %s%5s\x1b[0m] ", time_buffer, tv.tv_usec / 1000, lcolor, llevel);
 	fprintf(out, "%s", message);  // Direct message printing with no formatting
 	fprintf(out, NEWLINE);
 
 	if (LOG_FILE) {
-		fprintf(LOG_FILE, "[MUMBLE - %5s] ", llevel);
+		fprintf(LOG_FILE, "[%s.%03ld MUMBLE - %5s] ", time_buffer, tv.tv_usec / 1000, llevel);
 		fprintf(LOG_FILE, "%s", message);  // Direct message printing with no formatting
 		fprintf(LOG_FILE, NEWLINE);
 	}
