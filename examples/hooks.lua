@@ -89,6 +89,10 @@ client:hook("OnACL", function(client, event)
 	print("OnACL", event)
 end)
 
+client:hook("OnQueryUsers", function(client, event)
+	print("OnQueryUsers", event)
+end)
+
 client:hook("OnCryptSetup", function(client, event)
 	print("OnCryptSetup", event)
 end)
@@ -123,6 +127,14 @@ end)
 
 client:hook("OnAudioStreamEnd", function(client, stream)
 	print("OnAudioStreamEnd", stream)
+end)
+
+client:hook("OnPluginData", function(client, event)
+	print("OnPluginData", event)
+end)
+
+client:hook("OnContextActionModify", function(client, event)
+	print("OnContextActionModify", event)
 end)
 
 mumble.loop()

@@ -439,6 +439,20 @@ static int channel_create(lua_State *l) {
 	return 0;
 }
 
+static int channel_contextAction(lua_State *l) {
+	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
+
+	MumbleProto__ContextAction msg = MUMBLE_PROTO__CONTEXT_ACTION__INIT;
+
+	msg.has_channel_id = true;
+	msg.channel_id = channel->channel_id;
+
+	msg.action = (char*) luaL_checkstring(l, 2);
+
+	packet_send(channel->client, PACKET_CONTEXTACTION, &msg);
+	return 0;
+}
+
 static int channel_gc(lua_State *l) {
 	MumbleChannel *channel = luaL_checkudata(l, 1, METATABLE_CHAN);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_CHAN, channel);
@@ -517,6 +531,7 @@ const luaL_Reg mumble_channel[] = {
 	{"getListeningVolumeAdjustment", channel_getListeningVolumeAdjustment},
 	{"requestDescriptionBlob", channel_requestDescriptionBlob},
 	{"create", channel_create},
+	{"contextAction", channel_contextAction},
 
 	{"__call", channel_call},
 	{"__gc", channel_gc},

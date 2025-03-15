@@ -568,6 +568,20 @@ static int user_isBeingRecorded(lua_State *l) {
 	return 1;
 }
 
+static int user_contextAction(lua_State *l) {
+	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
+
+	MumbleProto__ContextAction msg = MUMBLE_PROTO__CONTEXT_ACTION__INIT;
+
+	msg.has_session = true;
+	msg.session = user->session;
+
+	msg.action = (char*) luaL_checkstring(l, 2);
+
+	packet_send(user->client, PACKET_CONTEXTACTION, &msg);
+	return 0;
+}
+
 static int user_gc(lua_State *l) {
 	MumbleUser *user = luaL_checkudata(l, 1, METATABLE_USER);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_USER, user);
@@ -668,6 +682,7 @@ const luaL_Reg mumble_user[] = {
 	{"startRecord", user_startRecord},
 	{"stopRecord", user_stopRecord},
 	{"isBeingRecorded", user_isBeingRecorded},
+	{"contextAction", user_contextAction},
 
 	{"__gc", user_gc},
 	{"__tostring", user_tostring},

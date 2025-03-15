@@ -119,6 +119,9 @@ int packet_sendex(MumbleClient* client, int type, const void *message, const Pro
 	case PACKET_CRYPTSETUP:
 		payload_size = mumble_proto__crypt_setup__get_packed_size(message);
 		break;
+	case PACKET_CONTEXTACTION:
+		payload_size = mumble_proto__context_action__get_packed_size(message);
+		break;
 	case PACKET_PERMISSIONQUERY:
 		payload_size = mumble_proto__permission_query__get_packed_size(message);
 		break;
@@ -193,6 +196,9 @@ int packet_sendex(MumbleClient* client, int type, const void *message, const Pro
 			break;
 		case PACKET_CRYPTSETUP:
 			mumble_proto__crypt_setup__pack(message, packet_out + PACKET_HEADER_SIZE);
+			break;
+		case PACKET_CONTEXTACTION:
+			mumble_proto__context_action__pack(message, packet_out + PACKET_HEADER_SIZE);
 			break;
 		case PACKET_PERMISSIONQUERY:
 			mumble_proto__permission_query__pack(message, packet_out + PACKET_HEADER_SIZE);
@@ -1054,6 +1060,41 @@ void packet_query_users(MumbleClient *client, MumblePacket *packet) {
 	mumble_proto__query_users__free_unpacked(users, NULL);
 }
 
+void packet_context_action_modify(MumbleClient *client, MumblePacket *packet) {
+	MumbleProto__ContextActionModify *modify = mumble_proto__context_action_modify__unpack(NULL, packet->length, packet->body);
+	if (modify == NULL) {
+		mumble_log(LOG_WARN, "[TCP] Error unpacking context action modify packet");
+		return;
+	}
+
+	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", modify->base.descriptor->name, modify);
+
+	lua_State* l = client->l;
+
+	lua_newtable(l);
+	{
+		if (modify->action != NULL) {
+			lua_pushstring(l, modify->action);
+			lua_setfield(l, -2, "action");
+		}
+		if (modify->text != NULL) {
+			lua_pushstring(l, modify->text);
+			lua_setfield(l, -2, "text");
+		}
+		if (modify->has_context) {
+			lua_pushinteger(l, modify->context);
+			lua_setfield(l, -2, "context");
+		}
+		if (modify->has_operation) {
+			lua_pushinteger(l, modify->operation);
+			lua_setfield(l, -2, "operation");
+		}
+	}
+	mumble_hook_call(client, "OnContextActionModify", 1);
+
+	mumble_proto__context_action_modify__free_unpacked(modify, NULL);
+}
+
 void packet_crypt_setup(MumbleClient *client, MumblePacket *packet) {
 	MumbleProto__CryptSetup *crypt = mumble_proto__crypt_setup__unpack(NULL, packet->length, packet->body);
 	if (crypt == NULL) {
@@ -1554,28 +1595,28 @@ void packet_plugin_data(MumbleClient *client, MumblePacket *packet) {
 }
 
 const Packet_Handler_Func packet_handler[NUM_PACKETS] = {
-	/*  0 */ packet_server_version, // Version
-	/*  1 */ packet_tcp_udp_tunnel, // UDPTunnel
+	/*  0 */ packet_server_version,
+	/*  1 */ packet_tcp_udp_tunnel,
 	/*  2 */ NULL, // Authenticate
-	/*  3 */ packet_server_ping, // Ping
-	/*  4 */ packet_server_reject, // Reject
+	/*  3 */ packet_server_ping,
+	/*  4 */ packet_server_reject,
 	/*  5 */ packet_server_sync,
 	/*  6 */ packet_channel_remove,
 	/*  7 */ packet_channel_state,
 	/*  8 */ packet_user_remove,
 	/*  9 */ packet_user_state,
-	/* 10 */ packet_ban_list, // Banlist
+	/* 10 */ packet_ban_list,
 	/* 11 */ packet_text_message,
 	/* 12 */ packet_permission_denied,
-	/* 13 */ packet_acl, // ACL
-	/* 14 */ packet_query_users, // QueryUsers
-	/* 15 */ packet_crypt_setup, // CryptSetup
-	/* 16 */ NULL, // ContextActionAdd
+	/* 13 */ packet_acl,
+	/* 14 */ packet_query_users,
+	/* 15 */ packet_crypt_setup,
+	/* 16 */ packet_context_action_modify,
 	/* 17 */ NULL, // Context Action
-	/* 18 */ packet_user_list, // UserList
+	/* 18 */ packet_user_list,
 	/* 19 */ NULL, // VoiceTarget
-	/* 20 */ packet_permission_query, // PermissionQuery
-	/* 21 */ packet_codec_version, // CodecVersion
+	/* 20 */ packet_permission_query,
+	/* 21 */ packet_codec_version,
 	/* 22 */ packet_user_stats,
 	/* 23 */ NULL, // RequestBlob
 	/* 24 */ packet_server_config,
