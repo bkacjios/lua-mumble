@@ -680,7 +680,9 @@ const luaL_Reg mumble_user[] = {
 	{"requestTextureBlob", user_requestTextureBlob},
 	{"requestCommentBlob", user_requestCommentBlob},
 	{"startRecord", user_startRecord},
+	{"startRecording", user_startRecord},
 	{"stopRecord", user_stopRecord},
+	{"stopRecording", user_stopRecord},
 	{"isBeingRecorded", user_isBeingRecorded},
 	{"contextAction", user_contextAction},
 

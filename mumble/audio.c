@@ -534,8 +534,11 @@ static void audio_transmission_bitrate_warning(MumbleClient *client, size_t leng
 	if (current) {
 		// Cleanup any active audio transmissions
 		while (current != NULL) {
-			audio_transmission_unreference(client->l, current->data);
+			uv_mutex_lock(&client->inner_mutex);
+			AudioStream *sound = current->data;
 			current = current->next;
+			uv_mutex_unlock(&client->inner_mutex);
+			audio_transmission_unreference(client->l, sound);
 		}
 	}
 

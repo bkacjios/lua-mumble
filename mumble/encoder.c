@@ -398,6 +398,8 @@ const luaL_Reg mumble_encoder[] = {
 	{"setComplexity", encoder_setComplexity},
 	{"getBitRate", encoder_getBitRate},
 	{"setBitRate", encoder_setBitRate},
+	{"getBitrate", encoder_getBitRate},
+	{"setBitrate", encoder_setBitRate},
 	{"getVBR", encoder_getVBR},
 	{"setVBR", encoder_setVBR},
 	{"getVBRConstraint", encoder_getVBRConstraint},

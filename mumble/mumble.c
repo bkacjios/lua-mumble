@@ -813,7 +813,6 @@ uint64_t mumble_adjust_audio_bandwidth(MumbleClient *client) {
 			opus_encoder_ctl(client->encoder, OPUS_SET_PACKET_LOSS_PERC(10)); // Increase loss resilience
 			opus_encoder_ctl(client->encoder, OPUS_SET_INBAND_FEC(1));        // Helps recover lost packets
 			opus_encoder_ctl(client->encoder, OPUS_SET_DTX(1));               // Enable DTX to reduce bitrate usage
-
 		}
 	}
 
