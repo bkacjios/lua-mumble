@@ -67,8 +67,7 @@ static const char* mumble_ssl_error(unsigned long err) {
 }
 
 static uint64_t mumble_ping_udp_legacy(lua_State *l, MumbleClient* client) {
-	double milliseconds = gettime(CLOCK_MONOTONIC);
-	uint64_t timestamp = (uint64_t) (milliseconds * 1000);
+	uint64_t timestamp = uv_hrtime();
 
 	unsigned char packet[UDP_BUFFER_MAX];
 	packet[0] = LEGACY_PROTO_UDP_PING << 5;
@@ -83,8 +82,7 @@ static uint64_t mumble_ping_udp_legacy(lua_State *l, MumbleClient* client) {
 static uint64_t mumble_ping_udp_protobuf(lua_State *l, MumbleClient* client) {
 	MumbleUDP__Ping ping = MUMBLE_UDP__PING__INIT;
 
-	double milliseconds = gettime(CLOCK_MONOTONIC);
-	uint64_t timestamp = (uint64_t) (milliseconds * 1000);
+	uint64_t timestamp = uv_hrtime();
 
 	ping.timestamp = timestamp;
 
@@ -103,11 +101,10 @@ static void mumble_ping_tcp(MumbleClient *client) {
 
 	MumbleProto__Ping ping = MUMBLE_PROTO__PING__INIT;
 
-	double timestamp = gettime(CLOCK_MONOTONIC);
-	uint64_t ts64 = (uint64_t) (timestamp * 1000);
+	uint64_t timestamp = uv_hrtime();
 
 	ping.has_timestamp = true;
-	ping.timestamp = ts64;
+	ping.timestamp = timestamp;
 
 	ping.has_tcp_packets = true;
 	ping.tcp_packets = client->tcp_packets;
@@ -141,7 +138,7 @@ static void mumble_ping_tcp(MumbleClient *client) {
 
 	lua_newtable(l);
 	// Push the timestamp we are sending to the server
-	lua_pushnumber(l, timestamp);
+	lua_pushinteger(l, ping.timestamp);
 	lua_setfield(l, -2, "timestamp");
 	lua_pushinteger(l, ping.tcp_packets);
 	lua_setfield(l, -2, "tcp_packets");
@@ -185,7 +182,7 @@ static void mumble_ping_udp(MumbleClient* client) {
 		}
 
 		lua_newtable(l);
-		lua_pushnumber(l, timestamp);
+		lua_pushinteger(l, timestamp);
 		lua_setfield(l, -2, "timestamp");
 		mumble_hook_call(client, "OnPingUDP", 1);
 
@@ -198,9 +195,10 @@ void mumble_ping(MumbleClient* client) {
 	mumble_ping_udp(client);
 }
 
-static void mumble_update_ping(MumbleClient* client, uint64_t timestamp, bool udp) {
-	double response = gettime(CLOCK_MONOTONIC);
-	double delay = (response * 1000) - timestamp;
+static void mumble_update_ping_udp(MumbleClient* client, uint64_t timestamp, bool udp) {
+	uint64_t now = uv_hrtime();
+
+	double delay = (double) (now - timestamp) / 1e6;
 
 	double n = client->udp_packets + 1;
 	client->udp_packets = n;
@@ -222,7 +220,7 @@ static void mumble_update_ping(MumbleClient* client, uint64_t timestamp, bool ud
 
 	lua_State* l = client->l;
 	lua_newtable(l);
-	lua_pushnumber(l, (double) timestamp / 1000);
+	lua_pushinteger(l, timestamp);
 	lua_setfield(l, -2, "timestamp");
 	lua_pushnumber(l, delay);
 	lua_setfield(l, -2, "ping");
@@ -231,6 +229,18 @@ static void mumble_update_ping(MumbleClient* client, uint64_t timestamp, bool ud
 	lua_pushnumber(l, client->udp_ping_var);
 	lua_setfield(l, -2, "deviation");
 	mumble_hook_call(client, "OnPongUDP", 1);
+}
+
+double mumble_update_ping_tcp(MumbleClient* client, uint64_t timestamp) {
+	uint64_t now = uv_hrtime();
+	double delay = (double)(now - timestamp) / 1e6;
+
+	double n = client->tcp_packets + 1;
+	client->tcp_packets = n;
+	client->tcp_ping_avg = client->tcp_ping_avg * (n - 1) / n + delay / n;
+	client->tcp_ping_var = pow(fabs(delay - client->tcp_ping_avg), 2);
+
+	return delay;
 }
 
 void mumble_handle_udp_packet(MumbleClient* client, unsigned char* unencrypted, ssize_t size, bool udp) {
@@ -246,7 +256,7 @@ void mumble_handle_udp_packet(MumbleClient* client, unsigned char* unencrypted, 
 
 			mumble_log(LOG_TRACE, "[UDP] Received legacy ping packet (size=%u, id=%u, timestamp=%lu)", size, id, timestamp);
 
-			mumble_update_ping(client, timestamp, udp);
+			mumble_update_ping_udp(client, timestamp, udp);
 			return;
 		}
 		case LEGACY_UDP_OPUS:
@@ -284,7 +294,7 @@ void mumble_handle_udp_packet(MumbleClient* client, unsigned char* unencrypted, 
 			MumbleUDP__Ping *ping = mumble_udp__ping__unpack(NULL, size - 1, unencrypted + 1);
 			if (ping != NULL) {
 				mumble_log(LOG_TRACE, "[UDP] Received %s: %p", ping->base.descriptor->name, ping);
-				mumble_update_ping(client, ping->timestamp, udp);
+				mumble_update_ping_udp(client, ping->timestamp, udp);
 				mumble_udp__ping__free_unpacked(ping, NULL);
 			} else {
 				mumble_log(LOG_WARN, "[UDP] Error unpacking ping packet");
@@ -574,7 +584,7 @@ int mumble_client_connect(lua_State *l) {
 
 	client->host = strdup(server_host_str);
 	client->port = port;
-	client->time = gettime(CLOCK_MONOTONIC);
+	client->time = uv_now(uv_default_loop());
 
 	// TCP Connection
 
@@ -981,7 +991,7 @@ void mumble_disconnect(MumbleClient *client, const char* reason, bool garbagecol
 }
 
 static int mumble_getTime(lua_State *l) {
-	lua_pushnumber(l, gettime(CLOCK_REALTIME));
+	lua_pushnumber(l, uv_now(uv_default_loop()) / 1000.0);
 	return 1;
 }
 

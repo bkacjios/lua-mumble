@@ -289,17 +289,10 @@ void packet_server_ping(MumbleClient *client, MumblePacket *packet) {
 
 	lua_newtable(l);
 	if (ping->has_timestamp) {
-		double response = gettime(CLOCK_MONOTONIC);
-		double delay = (response * 1000) - (double) ping->timestamp;
-
-		double n = client->tcp_packets + 1;
-		client->tcp_packets = n;
-		client->tcp_ping_avg = client->tcp_ping_avg * (n - 1) / n + delay / n;
-		client->tcp_ping_var = pow(fabs(delay - client->tcp_ping_avg), 2);
-
-		lua_pushnumber(l, (double) ping->timestamp / 1000);
+		double time = mumble_update_ping_tcp(client, ping->timestamp);
+		lua_pushinteger(l, ping->timestamp);
 		lua_setfield(l, -2, "timestamp");
-		lua_pushnumber(l, delay);
+		lua_pushnumber(l, time);
 		lua_setfield(l, -2, "ping");
 		lua_pushnumber(l, client->udp_ping_avg);
 		lua_setfield(l, -2, "average");

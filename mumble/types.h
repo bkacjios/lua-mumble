@@ -165,7 +165,7 @@ struct MumbleClient {
 	int					channels;
 	int					audio_streams;
 	uint32_t			max_bandwidth;
-	double				time;
+	uint64_t			time;
 	uint32_t			session;
 	double				volume;
 	bool				ducking;

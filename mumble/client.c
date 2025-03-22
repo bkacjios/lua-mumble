@@ -679,7 +679,8 @@ static int client_getPing(lua_State *l) {
 
 static int client_getUpTime(lua_State *l) {
 	MumbleClient *client = mumble_client_connecting(l, 1);
-	lua_pushnumber(l, gettime(CLOCK_MONOTONIC) - client->time);
+	double uptime = (double) (uv_now(uv_default_loop()) - client->time) / 1000.0;
+	lua_pushnumber(l, uptime);
 	return 1;
 }
 

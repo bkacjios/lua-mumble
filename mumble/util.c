@@ -3,12 +3,6 @@
 
 #include <ctype.h>
 
-double gettime(clockid_t mode) {
-	struct timespec time;
-	clock_gettime(mode, &time);
-	return time.tv_sec + time.tv_nsec / 1.0e9;
-}
-
 void bin_to_strhex(char *bin, size_t binsz, char **result) {
 	char hex_str[] = "0123456789abcdef";
 	size_t i;

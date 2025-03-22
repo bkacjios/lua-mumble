@@ -3,8 +3,6 @@
 #include <lua.h>
 #include "types.h"
 
-double gettime(clockid_t mode);
-
 void bin_to_strhex(char *bin, size_t binsz, char **result);
 
 #if (defined(LUA_VERSION_NUM) && LUA_VERSION_NUM < 502) && !defined(LUAJIT)

@@ -41,6 +41,8 @@ void mumble_channel_remove(MumbleClient* client, uint32_t channel_id);
 
 int mumble_push_address(lua_State* l, ProtobufCBinaryData address);
 
+double mumble_update_ping_tcp(MumbleClient* client, uint64_t timestamp);
+
 void mumble_handle_udp_packet(MumbleClient* client, unsigned char* unencrypted, ssize_t size, bool udp);
 void mumble_handle_record_silence(MumbleClient* client, MumbleUser* user);
 void mumble_update_recording_status(MumbleClient* client);
