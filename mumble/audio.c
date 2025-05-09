@@ -327,9 +327,7 @@ void mumble_audio_thread(void *arg) {
 				uv_mutex_lock(&sound->mutex);
 				bool playing = sound->playing;
 				size_t buffer_size = sound->buffer_size;
-				size_t available_space = (sound->read_position > sound->write_position) ?
-				                         (sound->read_position - sound->write_position) :
-				                         (sound->buffer_size - sound->write_position + sound->read_position);
+				size_t available_space = sound->buffer_size - sound->used;
 				size_t first_chunk = sound->buffer_size - sound->write_position;
 				uv_mutex_unlock(&sound->mutex);
 
@@ -367,6 +365,7 @@ void mumble_audio_thread(void *arg) {
 						}
 						// Update the write pointer in terms of float elements
 						sound->write_position = (sound->write_position + copy_size) % sound->buffer_size;
+						sound->used += copy_size;
 						uv_mutex_unlock(&sound->mutex);
 						free(output_audio);
 					}
@@ -450,7 +449,7 @@ static void handle_audio_stream_end(lua_State *l, MumbleClient *client, AudioStr
 static void process_audio_file(lua_State *l, MumbleClient *client, AudioStream *sound, uint32_t frame_size, sf_count_t *biggest_read, bool *didLoop) {
 	sf_count_t sample_size = (sf_count_t) client->audio_frames * (float) AUDIO_SAMPLE_RATE / 1000;
 
-	if (sample_size > PCM_BUFFER || sound->write_position == sound->read_position) {
+	if (sample_size > PCM_BUFFER || sound->used <= 0) {
 		// Our sample size is somehow too large to fit within the input buffer,
 		// or our sound file buffer is empty..
 		return;
@@ -458,13 +457,8 @@ static void process_audio_file(lua_State *l, MumbleClient *client, AudioStream *
 
 	float input_buffer[PCM_BUFFER];
 
-	// Calculate how much data is available
-	size_t used_space = (sound->write_position >= sound->read_position) ?
-	                    (sound->write_position - sound->read_position) :
-	                    (sound->buffer_size - sound->read_position + sound->write_position);
-
 	// Calculate available frames
-	sf_count_t frames_available = used_space / AUDIO_PLAYBACK_CHANNELS;
+	sf_count_t frames_available = sound->used / AUDIO_PLAYBACK_CHANNELS;
 	sf_count_t frames_to_read = (frames_available < sample_size) ? frames_available : sample_size;
 
 	sf_count_t read = 0;
@@ -489,6 +483,7 @@ static void process_audio_file(lua_State *l, MumbleClient *client, AudioStream *
 
 		// Update read position safely
 		sound->read_position = (sound->read_position + samples_to_read) % sound->buffer_size;
+		sound->used -= samples_to_read;
 
 		read = frames_to_read;  // Store actual frames read
 	}

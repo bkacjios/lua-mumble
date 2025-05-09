@@ -365,6 +365,7 @@ static int client_openAudio(lua_State *l) {
 	sound->fade_stop = false;
 	sound->buffer_size = buffer_size;
 	sound->buffer = buffer;
+	sound->used = 0;
 	sound->read_position = 0;
 	sound->write_position = 0;
 	sound->src_state = src_state;

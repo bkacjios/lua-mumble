@@ -91,6 +91,7 @@ struct AudioStream {
 	size_t read_position;
 	size_t write_position;
 	size_t buffer_size;
+	size_t used;
 	uv_mutex_t mutex;
 	SRC_STATE *src_state;
 };
