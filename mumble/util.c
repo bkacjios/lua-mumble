@@ -169,7 +169,7 @@ void luaL_debugstack(lua_State *l, const char* text) {
 				print_unescaped(str, len);
 				printf("\"]" NEWLINE);
 			} else {
-				printf("\t%d - %s[%ld]" NEWLINE, i, tname, len);
+				printf("\t%d - %s[%zu]" NEWLINE, i, tname, len);
 			}
 			break;
 		}
