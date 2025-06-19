@@ -247,6 +247,9 @@ void packet_server_version(MumbleClient *client, MumblePacket *packet) {
 
 	mumble_log(LOG_TRACE, "[TCP] Received %s: %p", version->base.descriptor->name, version);
 
+	mumble_log(LOG_INFO, "%s[%d] server version: %s", METATABLE_CLIENT, client->self, version->release);
+	mumble_log(LOG_INFO, "%s[%d] server system : %s - %s", METATABLE_CLIENT, client->self, version->os, version->os_version);
+
 	lua_State* l = client->l;
 
 	lua_newtable(l);
@@ -257,6 +260,10 @@ void packet_server_version(MumbleClient *client, MumblePacket *packet) {
 	if (version->has_version_v2) {
 		lua_pushinteger(l, version->version_v2);
 		lua_setfield(l, -2, "version_v2");
+	} else if (!client->legacy) {
+		// Protobuf supported client connected to an older server
+		mumble_log(LOG_WARN, "falling back to legacy packets for legacy server");
+		client->legacy = true;
 	}
 	lua_pushstring(l, version->release);
 	lua_setfield(l, -2, "release");
@@ -265,9 +272,6 @@ void packet_server_version(MumbleClient *client, MumblePacket *packet) {
 	lua_pushstring(l, version->os_version);
 	lua_setfield(l, -2, "os_version");
 	mumble_hook_call(client, "OnServerVersion", 1);
-
-	mumble_log(LOG_INFO, "%s[%d] server version: %s", METATABLE_CLIENT, client->self, version->release);
-	mumble_log(LOG_INFO, "%s[%d] server system : %s - %s", METATABLE_CLIENT, client->self, version->os, version->os_version);
 
 	mumble_proto__version__free_unpacked(version, NULL);
 }
