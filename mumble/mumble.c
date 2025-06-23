@@ -564,6 +564,14 @@ static int mumble_client_new(lua_State *l) {
 
 	client->audio_stream_active = false;
 
+    int pool_size = uv_available_parallelism();
+
+    client->work_pool_size = pool_size;
+    client->work_pool = calloc(pool_size, sizeof(audio_work_t *));
+    client->work_pool_in_use = calloc(pool_size, sizeof(bool));
+
+    uv_mutex_init(&client->work_pool_mutex);
+
 	// Create a thread that buffers the reading of open audio files
 	client->audio_thread_running = true;
 	uv_thread_create(&client->audio_thread, mumble_audio_thread, client);
@@ -885,6 +893,13 @@ static void mumble_client_free(MumbleClient *client) {
 
 	uv_mutex_destroy(&client->main_mutex);
 	uv_mutex_destroy(&client->inner_mutex);
+
+    for (int i = 0; i < client->work_pool_size; i++) {
+        free(client->work_pool[i]);
+    }
+    free(client->work_pool);
+    free(client->work_pool_in_use);
+    uv_mutex_destroy(&client->work_pool_mutex);
 }
 
 static void mumble_client_cleanup(MumbleClient *client) {
