@@ -59,14 +59,14 @@ uint64_t util_get_varint(uint8_t buffer[], int *len) {
 		switch (v & 0xFC) {
 		case 0xF0:
 			i = (uint64_t)buffer[1] << 24 | (uint64_t)buffer[2] << 16 |
-			    (uint64_t)buffer[3] << 8 | (uint64_t)buffer[4];
+				(uint64_t)buffer[3] << 8 | (uint64_t)buffer[4];
 			*len += 5;
 			break;
 		case 0xF4:
 			i = (uint64_t)buffer[1] << 56 | (uint64_t)buffer[2] << 48 |
-			    (uint64_t)buffer[3] << 40 | (uint64_t)buffer[4] << 32 |
-			    (uint64_t)buffer[5] << 24 | (uint64_t)buffer[6] << 16 |
-			    (uint64_t)buffer[7] << 8 | (uint64_t)buffer[8];
+				(uint64_t)buffer[3] << 40 | (uint64_t)buffer[4] << 32 |
+				(uint64_t)buffer[5] << 24 | (uint64_t)buffer[6] << 16 |
+				(uint64_t)buffer[7] << 8 | (uint64_t)buffer[8];
 			*len += 9;
 			break;
 		case 0xF8:
@@ -446,9 +446,7 @@ static void handle_audio_stream_end(lua_State *l, MumbleClient *client, AudioStr
 	}
 }
 
-static void process_audio_file(lua_State *l, MumbleClient *client, AudioStream *sound, uint32_t frame_size, sf_count_t *biggest_read, bool *didLoop) {
-	sf_count_t sample_size = (sf_count_t) client->audio_frames * (float) AUDIO_SAMPLE_RATE / 1000;
-
+static void process_audio_file(lua_State *l, MumbleClient *client, AudioStream *sound, uint32_t sample_size, sf_count_t *biggest_read, bool *didLoop) {
 	if (sample_size > PCM_BUFFER || sound->used <= 0) {
 		// Our sample size is somehow too large to fit within the input buffer,
 		// or our sound file buffer is empty..
@@ -468,7 +466,7 @@ static void process_audio_file(lua_State *l, MumbleClient *client, AudioStream *
 
 		// Calculate first and second chunk sizes
 		size_t first_chunk = (sound->buffer_size - sound->read_position < samples_to_read) ?
-		                     (sound->buffer_size - sound->read_position) : samples_to_read;
+							 (sound->buffer_size - sound->read_position) : samples_to_read;
 		size_t second_chunk = samples_to_read - first_chunk;
 
 		// Read first chunk from buffer if available
@@ -540,7 +538,7 @@ static void audio_transmission_bitrate_warning(MumbleClient *client, size_t leng
 	mumble_log(LOG_WARN, "Audio packet length %u greater than maximum of %u, stopping all audio streams. Try reducing the bitrate.", length, UDP_BUFFER_MAX);
 }
 
-static void send_legacy_audio(MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
+static void send_legacy_audio(MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame, uint32_t audio_sequence) {
 	uint32_t frame_header = encoded_len;
 	if (end_frame) {
 		frame_header |= (1 << 13);
@@ -549,7 +547,7 @@ static void send_legacy_audio(MumbleClient *client, uint8_t *encoded, opus_int32
 	VoicePacket packet;
 	uint8_t packet_buffer[PCM_BUFFER];
 	voicepacket_init(&packet, packet_buffer);
-	voicepacket_setheader(&packet, LEGACY_UDP_OPUS, client->audio_target, client->audio_sequence);
+	voicepacket_setheader(&packet, LEGACY_UDP_OPUS, client->audio_target, audio_sequence);
 	voicepacket_setframe(&packet, LEGACY_UDP_OPUS, frame_header, encoded, encoded_len);
 
 	int len = voicepacket_getlength(&packet);
@@ -561,22 +559,22 @@ static void send_legacy_audio(MumbleClient *client, uint8_t *encoded, opus_int32
 
 	if (client->tcp_udp_tunnel) {
 		mumble_log(LOG_TRACE, "[TCP] Sending legacy audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)",
-		           len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
+				   len, LEGACY_UDP_OPUS, client->audio_target, client->session, audio_sequence);
 		packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, NULL, len);
 	} else {
 		mumble_log(LOG_TRACE, "[UDP] Sending legacy audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)",
-		           len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
+				   len, LEGACY_UDP_OPUS, client->audio_target, client->session, audio_sequence);
 		packet_sendudp(client, packet_buffer, len);
 	}
 
 	mumble_handle_speaking_hooks_legacy(client, packet_buffer + 1, LEGACY_UDP_OPUS, client->audio_target, client->session);
 }
 
-static void send_protobuf_audio(MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame) {
+static void send_protobuf_audio(MumbleClient *client, uint8_t *encoded, opus_int32 encoded_len, bool end_frame, uint32_t audio_sequence) {
 	MumbleUDP__Audio audio = MUMBLE_UDP__AUDIO__INIT;
 	ProtobufCBinaryData audio_data = { .data = encoded, .len = (size_t)encoded_len };
 
-	audio.frame_number = client->audio_sequence;
+	audio.frame_number = audio_sequence;
 	audio.opus_data = audio_data;
 	audio.is_terminator = end_frame;
 	audio.target = client->audio_target;
@@ -594,15 +592,55 @@ static void send_protobuf_audio(MumbleClient *client, uint8_t *encoded, opus_int
 
 	if (client->tcp_udp_tunnel) {
 		mumble_log(LOG_TRACE, "[TCP] Sending protobuf TCP audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)",
-		           len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
+				   len, LEGACY_UDP_OPUS, client->audio_target, client->session, audio_sequence);
 		packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, NULL, len);
 	} else {
 		mumble_log(LOG_TRACE, "[UDP] Sending protobuf UDP audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)",
-		           len, LEGACY_UDP_OPUS, client->audio_target, client->session, client->audio_sequence);
+				   len, LEGACY_UDP_OPUS, client->audio_target, client->session, audio_sequence);
 		packet_sendudp(client, packet_buffer, len);
 	}
 
 	mumble_handle_speaking_hooks_protobuf(client, &audio, client->session);
+}
+
+static audio_work_t *acquire_work(MumbleClient *client) {
+	uv_mutex_lock(&client->work_pool_mutex);
+	for (int i = 0; i < client->work_pool_size; i++) {
+		if (!client->work_pool_in_use[i]) {
+			if (client->work_pool[i] == NULL) {
+				client->work_pool[i] = malloc(sizeof(audio_work_t));
+				if (!client->work_pool[i]) {
+					uv_mutex_unlock(&client->work_pool_mutex);
+					return NULL;
+				}
+				memset(client->work_pool[i], 0, sizeof(audio_work_t));
+			}
+
+			client->work_pool_in_use[i] = true;
+			uv_mutex_unlock(&client->work_pool_mutex);
+			return client->work_pool[i];
+		}
+	}
+
+	uv_mutex_unlock(&client->work_pool_mutex);
+	return NULL;
+}
+
+static void release_work(MumbleClient *client, audio_work_t *work) {
+    uv_mutex_lock(&client->work_pool_mutex);
+
+    for (int i = 0; i < client->work_pool_size; i++) {
+        if (client->work_pool[i] == work) {
+            client->work_pool_in_use[i] = false;
+            uv_mutex_unlock(&client->work_pool_mutex);
+            return;
+        }
+    }
+
+    uv_mutex_unlock(&client->work_pool_mutex);
+
+    // Not from pool — should never happen in this model
+    mumble_log(LOG_WARN, "attempted to release non-pooled work struct");
 }
 
 static void encode_audio_work(uv_work_t *req) {
@@ -610,44 +648,45 @@ static void encode_audio_work(uv_work_t *req) {
 	uint64_t start = uv_hrtime();
 
 	work->encoded_len = opus_encode_float(work->client->encoder,
-	                                      (float *)work->client->audio_output,
-	                                      work->frame_size,
-	                                      work->encoded,
-	                                      PAYLOAD_SIZE_MAX);
+										  (float *)work->pcm,
+										  work->frame_size,
+										  work->encoded,
+										  PAYLOAD_SIZE_MAX);
 
 	work->encode_time = (uv_hrtime() - start) / 1e6;
 }
 
 static void send_audio_after(uv_work_t *req, int status) {
 	audio_work_t *work = (audio_work_t *)req->data;
+	MumbleClient *client = work->client;
 
 	if (status == 0 && work->encoded_len > 0) {
 		mumble_log(LOG_TRACE, "audio encode: %.3f ms", work->encode_time);
 
 		uint64_t start = uv_hrtime();
-		if (work->client->legacy) {
-			send_legacy_audio(work->client, work->encoded, work->encoded_len, work->end_frame);
+		if (client->legacy) {
+			send_legacy_audio(client, work->encoded, work->encoded_len, work->end_frame, work->audio_sequence);
 		} else {
-			send_protobuf_audio(work->client, work->encoded, work->encoded_len, work->end_frame);
+			send_protobuf_audio(client, work->encoded, work->encoded_len, work->end_frame, work->audio_sequence);
 		}
 		mumble_log(LOG_TRACE, "audio send: %.3f ms", (uv_hrtime() - start) / 1e6);
 	}
 
-	free(work);
+	release_work(client, work);
 	free(req);
 }
 
 static void encode_and_send_audio(MumbleClient *client, sf_count_t frame_size, bool end_frame) {
-	audio_work_t *work = malloc(sizeof(audio_work_t));
-	if (!work) {
-		mumble_log(LOG_ERROR, "failed to allocate memory for audio work");
-		return;
-	}
+    audio_work_t *work = acquire_work(client);
+    if (!work) {
+        mumble_log(LOG_WARN, "no available audio work, dropping frame");
+        return;
+    }
 
 	uv_work_t *req = malloc(sizeof(uv_work_t));
 	if (!req) {
-		free(work);
 		mumble_log(LOG_ERROR, "failed to allocate memory for work request");
+		release_work(client, work);
 		return;
 	}
 
@@ -658,14 +697,18 @@ static void encode_and_send_audio(MumbleClient *client, sf_count_t frame_size, b
 	work->end_frame = end_frame;
 	work->encoded_len = 0;
 	work->encode_time = 0;
-	work->client->audio_sequence++;
+	work->audio_sequence = work->client->audio_sequence++;
+
+	memcpy(work->pcm, client->audio_output, frame_size * sizeof(AudioFrame));
 
 	int status = uv_queue_work(uv_default_loop(), req, encode_audio_work, send_audio_after);
 	if (status != 0) {
 		mumble_log(LOG_ERROR, "failed to queue work for encoding and sending audio: %s", uv_strerror(status));
-		free(work);
+		release_work(client, work);
 		free(req);
 	}
+
+	uv_mutex_unlock(&client->work_mutex);
 }
 
 void audio_transmission_event(lua_State *l, MumbleClient *client) {

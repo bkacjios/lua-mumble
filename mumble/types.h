@@ -138,6 +138,18 @@ struct MumbleThreadController {
 	LinkQueue*	message_queue;
 };
 
+typedef struct {
+	uv_work_t* req;
+	MumbleClient* client;
+	sf_count_t frame_size;
+	bool end_frame;
+	AudioFrame pcm[MAX_PCM_FRAMES];
+	uint8_t encoded[PAYLOAD_SIZE_MAX];
+	opus_int32 encoded_len;
+	float encode_time;
+	uint32_t audio_sequence;
+} audio_work_t;
+
 struct MumbleClient {
 	lua_State*			l;
 	int					self;
@@ -219,6 +231,12 @@ struct MumbleClient {
 	
 	uv_mutex_t			main_mutex;
 	uv_mutex_t			inner_mutex;
+
+	audio_work_t		**work_pool;
+	bool				*work_pool_in_use;
+	int					work_pool_size;
+
+	uv_mutex_t work_pool_mutex;
 };
 
 struct LinkNode {
