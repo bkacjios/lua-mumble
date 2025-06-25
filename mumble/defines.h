@@ -53,7 +53,7 @@
 // How big a protobuf packet header is
 // 2 bytes for type ID
 // 4 bytes for message length
-#define PACKET_HEADER_SIZE sizeof(uint16_t) + sizeof(uint32_t)
+#define PACKET_HEADER_SIZE (sizeof(uint16_t) + sizeof(uint32_t))
 
 // How many dropped UDP pings will result in falling back to TCP tunnel
 #define UDP_TCP_FALLBACK 2
