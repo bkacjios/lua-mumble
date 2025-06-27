@@ -18,15 +18,21 @@ extern int MUMBLE_DATA_REG;
 
 extern int luaopen_mumble(lua_State *l);
 
-void mumble_audio_thread(void *arg);
-void mumble_audio_idle(uv_idle_t* handle);
+void mumble_audio_buffer_thread(void *arg);
+void mumble_audio_playback_thread(void *arg);
+void mumble_audio_encode_thread(void *arg);
+void mumble_audio_playback_async(uv_async_t* handle);
+
+void mumble_audio_queue_init(audio_queue_t *q);
+void mumble_audio_queue_shutdown(MumbleClient *client);
+
 void mumble_ping_timer(uv_timer_t* handle);
 
 uint64_t util_get_varint(uint8_t buffer[], int *len);
 
 void mumble_ping(MumbleClient* client);
 
-void mumble_create_audio_process(MumbleClient *client);
+uint64_t mumble_adjust_audio_bandwidth(MumbleClient *client);
 int mumble_client_connect(lua_State *l);
 void mumble_disconnect(MumbleClient *client, const char* reason, bool garbagecollected);
 

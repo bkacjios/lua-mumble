@@ -1,3 +1,6 @@
+#define _GNU_SOURCE
+#include <pthread.h>
+
 #include "mumble.h"
 #include "packet.h"
 #include "audio.h"
@@ -301,12 +304,14 @@ int process_audio(AudioStream* sound, float **output_data, size_t available_spac
 	return 0;
 }
 
-void mumble_audio_thread(void *arg) {
+void mumble_audio_buffer_thread(void *arg) {
+	pthread_setname_np(pthread_self(), "buffer");
+
 	MumbleClient* client = (MumbleClient*) arg;
 
 	while (true) {
 		uv_mutex_lock(&client->main_mutex);
-		bool running = client->audio_thread_running;
+		bool running = client->audio_buffer_thread_running;
 
 		uv_mutex_lock(&client->inner_mutex);
 		LinkNode* current = client->stream_list;
@@ -337,8 +342,8 @@ void mumble_audio_thread(void *arg) {
 						continue;
 					}
 
-					mumble_log(LOG_TRACE, "sound->buffer_size (samples): %lu", buffer_size);
-					mumble_log(LOG_TRACE, "available_space (samples): %lu", available_space);
+					mumble_log(LOG_CODE, "sound->buffer_size (samples): %lu", buffer_size);
+					mumble_log(LOG_CODE, "available_space (samples): %lu", available_space);
 
 					size_t frames_read;
 					float* output_audio = NULL;
@@ -349,8 +354,8 @@ void mumble_audio_thread(void *arg) {
 					// Calculate the total number of samples to copy
 					size_t copy_size = frames_read * AUDIO_PLAYBACK_CHANNELS;
 
-					mumble_log(LOG_TRACE, "frames_read: %lu", frames_read);
-					mumble_log(LOG_TRACE, "copy_size (samples): %lu", copy_size);
+					mumble_log(LOG_CODE, "frames_read: %lu", frames_read);
+					mumble_log(LOG_CODE, "copy_size (samples): %lu", copy_size);
 
 					if (frames_read > 0 && output_audio) {
 						uv_mutex_lock(&sound->mutex);
@@ -380,55 +385,47 @@ void mumble_audio_thread(void *arg) {
 	}
 }
 
-void mumble_audio_idle(uv_idle_t* handle) {
-	uint64_t current_time = uv_hrtime();
+void mumble_audio_playback_thread(void* arg) {
+	pthread_setname_np(pthread_self(), "playback");
 
-	MumbleClient* client = (MumbleClient*) handle->data;
-	lua_State *l = client->l;
+	MumbleClient* client = (MumbleClient*)arg;
 
-	if (current_time >= client->audio_idle_next) {
+	// Use this thread as a high-accuracy timer, triggering the main thread every as often as we need it
+	while (true) {
+		uv_mutex_lock(&client->main_mutex);
+		bool running = client->audio_playback_thread_running;
+		uv_mutex_unlock(&client->main_mutex);
+		if (!running) break; // shutdown
+		
+		uint64_t now = uv_hrtime();
 
-		uint64_t last_time_us = (current_time - client->audio_idle_last) / 1000;
+		if (now >= client->audio_playback_next) {
+			uint64_t last_us = (now - client->audio_playback_last) / 1000;
+			client->audio_playback_last = now;
 
-		client->audio_idle_last = current_time;
+			mumble_log(LOG_CODE, "last audio event: %.3f ms ago", (double)last_us / 1000);
 
-		mumble_log(LOG_TRACE, "last audio event: %.3f ms ago", (double)last_time_us / 1000);
+			if (client->connected) {
+				client->audio_playback_async_pending = true;
+				// Signal main thread that we're ready for playback
+				uv_async_send(&client->audio_playback_async);
+			}
 
-		if (client->connected) {
-			audio_transmission_event(l, client);
+			// Increment audio_playback_next in discrete steps to prevent falling behind
+			uint64_t frame_interval_ns = client->audio_frames * 1000000;
+
+			while (now >= client->audio_playback_next) {
+				client->audio_playback_next += frame_interval_ns;
+			}
 		}
 
-		uint64_t end_time = uv_hrtime();
-
-		// Convert processing time from nanoseconds to microseconds
-		uint64_t process_time_us = (end_time - current_time) / 1000;
-
-		mumble_log(LOG_TRACE, "audio transmission took: %.3f ms", (double)process_time_us / 1000);
-
-		// Calculate next trigger time based on fixed intervals
-		uint64_t frame_interval = client->audio_frames * 1000000;
-
-		// Increment audio_idle_next in discrete steps to prevent falling behind
-		while (current_time >= client->audio_idle_next) {
-			client->audio_idle_next += frame_interval;
-		}
-
-	} else {
-		uint64_t time_until_next = (client->audio_idle_next - current_time) / 1000;
-
+		// Sleep until client->audio_playback_next
 		struct timespec ts;
-		ts.tv_sec = 0;
+		uint64_t wake_time = client->audio_playback_next;
+		ts.tv_sec = wake_time / 1000000000;
+		ts.tv_nsec = wake_time % 1000000000;
 
-		// Adaptive sleep
-		if (time_until_next > 1000) {
-			// If more than 1 ms away, sleep more
-			ts.tv_nsec = 1000000;	// 1 ms
-		} else {
-			// Sleep less while close
-			ts.tv_nsec = 500000;	// 0.5ms
-		}
-
-		nanosleep(&ts, NULL);
+		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, NULL);
 	}
 }
 
@@ -603,113 +600,174 @@ static void send_protobuf_audio(MumbleClient *client, uint8_t *encoded, opus_int
 	mumble_handle_speaking_hooks_protobuf(client, &audio, client->session);
 }
 
-static audio_work_t *acquire_work(MumbleClient *client) {
-	uv_mutex_lock(&client->work_pool_mutex);
-	for (int i = 0; i < client->work_pool_size; i++) {
-		if (!client->work_pool_in_use[i]) {
-			if (client->work_pool[i] == NULL) {
-				client->work_pool[i] = malloc(sizeof(audio_work_t));
-				if (!client->work_pool[i]) {
-					uv_mutex_unlock(&client->work_pool_mutex);
-					return NULL;
-				}
-				memset(client->work_pool[i], 0, sizeof(audio_work_t));
-			}
+void mumble_audio_queue_init(audio_queue_t *q) {
+	q->front = NULL;
+	q->rear = NULL;
+	uv_mutex_init(&q->mutex);
+	uv_cond_init(&q->cond);
+}
 
-			client->work_pool_in_use[i] = true;
-			uv_mutex_unlock(&client->work_pool_mutex);
-			return client->work_pool[i];
-		}
+static void audio_queue_push(audio_queue_t *q, audio_work_t *work) {
+	audio_queue_node_t *node = malloc(sizeof(audio_queue_node_t));
+	if (!node) {
+		mumble_log(LOG_ERROR, "failed to allocate audio queue node");
+		return;
+	}
+	node->work = work;
+	node->next = NULL;
+
+	uv_mutex_lock(&q->mutex);
+
+	if (q->rear == NULL) {
+		// Empty
+		q->front = node;
+		q->rear = node;
+	} else {
+		q->rear->next = node;
+		q->rear = node;
 	}
 
-	uv_mutex_unlock(&client->work_pool_mutex);
-	return NULL;
+	uv_cond_signal(&q->cond);
+	uv_mutex_unlock(&q->mutex);
 }
 
-static void release_work(MumbleClient *client, audio_work_t *work) {
-    uv_mutex_lock(&client->work_pool_mutex);
+static audio_work_t *audio_queue_pop(audio_queue_t *q, bool *running_flag) {
+	uv_mutex_lock(&q->mutex);
 
-    for (int i = 0; i < client->work_pool_size; i++) {
-        if (client->work_pool[i] == work) {
-            client->work_pool_in_use[i] = false;
-            uv_mutex_unlock(&client->work_pool_mutex);
-            return;
-        }
-    }
-
-    uv_mutex_unlock(&client->work_pool_mutex);
-
-    // Not from pool — should never happen in this model
-    mumble_log(LOG_WARN, "attempted to release non-pooled work struct");
-}
-
-static void encode_audio_work(uv_work_t *req) {
-	audio_work_t *work = (audio_work_t *)req->data;
-	uint64_t start = uv_hrtime();
-
-	work->encoded_len = opus_encode_float(work->client->encoder,
-										  (float *)work->pcm,
-										  work->frame_size,
-										  work->encoded,
-										  PAYLOAD_SIZE_MAX);
-
-	work->encode_time = (uv_hrtime() - start) / 1e6;
-}
-
-static void send_audio_after(uv_work_t *req, int status) {
-	audio_work_t *work = (audio_work_t *)req->data;
-	MumbleClient *client = work->client;
-
-	if (status == 0 && work->encoded_len > 0) {
-		mumble_log(LOG_TRACE, "audio encode: %.3f ms", work->encode_time);
-
-		uint64_t start = uv_hrtime();
-		if (client->legacy) {
-			send_legacy_audio(client, work->encoded, work->encoded_len, work->end_frame, work->audio_sequence);
-		} else {
-			send_protobuf_audio(client, work->encoded, work->encoded_len, work->end_frame, work->audio_sequence);
-		}
-		mumble_log(LOG_TRACE, "audio send: %.3f ms", (uv_hrtime() - start) / 1e6);
+	while (q->front == NULL && *running_flag) {
+		uv_cond_wait(&q->cond, &q->mutex);
 	}
 
-	release_work(client, work);
-	free(req);
+	if (!*running_flag && q->front == NULL) {
+		// Shutdown and queue empty: no more work
+		uv_mutex_unlock(&q->mutex);
+		return NULL;
+	}
+
+	// Pop node as usual
+	audio_queue_node_t *node = q->front;
+	audio_work_t *work = node->work;
+	q->front = node->next;
+	if (q->front == NULL) {
+		q->rear = NULL;
+	}
+	free(node);
+	uv_mutex_unlock(&q->mutex);
+	return work;
 }
 
-static void encode_and_send_audio(MumbleClient *client, sf_count_t frame_size, bool end_frame) {
-    audio_work_t *work = acquire_work(client);
-    if (!work) {
-        mumble_log(LOG_WARN, "no available audio work, dropping frame");
-        return;
+static audio_work_t *audio_queue_pop_nonblocking(audio_queue_t *q) {
+    uv_mutex_lock(&q->mutex);
+
+    if (q->front == NULL) {
+        uv_mutex_unlock(&q->mutex);
+        return NULL;
     }
 
-	uv_work_t *req = malloc(sizeof(uv_work_t));
-	if (!req) {
-		mumble_log(LOG_ERROR, "failed to allocate memory for work request");
-		release_work(client, work);
+    audio_queue_node_t *node = q->front;
+    audio_work_t *work = node->work;
+    q->front = node->next;
+    if (q->front == NULL) {
+        q->rear = NULL;
+    }
+    free(node);
+    uv_mutex_unlock(&q->mutex);
+    return work;
+}
+
+static void audio_queue_cleanup(audio_queue_t *q) {
+	// Lock the queue to safely walk it
+	uv_mutex_lock(&q->mutex);
+
+	audio_queue_node_t *node = q->front;
+	while (node) {
+		audio_queue_node_t *next = node->next;
+		if (node->work) {
+			free(node->work);
+		}
+		free(node);
+		node = next;
+	}
+
+	q->front = NULL;
+	q->rear = NULL;
+
+	uv_mutex_unlock(&q->mutex);
+
+	// Destroy mutex and cond
+	uv_mutex_destroy(&q->mutex);
+	uv_cond_destroy(&q->cond);
+}
+
+void mumble_audio_queue_shutdown(MumbleClient *client) {
+	// Signal encode thread to stop
+	uv_mutex_lock(&client->audio_encode_queue.mutex);
+	client->audio_encode_thread_running = false;
+	uv_cond_signal(&client->audio_encode_queue.cond);
+	uv_mutex_unlock(&client->audio_encode_queue.mutex);
+
+	// Join encode thread
+	uv_thread_join(&client->audio_encode_thread);
+
+	// Cleanup encode and send queues
+	audio_queue_cleanup(&client->audio_encode_queue);
+	audio_queue_cleanup(&client->audio_send_queue);
+}
+
+static void encode_audio(MumbleClient *client, sf_count_t frame_size, bool end_frame) {
+	if (frame_size > MAX_PCM_FRAMES) {
+		mumble_log(LOG_ERROR, "frame_size %zu exceeds MAX_PCM_FRAMES %d", frame_size, MAX_PCM_FRAMES);
 		return;
 	}
 
-	req->data = work;
-	work->req = req;
+	audio_work_t *work = malloc(sizeof(audio_work_t));
+	if (!work) {
+		mumble_log(LOG_ERROR, "failed to allocate audio work");
+		return;
+	}
+
 	work->client = client;
 	work->frame_size = frame_size;
 	work->end_frame = end_frame;
-	work->encoded_len = 0;
-	work->encode_time = 0;
-	work->audio_sequence = work->client->audio_sequence++;
-
+	work->audio_sequence = client->audio_sequence++;
 	memcpy(work->pcm, client->audio_output, frame_size * sizeof(AudioFrame));
 
-	int status = uv_queue_work(uv_default_loop(), req, encode_audio_work, send_audio_after);
-	if (status != 0) {
-		mumble_log(LOG_ERROR, "failed to queue work for encoding and sending audio: %s", uv_strerror(status));
-		release_work(client, work);
-		free(req);
+	audio_queue_push(&client->audio_encode_queue, work);
+	mumble_log(LOG_CODE, "queued %zu frames of audio for encoding", frame_size);
+}
+
+void mumble_audio_encode_thread(void *arg) {
+	pthread_setname_np(pthread_self(), "encode");
+
+	MumbleClient *client = (MumbleClient *)arg;
+
+	while (client->audio_encode_thread_running) {
+		// Block and pop from encode queue
+		audio_work_t *work = audio_queue_pop(&client->audio_encode_queue, &client->audio_encode_thread_running);
+		if (!work) {
+			// Only will happen on shutdown
+			break;
+		}
+
+		uint64_t start = uv_hrtime();
+
+		// Encode audio
+		work->encoded_len = opus_encode_float(client->encoder,
+											 (float *)work->pcm,
+											 work->frame_size,
+											 work->encoded,
+											 PAYLOAD_SIZE_MAX);
+
+		work->encode_time = (uv_hrtime() - start) / 1e6;
+
+		mumble_log(LOG_CODE, "audio encode: %.3f ms", work->encode_time);
+
+		// Push to send queue
+		audio_queue_push(&client->audio_send_queue, work);
 	}
 }
 
-void audio_transmission_event(lua_State *l, MumbleClient *client) {
+static void audio_encode_event(lua_State *l, MumbleClient *client) {
 	lua_stackguard_entry(l);
 
 	sf_count_t biggest_read = 0;
@@ -839,11 +897,71 @@ void audio_transmission_event(lua_State *l, MumbleClient *client) {
 	bool end_frame = !didLoop && (biggest_read < output_frames && stream_ended);
 
 	if (biggest_read > 0 || end_frame) {
-		// Encode and transmit until the end
-		encode_and_send_audio(client, output_frames, end_frame);
+		// Encode audio and queue it up for sending
+		encode_audio(client, output_frames, end_frame);
 	}
 
 	client->audio_stream_active = streamed_audio;
 
 	lua_stackguard_exit(l);
 }
+
+static void audio_send_event(MumbleClient *client) {
+	audio_work_t *work = audio_queue_pop_nonblocking(&client->audio_send_queue);
+
+	if (work != NULL) {
+		// We have something to send
+		if (client->legacy) {
+			send_legacy_audio(client, work->encoded, work->encoded_len,
+							  work->end_frame, work->audio_sequence);
+		} else {
+			send_protobuf_audio(client, work->encoded, work->encoded_len,
+								work->end_frame, work->audio_sequence);
+		}
+		// We can finally free our work
+		free(work);
+	}
+}
+
+void mumble_audio_playback_async(uv_async_t* handle) {
+	MumbleClient* client = (MumbleClient*)handle->data;
+
+	// This playback async callback is called every frame duration
+	if (client->audio_playback_async_pending) {
+		client->audio_playback_async_pending = false;
+
+		if (client->connected) {
+			// Encode audio if we can
+			audio_encode_event(client->l, client);
+			// Send audio if we can
+			audio_send_event(client);
+		}
+	}
+}
+
+/*
+	General info on how this all works.
+	Lua and opus encoding is not thread safe.
+	Create multiple threads to handle all data processing,
+	eventually handing off the results back to our main thread.
+
+	mumble_audio_buffer_thread
+		- Reads 2 seconds of PCM data from any playing audio file
+		- Resamples PCM data to 48000hz, and converts to stereo if needed
+		- Saves PCM data in a circular buffer on the AudioStream struct
+
+	mumble_audio_playback_thread
+		- Triggers "mumble_audio_playback_async" asynchronously on a high-accuracy timer
+		- If we are sending audio in 20ms chunks, this timer will trigger as close to every 20ms it can
+
+	mumble_audio_playback_async
+		- Ran on our main thread, so Lua is safe to be only be called from here
+		- audio_encode_event
+			* Loops through all active audio sources and queues up 20ms of PCM audio to be encoded
+		- audio_send_event
+			* Pops a single chunk of encoded audio from our send queue, then transmits it
+
+	mumble_audio_encode_thread
+		- Encodes PCM data sent to the queue from mumble_audio_playback_async
+		- Queues it up to be sent in mumble_audio_playback_async
+*/

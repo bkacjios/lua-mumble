@@ -44,7 +44,7 @@ all: CFLAGS += -O2
 all: objects
 
 # Add debug information for debug build
-debug: CFLAGS += -DDEBUG -g
+debug: CFLAGS += -DDEBUG -g -O0
 debug: objects
 
 gitversion.h: .git/HEAD .git/index

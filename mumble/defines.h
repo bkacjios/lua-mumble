@@ -74,6 +74,7 @@
 #define LOG_ERROR 3
 #define LOG_DEBUG 4
 #define LOG_TRACE 5
+#define LOG_CODE 6
 
 #ifdef DEBUG
 #define LOG_LEVEL LOG_DEBUG

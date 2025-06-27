@@ -12,6 +12,7 @@ static FILE* LOG_FILE = NULL;
 
 static const char* get_log_level_info(int level, const char** lcolor) {
 	switch (level) {
+	case LOG_CODE: *lcolor = "\x1b[34;1m"; return "CODE";
 	case LOG_TRACE: *lcolor = "\x1b[36;1m"; return "TRACE";
 	case LOG_DEBUG: *lcolor = "\x1b[35;1m"; return "DEBUG";
 	case LOG_INFO:  *lcolor = "\x1b[32;1m"; return "INFO";

@@ -139,7 +139,6 @@ struct MumbleThreadController {
 };
 
 typedef struct {
-	uv_work_t* req;
 	MumbleClient* client;
 	sf_count_t frame_size;
 	bool end_frame;
@@ -149,6 +148,24 @@ typedef struct {
 	float encode_time;
 	uint32_t audio_sequence;
 } audio_work_t;
+
+typedef struct audio_queue_node_s {
+	audio_work_t *work;
+	struct audio_queue_node_s *next;
+} audio_queue_node_t;
+
+typedef struct audio_queue_s {
+	audio_queue_node_t *front;
+	audio_queue_node_t *rear;
+
+	uv_mutex_t mutex;
+	uv_cond_t cond;
+} audio_queue_t;
+
+typedef struct {
+	MumbleClient *client;
+	audio_work_t *work;
+} audio_send_event_t;
 
 struct MumbleClient {
 	lua_State*			l;
@@ -183,10 +200,6 @@ struct MumbleClient {
 	double				volume;
 	bool				ducking;
 	double				ducking_volume;
-
-	uv_idle_t			audio_idle;
-	uint64_t			audio_idle_next;
-	uint64_t			audio_idle_last;
 
 	uv_timer_t			ping_timer;
 
@@ -225,18 +238,26 @@ struct MumbleClient {
 
 	bool				recording;
 
-	uv_thread_t			audio_thread;
-	bool				audio_thread_running;
+	uv_thread_t			audio_buffer_thread;
+	bool				audio_buffer_thread_running;
+
+	uv_thread_t			audio_playback_thread;
+	uv_async_t			audio_playback_async;
+	bool				audio_playback_async_pending;
+	bool				audio_playback_thread_running;
+	uint64_t			audio_playback_next;
+	uint64_t			audio_playback_last;
+
+	audio_queue_t		audio_encode_queue;
+	uv_thread_t			audio_encode_thread;
+	bool				audio_encode_thread_running;
+
+	audio_queue_t		audio_send_queue;
+
 	bool				audio_stream_active;
 	
 	uv_mutex_t			main_mutex;
 	uv_mutex_t			inner_mutex;
-
-	audio_work_t		**work_pool;
-	bool				*work_pool_in_use;
-	int					work_pool_size;
-
-	uv_mutex_t work_pool_mutex;
 };
 
 struct LinkNode {

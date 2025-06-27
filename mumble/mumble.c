@@ -384,8 +384,8 @@ void socket_read_event_tcp(uv_poll_t* handle, int status, int events) {
 		// Read the header if not fully read
 		if (packet.header_len < PACKET_HEADER_SIZE) {
 			int ret = SSL_read(client->ssl,
-			                   packet.header + packet.header_len,
-			                   PACKET_HEADER_SIZE - packet.header_len);
+							   packet.header + packet.header_len,
+							   PACKET_HEADER_SIZE - packet.header_len);
 
 			if (ret > 0) {
 				packet.header_len += ret;
@@ -425,8 +425,8 @@ void socket_read_event_tcp(uv_poll_t* handle, int status, int events) {
 		// Read the message body if the header is complete
 		if (packet.header_len == PACKET_HEADER_SIZE && packet.body_len < packet.length) {
 			int ret = SSL_read(client->ssl,
-			                   packet.body + packet.body_len,
-			                   packet.length - packet.body_len);
+							   packet.body + packet.body_len,
+							   packet.length - packet.body_len);
 			if (ret > 0) {
 				packet.body_len += ret;
 
@@ -547,8 +547,6 @@ static int mumble_client_new(lua_State *l) {
 	client->udp_ping_avg = 0;
 	client->udp_ping_var = 0;
 
-	client->audio_idle_next = uv_hrtime();
-
 	client->tcp_udp_tunnel = true;
 
 	client->stream_list = NULL;
@@ -564,17 +562,27 @@ static int mumble_client_new(lua_State *l) {
 
 	client->audio_stream_active = false;
 
-    int pool_size = uv_available_parallelism();
-
-    client->work_pool_size = pool_size;
-    client->work_pool = calloc(pool_size, sizeof(audio_work_t *));
-    client->work_pool_in_use = calloc(pool_size, sizeof(bool));
-
-    uv_mutex_init(&client->work_pool_mutex);
-
 	// Create a thread that buffers the reading of open audio files
-	client->audio_thread_running = true;
-	uv_thread_create(&client->audio_thread, mumble_audio_thread, client);
+	client->audio_buffer_thread_running = true;
+	uv_thread_create(&client->audio_buffer_thread, mumble_audio_buffer_thread, client);
+
+	// Create a thread that handles the playback of audio
+	client->audio_playback_thread_running = true;
+	client->audio_playback_async_pending = false;
+
+	client->audio_playback_last = uv_hrtime();
+	client->audio_playback_next = client->audio_playback_last;
+
+	uv_thread_create(&client->audio_playback_thread, mumble_audio_playback_thread, client);
+
+	uv_async_init(uv_default_loop(), &client->audio_playback_async, mumble_audio_playback_async);
+
+	mumble_audio_queue_init(&client->audio_encode_queue);
+	mumble_audio_queue_init(&client->audio_send_queue);
+
+	client->audio_encode_thread_running = true;
+	uv_thread_create(&client->audio_encode_thread, mumble_audio_encode_thread, client);
+
 	return 1;
 }
 
@@ -606,8 +614,8 @@ int mumble_client_connect(lua_State *l) {
 	}
 
 	if (!SSL_CTX_use_certificate_chain_file(client->ssl_context, certificate_file) ||
-	        !SSL_CTX_use_PrivateKey_file(client->ssl_context, key_file, SSL_FILETYPE_PEM) ||
-	        !SSL_CTX_check_private_key(client->ssl_context)) {
+			!SSL_CTX_use_PrivateKey_file(client->ssl_context, key_file, SSL_FILETYPE_PEM) ||
+			!SSL_CTX_check_private_key(client->ssl_context)) {
 		mumble_client_free(client);
 		lua_pushboolean(l, false);
 		lua_pushfstring(l, "could not load certificate and/or key file: %s", mumble_ssl_error(ERR_get_error()));
@@ -692,8 +700,8 @@ int mumble_client_connect(lua_State *l) {
 
 	client->socket_tcp.data = (void*) client;
 	client->socket_udp.data = (void*) client;
-	client->audio_idle.data = (void*) client;
 	client->ping_timer.data = (void*) client;
+	client->audio_playback_async.data = (void*) client;
 
 	uv_loop_t* loop = uv_default_loop();
 
@@ -828,14 +836,6 @@ uint64_t mumble_adjust_audio_bandwidth(MumbleClient *client) {
 	return (uint64_t) frames * 10;
 }
 
-void mumble_create_audio_process(MumbleClient *client) {
-	client->audio_idle_last = uv_hrtime();
-	// Create a timer for audio data
-	mumble_adjust_audio_bandwidth(client);
-	uv_idle_init(uv_default_loop(), &client->audio_idle);
-	uv_idle_start(&client->audio_idle, mumble_audio_idle);
-}
-
 static int mumble_loop(lua_State *l) {
 	uv_signal_init(uv_default_loop(), &mumble_signal);
 	uv_signal_start(&mumble_signal, mumble_signal_event, SIGINT);
@@ -884,22 +884,24 @@ static void mumble_client_free(MumbleClient *client) {
 		opus_decoder_destroy(client->decoder);
 	}
 
-	if (client->audio_thread) {
+	if (client->audio_buffer_thread) {
 		uv_mutex_lock(&client->main_mutex);
-		client->audio_thread_running = false;
+		client->audio_buffer_thread_running = false;
 		uv_mutex_unlock(&client->main_mutex);
-		uv_thread_join(&client->audio_thread);
+		uv_thread_join(&client->audio_buffer_thread);
 	}
+
+	if (client->audio_playback_thread) {
+		uv_mutex_lock(&client->main_mutex);
+		client->audio_playback_thread_running = false;
+		uv_mutex_unlock(&client->main_mutex);
+		uv_thread_join(&client->audio_playback_thread);
+	}
+
+	mumble_audio_queue_shutdown(client);
 
 	uv_mutex_destroy(&client->main_mutex);
 	uv_mutex_destroy(&client->inner_mutex);
-
-    for (int i = 0; i < client->work_pool_size; i++) {
-        free(client->work_pool[i]);
-    }
-    free(client->work_pool);
-    free(client->work_pool_in_use);
-    uv_mutex_destroy(&client->work_pool_mutex);
 }
 
 static void mumble_client_cleanup(MumbleClient *client) {
@@ -913,6 +915,7 @@ static void mumble_client_cleanup(MumbleClient *client) {
 
 	if (uv_is_active((uv_handle_t*) &client->ssl_poll)) {
 		uv_poll_stop(&client->ssl_poll);
+		uv_close((uv_handle_t*)&client->ssl_poll, NULL);
 	}
 
 	if (uv_is_active((uv_handle_t*) &client->socket_tcp)) {
@@ -921,10 +924,11 @@ static void mumble_client_cleanup(MumbleClient *client) {
 
 	if (uv_is_active((uv_handle_t*) &client->ping_timer)) {
 		uv_timer_stop(&client->ping_timer);
+		uv_close((uv_handle_t*)&client->ping_timer, NULL);
 	}
 
-	if (uv_is_active((uv_handle_t*) &client->audio_idle)) {
-		uv_idle_stop(&client->audio_idle);
+	if (uv_is_active((uv_handle_t*) &client->audio_playback_async)) {
+		uv_close((uv_handle_t*)&client->audio_playback_async, NULL);
 	}
 
 	uv_mutex_lock(&client->main_mutex);
@@ -1036,7 +1040,7 @@ int mumble_hook_call_ret(MumbleClient *client, const char* hook, int nargs, int 
 		return 0;
 	}
 
-	mumble_log(LOG_TRACE, "%s: %p calling hook \"%s\"", METATABLE_CLIENT, client, hook);
+	mumble_log(LOG_TRACE, "%s: %p calling hook \"%s\" with %d args", METATABLE_CLIENT, client, hook, nargs);
 
 	const int top = lua_gettop(l);
 	const int callargs = nargs + 1;
@@ -1309,10 +1313,10 @@ int mumble_push_address(lua_State* l, ProtobufCBinaryData address) {
 		if (!inet_ntop(AF_INET6, address.data, ipv6, sizeof(ipv6))) {
 			// Fallback
 			sprintf(ipv6, "%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
-			        bytes[0], bytes[1], bytes[2], bytes[3],
-			        bytes[4], bytes[5], bytes[5], bytes[7],
-			        bytes[8], bytes[9], bytes[10], bytes[11],
-			        bytes[12], bytes[13], bytes[14], bytes[15]);
+					bytes[0], bytes[1], bytes[2], bytes[3],
+					bytes[4], bytes[5], bytes[5], bytes[7],
+					bytes[8], bytes[9], bytes[10], bytes[11],
+					bytes[12], bytes[13], bytes[14], bytes[15]);
 		}
 
 		lua_pushboolean(l, true);

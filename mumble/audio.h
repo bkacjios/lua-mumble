@@ -2,8 +2,6 @@
 
 #include "types.h"
 
-void audio_transmission_event(lua_State* l, MumbleClient *client);
-
 void audio_transmission_reference(lua_State *l, AudioStream *sound);
 void audio_transmission_unreference(lua_State*l, AudioStream *sound);
 

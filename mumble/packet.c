@@ -399,7 +399,7 @@ void packet_server_sync(MumbleClient *client, MumblePacket *packet) {
 
 		client->max_bandwidth = sync->max_bandwidth;
 
-		mumble_create_audio_process(client);
+		mumble_adjust_audio_bandwidth(client);
 	}
 	if (sync->welcome_text != NULL) {
 		lua_pushstring(l, sync->welcome_text);
@@ -1106,8 +1106,8 @@ void packet_crypt_setup(MumbleClient *client, MumblePacket *packet) {
 	lua_newtable(l);
 	if (crypt->has_key && crypt->has_client_nonce && crypt->has_server_nonce) {
 		if (!crypt_setKey(client->crypt, crypt->key.data, crypt->key.len,
-		                  crypt->client_nonce.data, crypt->client_nonce.len,
-		                  crypt->server_nonce.data, crypt->server_nonce.len)) {
+						  crypt->client_nonce.data, crypt->client_nonce.len,
+						  crypt->server_nonce.data, crypt->server_nonce.len)) {
 			mumble_log(LOG_ERROR, "[OCB] CryptState: cipher resync failed (Invalid key/nonce from the server)");
 		}
 	} else if (crypt->has_server_nonce) {
