@@ -335,9 +335,8 @@ static const int quality_vals[] = {
 static int client_openAudio(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	const char* filepath	= luaL_checkstring(l, 2);
-	float volume			= (float) luaL_optnumber(l, 3, 1);
 
-	int idx = luaL_checkoption(l, 4, "medium", quality_names);
+	int idx = luaL_checkoption(l, 3, "medium", quality_names);
 	int qualityType = quality_vals[idx];
 
 	SF_INFO info;
@@ -378,7 +377,7 @@ static int client_openAudio(lua_State *l) {
 	sound->looping = false;
 	sound->refrence = LUA_NOREF;
 	sound->loop_count = 0;
-	sound->volume = volume;
+	sound->volume = 1.0f;
 	sound->fade_volume = 1.0f;
 	sound->fade_frames = 0;
 	sound->fade_frames_left = 0;

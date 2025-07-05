@@ -157,7 +157,7 @@ mumble.client:transmit(Number codec, String encoded_audio_packet, Boolean speaki
 -- Open an audio file as an audio stream
 -- If audiostream = nil, it will pass along an error string as to why it couldn't open the file
 -- Allowed resample quality values: ["best", "medium", "fastest", "zero", "linear"]
-mumble.audiostream audiostream, [ String error ] = mumble.client:openAudio(String audio file path, Number volume = 1.0, String resampleQuality = "medium")
+mumble.audiostream audiostream, [ String error ] = mumble.client:openAudio(String audio file path, String resampleQuality = "medium")
 
 -- Creates a buffer that you can write raw, 32bit float, PCM data that will be output by the client as soon as it can.
 -- Creating multiple buffers will result in each buffer being mixed together during transmission, for simultaneous audio streaming.
