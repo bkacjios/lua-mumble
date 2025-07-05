@@ -119,21 +119,36 @@ static int decoder_decode(lua_State *l) {
 	size_t encoded_len;
 	const unsigned char* encoded = (unsigned char*) luaL_checklstring(l, 2, &encoded_len);
 
-	int samples = opus_decoder_get_nb_samples(wrapper->decoder, encoded, encoded_len) * wrapper->channels;
+	// samples per channel from packet
+	int samples_per_channel = opus_decoder_get_nb_samples(wrapper->decoder, encoded, encoded_len);
 
-	opus_int16 pcm[samples];
-	opus_int32 pcmlen = opus_decode(wrapper->decoder, encoded, encoded_len, pcm, samples, 0);
-
-	if (pcmlen < 0) {
-		return luaL_error(l, "opus decoding error: %s", opus_strerror(pcmlen));
+	if (samples_per_channel <= 0) {
+		return luaL_error(l, "invalid number of samples from opus_decoder_get_nb_samples");
 	}
 
-	size_t outputlen = pcmlen * wrapper->channels * sizeof(opus_int16);
+	int total_samples = samples_per_channel * wrapper->channels;
 
-	char byte_data[outputlen];
-	memcpy(byte_data, pcm, outputlen);
+	// Allocate buffer on heap, safer for large sizes
+	opus_int16 *pcm = (opus_int16 *)malloc(total_samples * sizeof(opus_int16));
+	if (!pcm) {
+		return luaL_error(l, "memory allocation failed");
+	}
 
-	lua_pushlstring(l, byte_data, outputlen);
+	// Decode; note the 'frame_size' param is samples per channel, NOT total_samples
+	opus_int32 decoded_samples_per_channel = opus_decode(wrapper->decoder, encoded, encoded_len, pcm, samples_per_channel, 0);
+
+	if (decoded_samples_per_channel < 0) {
+		free(pcm);
+		return luaL_error(l, "opus decoding error: %s", opus_strerror(decoded_samples_per_channel));
+	}
+
+	// Total decoded samples = decoded_samples_per_channel * channels
+	size_t outputlen = decoded_samples_per_channel * wrapper->channels * sizeof(opus_int16);
+
+	// Push the decoded PCM as a Lua string (binary blob)
+	lua_pushlstring(l, (const char*)pcm, outputlen);
+
+	free(pcm);
 	return 1;
 }
 
@@ -141,23 +156,31 @@ static int decoder_decode_float(lua_State *l) {
 	MumbleOpusDecoder *wrapper = luaL_checkudata(l, 1, METATABLE_DECODER);
 
 	size_t encoded_len;
-	const unsigned char* encoded = (unsigned char*) luaL_checklstring(l, 2, &encoded_len);
+	const unsigned char* encoded = (const unsigned char*) luaL_checklstring(l, 2, &encoded_len);
 
-	int samples = opus_decoder_get_nb_samples(wrapper->decoder, encoded, encoded_len) * wrapper->channels;
-
-	float pcm[samples];
-	opus_int32 pcmlen = opus_decode_float(wrapper->decoder, encoded, encoded_len, pcm, samples, 0);
-
-	if (pcmlen < 0) {
-		return luaL_error(l, "opus decoding error: %s", opus_strerror(pcmlen));
+	int samples_per_channel = opus_decoder_get_nb_samples(wrapper->decoder, encoded, encoded_len);
+	if (samples_per_channel <= 0) {
+		return luaL_error(l, "invalid number of samples from opus_decoder_get_nb_samples");
 	}
 
-	size_t outputlen = pcmlen * wrapper->channels * sizeof(float);
+	int total_samples = samples_per_channel * wrapper->channels;
 
-	char byte_data[outputlen];
-	memcpy(byte_data, pcm, outputlen);
+	float *pcm = (float *)malloc(total_samples * sizeof(float));
+	if (!pcm) {
+		return luaL_error(l, "memory allocation failed");
+	}
 
-	lua_pushlstring(l, byte_data, outputlen);
+	opus_int32 decoded_samples_per_channel = opus_decode_float(wrapper->decoder, encoded, encoded_len, pcm, samples_per_channel, 0);
+	if (decoded_samples_per_channel < 0) {
+		free(pcm);
+		return luaL_error(l, "opus decoding error: %s", opus_strerror(decoded_samples_per_channel));
+	}
+
+	size_t outputlen = decoded_samples_per_channel * wrapper->channels * sizeof(float);
+
+	lua_pushlstring(l, (const char *)pcm, outputlen);
+	free(pcm);
+
 	return 1;
 }
 

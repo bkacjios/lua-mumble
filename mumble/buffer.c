@@ -71,22 +71,28 @@ int buffer_shrink(ByteBuffer* buffer) {
 }
 
 void buffer_free(ByteBuffer* buffer) {
-	if (buffer->context) {
-		list_remove_data(&buffer->context->client->audio_pipes, buffer);
-		if (buffer->context->src_state) {
-			src_delete(buffer->context->src_state);
+	AudioContext *ctx = buffer->context;
+	if (ctx) {
+		// Lock the same mutex your audio loop would use for audio_pipes
+		uv_mutex_lock(&ctx->client->inner_mutex);
+		list_remove_data(&ctx->client->audio_pipes, buffer);
+		uv_mutex_unlock(&ctx->client->inner_mutex);
+
+		if (ctx->src_state) {
+			src_delete(ctx->src_state);
 		}
-		free(buffer->context);
+		free(ctx);
 		buffer->context = NULL;
 	}
+
 	if (buffer->data) {
 		free(buffer->data);
 		buffer->data = NULL;
 	}
 	buffer->original_capacity = 0;
-	buffer->capacity = 0;
-	buffer->write_head = 0;
-	buffer->read_head = 0;
+	buffer->capacity          = 0;
+	buffer->write_head        = 0;
+	buffer->read_head         = 0;
 }
 
 void buffer_pack(ByteBuffer* buffer) {
@@ -253,7 +259,7 @@ uint8_t buffer_readVarInt(ByteBuffer* buffer, uint64_t* output) {
 			byte3 = buffer->data[buffer->read_head++];
 			byte4 = buffer->data[buffer->read_head++];
 			*output = (uint64_t)byte1 << 24 | (uint64_t)byte2 << 16 |
-			          (uint64_t)byte3 << 8 | (uint64_t)byte4;
+					  (uint64_t)byte3 << 8 | (uint64_t)byte4;
 			size += 5;
 			break;
 		case 0xF4:
@@ -267,9 +273,9 @@ uint8_t buffer_readVarInt(ByteBuffer* buffer, uint64_t* output) {
 			byte7 = buffer->data[buffer->read_head++];
 			byte8 = buffer->data[buffer->read_head++];
 			*output = (uint64_t)byte1 << 56 | (uint64_t)byte2 << 48 |
-			          (uint64_t)byte3 << 40 | (uint64_t)byte4 << 32 |
-			          (uint64_t)byte5 << 24 | (uint64_t)byte6 << 16 |
-			          (uint64_t)byte7 << 8 | (uint64_t)byte8;
+					  (uint64_t)byte3 << 40 | (uint64_t)byte4 << 32 |
+					  (uint64_t)byte5 << 24 | (uint64_t)byte6 << 16 |
+					  (uint64_t)byte7 << 8 | (uint64_t)byte8;
 			size += 9;
 			break;
 		case 0xF8:
@@ -339,7 +345,7 @@ int mumble_buffer_new(lua_State *l) {
 		break;
 	default:
 		msg = lua_pushfstring(l, "%s or %s expected, got %s",
-		                      lua_typename(l, LUA_TNUMBER), lua_typename(l, LUA_TSTRING), luaL_typename(l, 2));
+							  lua_typename(l, LUA_TNUMBER), lua_typename(l, LUA_TSTRING), luaL_typename(l, 2));
 		return luaL_argerror(l, 1, msg);
 	}
 
@@ -396,7 +402,7 @@ int luabuffer_write(lua_State *l) {
 	}
 	default:
 		const char *msg = lua_pushfstring(l, "%s or %s expected, got %s",
-		                                  lua_typename(l, LUA_TSTRING), METATABLE_BUFFER, luaL_typename(l, 2));
+										  lua_typename(l, LUA_TSTRING), METATABLE_BUFFER, luaL_typename(l, 2));
 		return luaL_argerror(l, 1, msg);
 	}
 }

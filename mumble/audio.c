@@ -312,15 +312,15 @@ void mumble_audio_buffer_thread(void *arg) {
 	while (true) {
 		uv_mutex_lock(&client->main_mutex);
 		bool running = client->audio_buffer_thread_running;
+		uv_mutex_unlock(&client->main_mutex);
+
+		if (!running) {
+			break;
+		}
 
 		uv_mutex_lock(&client->inner_mutex);
 		LinkNode* current = client->stream_list;
 		uv_mutex_unlock(&client->inner_mutex);
-
-		if (!running) {
-			uv_mutex_unlock(&client->main_mutex);
-			break;
-		}
 
 		while (current) {
 			uv_mutex_lock(&client->inner_mutex);
@@ -345,11 +345,15 @@ void mumble_audio_buffer_thread(void *arg) {
 					mumble_log(LOG_CODE, "sound->buffer_size (samples): %lu", buffer_size);
 					mumble_log(LOG_CODE, "available_space (samples): %lu", available_space);
 
+					uint64_t start = uv_hrtime();
+
 					size_t frames_read;
 					float* output_audio = NULL;
 					// Process the audio data.
 					// Make sure process_audio is aware that available_space is in samples (convert to bytes if necessary inside process_audio)
 					process_audio(sound, &output_audio, available_space * sizeof(float), &frames_read);
+
+					mumble_log(LOG_CODE, "processed in %.3f ms", (uv_hrtime() - start) / 1e6);
 
 					// Calculate the total number of samples to copy
 					size_t copy_size = frames_read * AUDIO_PLAYBACK_CHANNELS;
@@ -375,10 +379,13 @@ void mumble_audio_buffer_thread(void *arg) {
 						free(output_audio);
 					}
 
+					uv_mutex_lock(&sound->mutex);
+					available_space = sound->buffer_size - sound->used;
+					mumble_log(LOG_CODE, "available_space AFTER (samples): %lu", available_space);
+					uv_mutex_unlock(&sound->mutex);
 				}
 			}
 		}
-		uv_mutex_unlock(&client->main_mutex);
 
 		// Sleep at the same rate we are outputting audio
 		uv_sleep(client->audio_frames);
@@ -395,6 +402,7 @@ void mumble_audio_playback_thread(void* arg) {
 		uv_mutex_lock(&client->main_mutex);
 		bool running = client->audio_playback_thread_running;
 		uv_mutex_unlock(&client->main_mutex);
+
 		if (!running) break; // shutdown
 		
 		uint64_t now = uv_hrtime();
@@ -796,13 +804,16 @@ static void audio_encode_event(lua_State *l, MumbleClient *client) {
 		}
 	}
 
-	current = client->audio_pipes;
-
 	// Hook allows for feeding raw PCM data into an audio buffer, mixing it into other playing audio
 	lua_pushinteger(l, AUDIO_SAMPLE_RATE);
 	lua_pushinteger(l, AUDIO_PLAYBACK_CHANNELS);
 	lua_pushinteger(l, output_frames);
 	mumble_hook_call(client, "OnAudioStream", 3);
+
+	// Get our list of audio pipes
+	uv_mutex_lock(&client->inner_mutex);
+	current = client->audio_pipes;
+	uv_mutex_unlock(&client->inner_mutex);
 
 	// Keep track of when an audio buffer is outputting data
 	bool streamed_audio = false;

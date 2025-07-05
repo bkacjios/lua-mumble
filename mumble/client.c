@@ -315,10 +315,30 @@ static int client_transmit(lua_State *l) {
 	return 0;
 }
 
+static const char *const quality_names[] = {
+	"best",    // SRC_SINC_BEST_QUALITY
+	"medium",  // SRC_SINC_MEDIUM_QUALITY
+	"fastest", // SRC_SINC_FASTEST
+	"zero",    // SRC_ZERO_ORDER_HOLD
+	"linear",  // SRC_LINEAR
+	NULL
+};
+
+static const int quality_vals[] = {
+	SRC_SINC_BEST_QUALITY,
+	SRC_SINC_MEDIUM_QUALITY,
+	SRC_SINC_FASTEST,
+	SRC_ZERO_ORDER_HOLD,
+	SRC_LINEAR
+};
+
 static int client_openAudio(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	const char* filepath	= luaL_checkstring(l, 2);
 	float volume			= (float) luaL_optnumber(l, 3, 1);
+
+	int idx = luaL_checkoption(l, 4, "medium", quality_names);
+	int qualityType = quality_vals[idx];
 
 	SF_INFO info;
 	memset(&info, 0, sizeof(SF_INFO));
@@ -340,7 +360,7 @@ static int client_openAudio(lua_State *l) {
 	}
 
 	int error;
-	SRC_STATE *src_state = src_new(SRC_SINC_BEST_QUALITY, AUDIO_PLAYBACK_CHANNELS, &error);
+	SRC_STATE *src_state = src_new(qualityType, AUDIO_PLAYBACK_CHANNELS, &error);
 	if (src_state == NULL) {
 		lua_pushnil(l);
 		lua_pushfstring(l, "failed creating audio resampler: %s", src_strerror(error));

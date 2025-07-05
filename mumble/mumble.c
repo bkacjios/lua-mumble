@@ -569,10 +569,8 @@ static int mumble_client_new(lua_State *l) {
 	// Create a thread that handles the playback of audio
 	client->audio_playback_thread_running = true;
 	client->audio_playback_async_pending = false;
-
 	client->audio_playback_last = uv_hrtime();
 	client->audio_playback_next = client->audio_playback_last;
-
 	uv_thread_create(&client->audio_playback_thread, mumble_audio_playback_thread, client);
 
 	uv_async_init(uv_default_loop(), &client->audio_playback_async, mumble_audio_playback_async);
@@ -1401,17 +1399,25 @@ void mumble_handle_record_silence(MumbleClient* client, MumbleUser* user) {
 
 static void mumble_handle_record(MumbleClient* client, MumbleUser* user, const unsigned char* encoded, size_t endoded_len) {
 	if (user->recording_file != NULL) {
-		// Save PCM data to recording file
-		int samples = opus_decoder_get_nb_samples(client->decoder, encoded, endoded_len) * AUDIO_PLAYBACK_CHANNELS;
+		int samples_per_channel = opus_decoder_get_nb_samples(client->decoder, encoded, endoded_len);
+		int total_samples = samples_per_channel * AUDIO_PLAYBACK_CHANNELS;
 
-		float pcm[samples];
-		opus_int32 pcmlen = opus_decode_float(client->decoder, encoded, endoded_len, pcm, samples, 0);
+		float *pcm = (float *)malloc(sizeof(float) * total_samples);
+		if (!pcm) {
+			mumble_log(LOG_ERROR, "failed to allocate PCM buffer");
+			return;
+		}
 
+		opus_int32 pcmlen = opus_decode_float(client->decoder, encoded, endoded_len, pcm, samples_per_channel, 0);
 		if (pcmlen < 0) {
 			mumble_log(LOG_ERROR, "opus decoding error: %s", opus_strerror(pcmlen));
-		} else {
-			sf_write_float(user->recording_file, pcm, samples);
+			free(pcm);
+			return;
 		}
+
+		sf_write_float(user->recording_file, pcm, pcmlen * AUDIO_PLAYBACK_CHANNELS);
+
+		free(pcm);
 	}
 }
 
