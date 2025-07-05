@@ -331,12 +331,13 @@ void mumble_audio_buffer_thread(void *arg) {
 			if (sound) {
 				uv_mutex_lock(&sound->mutex);
 				bool playing = sound->playing;
+				bool end = sound->end;
 				size_t buffer_size = sound->buffer_size;
 				size_t available_space = sound->buffer_size - sound->used;
 				size_t first_chunk = sound->buffer_size - sound->write_position;
 				uv_mutex_unlock(&sound->mutex);
 
-				if (playing) {
+				if (playing && !end) {
 					// Only buffer when it's half empty
 					if (available_space <= buffer_size / 2) {
 						continue;
@@ -353,7 +354,15 @@ void mumble_audio_buffer_thread(void *arg) {
 					// Make sure process_audio is aware that available_space is in samples (convert to bytes if necessary inside process_audio)
 					process_audio(sound, &output_audio, available_space * sizeof(float), &frames_read);
 
+					float process_time_ms = (uv_hrtime() - start) / 1e6;
 					mumble_log(LOG_CODE, "processed in %.3f ms", (uv_hrtime() - start) / 1e6);
+
+					if (process_time_ms > AUDIO_BUFFER_SIZE) {
+						// It took longer to process the buffer than the buffer size itself, causing a stall in the playback thread
+						mumble_log(LOG_WARN, "audio processing took %.3f ms (buffer size is %d ms)", process_time_ms, AUDIO_BUFFER_SIZE);
+					} else {
+						mumble_log(LOG_CODE, "audio processing took %.3f ms", process_time_ms);
+					}
 
 					// Calculate the total number of samples to copy
 					size_t copy_size = frames_read * AUDIO_PLAYBACK_CHANNELS;
@@ -361,8 +370,10 @@ void mumble_audio_buffer_thread(void *arg) {
 					mumble_log(LOG_CODE, "frames_read: %lu", frames_read);
 					mumble_log(LOG_CODE, "copy_size (samples): %lu", copy_size);
 
+					uv_mutex_lock(&sound->mutex);
+					sound->end = frames_read <= 0;
+					mumble_log(LOG_CODE, "sound->end: %s", sound->end ? "true" : "false");
 					if (frames_read > 0 && output_audio) {
-						uv_mutex_lock(&sound->mutex);
 						if (first_chunk >= copy_size) {
 							// Simple case: Copy all at once (convert sample count to byte count for memcpy)
 							memcpy(sound->buffer + sound->write_position, output_audio, copy_size * sizeof(float));
@@ -375,11 +386,8 @@ void mumble_audio_buffer_thread(void *arg) {
 						// Update the write pointer in terms of float elements
 						sound->write_position = (sound->write_position + copy_size) % sound->buffer_size;
 						sound->used += copy_size;
-						uv_mutex_unlock(&sound->mutex);
 						free(output_audio);
 					}
-
-					uv_mutex_lock(&sound->mutex);
 					available_space = sound->buffer_size - sound->used;
 					mumble_log(LOG_CODE, "available_space AFTER (samples): %lu", available_space);
 					uv_mutex_unlock(&sound->mutex);
@@ -439,6 +447,7 @@ void mumble_audio_playback_thread(void* arg) {
 
 static void handle_audio_stream_end(lua_State *l, MumbleClient *client, AudioStream *sound, bool *didLoop) {
 	sf_seek(sound->file, 0, SEEK_SET);
+	sound->end = false;
 	if (sound->looping) {
 		*didLoop = true;
 	} else if (sound->loop_count > 0) {
@@ -452,9 +461,8 @@ static void handle_audio_stream_end(lua_State *l, MumbleClient *client, AudioStr
 }
 
 static void process_audio_file(lua_State *l, MumbleClient *client, AudioStream *sound, uint32_t sample_size, sf_count_t *biggest_read, bool *didLoop) {
-	if (sample_size > PCM_BUFFER || sound->used <= 0) {
-		// Our sample size is somehow too large to fit within the input buffer,
-		// or our sound file buffer is empty..
+	if (sample_size > PCM_BUFFER) {
+		// Our sample size is somehow too large to fit within the input buffer
 		return;
 	}
 
@@ -516,8 +524,12 @@ static void process_audio_file(lua_State *l, MumbleClient *client, AudioStream *
 		}
 	}
 
-	if (read < sample_size) {
+	if (sound->end && read < sample_size) {
 		// We reached the end of the stream
+		mumble_log(LOG_CODE,
+			"reached end of audio stream: %" PRId64 " (%" PRIu32 ")",
+			(int64_t)read,
+			sample_size);
 		handle_audio_stream_end(l, client, sound, didLoop);
 	}
 
@@ -665,22 +677,22 @@ static audio_work_t *audio_queue_pop(audio_queue_t *q, bool *running_flag) {
 }
 
 static audio_work_t *audio_queue_pop_nonblocking(audio_queue_t *q) {
-    uv_mutex_lock(&q->mutex);
+	uv_mutex_lock(&q->mutex);
 
-    if (q->front == NULL) {
-        uv_mutex_unlock(&q->mutex);
-        return NULL;
-    }
+	if (q->front == NULL) {
+		uv_mutex_unlock(&q->mutex);
+		return NULL;
+	}
 
-    audio_queue_node_t *node = q->front;
-    audio_work_t *work = node->work;
-    q->front = node->next;
-    if (q->front == NULL) {
-        q->rear = NULL;
-    }
-    free(node);
-    uv_mutex_unlock(&q->mutex);
-    return work;
+	audio_queue_node_t *node = q->front;
+	audio_work_t *work = node->work;
+	q->front = node->next;
+	if (q->front == NULL) {
+		q->rear = NULL;
+	}
+	free(node);
+	uv_mutex_unlock(&q->mutex);
+	return work;
 }
 
 static void audio_queue_cleanup(audio_queue_t *q) {
