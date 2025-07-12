@@ -509,6 +509,7 @@ static void process_audio_file(lua_State *l, MumbleClient *client, AudioStream *
 				// Fake end of stream
 				read = 0;
 				sound->fade_volume = 0.0f;
+				sound->end = true;
 			}
 
 			float volume = sound->volume * client->volume * sound->fade_volume;
