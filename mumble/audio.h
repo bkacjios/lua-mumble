@@ -4,6 +4,7 @@
 
 void audio_transmission_reference(lua_State *l, AudioStream *sound);
 void audio_transmission_unreference(lua_State*l, AudioStream *sound);
+void audiostream_reset_playback_state(AudioStream *sound);
 
 uint8_t util_set_varint_size(const uint64_t value);
 uint8_t util_set_varint(uint8_t buffer[], const uint64_t value);

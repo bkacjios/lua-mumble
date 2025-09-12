@@ -39,13 +39,17 @@ static void mumble_timer_close(MumbleTimer* ltimer) {
 	if (!ltimer->closed) {
 		ltimer->closed = true;
 		uv_timer_stop(&ltimer->timer);
-		uv_close((uv_handle_t*)&ltimer->timer, mumble_timer_on_close);
+		if (!uv_is_closing((uv_handle_t*)&ltimer->timer)) {
+			uv_close((uv_handle_t*)&ltimer->timer, mumble_timer_on_close);
+		}
 		mumble_log(LOG_TRACE, "%s: %p stopped and closed", METATABLE_TIMER, ltimer);
 	}
 }
 
 static void mumble_lua_timer(uv_timer_t* handle) {
 	MumbleTimer* ltimer = (MumbleTimer*) handle->data;
+
+	if (uv_is_closing((uv_handle_t*)handle)) return;
 
 	lua_State *l = ltimer->l;
 	ltimer->count++;
@@ -69,7 +73,7 @@ static void mumble_lua_timer(uv_timer_t* handle) {
 	// Pop the error handler
 	lua_pop(l, 1);
 
-	if (!uv_is_active((uv_handle_t*) &ltimer->timer) && !ltimer->paused) {
+	if (!uv_is_active((uv_handle_t*)handle) && !ltimer->paused) {
 		// Timer stopped on its own and was not paused
 		mumble_log(LOG_TRACE, "%s: %p timer inactive and not paused, closing", METATABLE_TIMER, ltimer);
 		mumble_timer_close(ltimer);

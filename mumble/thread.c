@@ -38,7 +38,23 @@ void mumble_thread_worker_start(void *arg) {
 	luaL_openlibs(l);
 
 	// Open ourself in the new state, since we need the worker metatable
-	luaopen_mumble(l);
+	// and make it available to require("mumble") and as _G.mumble
+	#if defined(LUA_VERSION_NUM) && (LUA_VERSION_NUM >= 502) /* Lua 5.2+ or LuaJIT with compat */
+		luaL_requiref(l, "mumble", luaopen_mumble, 1); // pushes module, sets package.loaded["mumble"], sets _G.mumble
+		lua_pop(l, 1); // pop module
+	#else
+		// Lua 5.1 fallback: call opener and manually set package.loaded["mumble"] and _G.mumble
+		lua_pushcfunction(l, luaopen_mumble);
+		lua_pushstring(l, "mumble");
+		lua_call(l, 1, 1);                      // -> module table
+		lua_setglobal(l, "mumble");              // _G.mumble = module
+
+		lua_getglobal(l, "package");
+		lua_getfield(l, -1, "loaded");           // package.loaded
+		lua_getglobal(l, "mumble");              // module
+		lua_setfield(l, -2, "mumble");           // package.loaded["mumble"] = module
+		lua_pop(l, 2);                           // pop package.loaded, package
+	#endif
 
 	lua_stackguard_entry(l);
 
@@ -55,7 +71,22 @@ void mumble_thread_worker_start(void *arg) {
 
 	if (err != 0) {
 		mumble_log(LOG_ERROR, "%s", lua_tostring(l, -1));
-		lua_pop(l, 1); // Pop the error
+		lua_pop(l, 2); // Pop the error and traceback function
+
+		// Unblock controller waiters so they don't deadlock
+		uv_mutex_lock(&controller->mutex);
+		controller->worker = NULL;       // make it explicit
+		controller->started = true;      // signal "we're done starting" (even if failed)
+		uv_cond_signal(&controller->cond);
+		uv_mutex_unlock(&controller->mutex);
+
+		// notify finish callback
+		uv_async_send(&controller->async_finish);
+
+		lua_stackguard_exit(l);
+
+		// Close the Lua state for this worker thread and exit
+		lua_close(l);
 		return;
 	}
 
@@ -149,21 +180,19 @@ void mumble_thread_worker_finish(uv_async_t *handle) {
 
 void mumble_thread_controller_message(uv_async_t *handle) {
 	MumbleThreadController* controller = (MumbleThreadController*) handle->data;
-
-	uv_mutex_lock(&controller->mutex);
-
 	lua_State* l = controller->l;
 
 	if (controller->message > LUA_REFNIL) {
-
 		// Push our error handler
 		lua_pushcfunction(l, mumble_traceback);
 
+		uv_mutex_lock(&controller->mutex);
 		LinkQueue* queue = controller->message_queue;
 
-		while (queue->front != NULL) {
-			// Get the front message
+		while (controller->message > LUA_REFNIL && queue->front != NULL) {
+			// Pop one message under the lock, then unlock before calling into Lua
 			QueueNode *message = queue_pop(queue);
+			uv_mutex_unlock(&controller->mutex);
 
 			// Push the callback function from the registry
 			mumble_registry_pushref(l, MUMBLE_THREAD_REG, controller->message);
@@ -180,34 +209,35 @@ void mumble_thread_controller_message(uv_async_t *handle) {
 				lua_pop(l, 1); // Pop the error
 			}
 
-			free(message->data);
+			if (message->data) free(message->data);
 			free(message);
+
+			// Re‑acquire lock and loop
+			uv_mutex_lock(&controller->mutex);
 		}
+
+		uv_mutex_unlock(&controller->mutex);
 
 		// Pop the error handler
 		lua_pop(l, 1);
 	}
-
-	uv_mutex_unlock(&controller->mutex);
 }
 
 void mumble_thread_worker_message(uv_async_t *handle) {
 	MumbleThreadWorker* worker = (MumbleThreadWorker*) handle->data;
-
-	uv_mutex_lock(&worker->mutex);
-
 	lua_State* l = worker->l;
 
-	if (worker->message > LUA_NOREF) {
-
+	if (worker->message > LUA_REFNIL) {
 		// Push our error handler
 		lua_pushcfunction(l, mumble_traceback);
 
+		uv_mutex_lock(&worker->mutex);
 		LinkQueue* queue = worker->message_queue;
 
-		while (queue->front != NULL) {
-			// Get the front message
+		while (worker->message > LUA_REFNIL && queue->front != NULL) {
+			// Pop one message under the lock, then unlock before calling into Lua
 			QueueNode *message = queue_pop(queue);
+			uv_mutex_unlock(&worker->mutex);
 
 			// Push the callback function from the registry
 			mumble_registry_pushref(l, MUMBLE_THREAD_REG, worker->message);
@@ -224,14 +254,18 @@ void mumble_thread_worker_message(uv_async_t *handle) {
 				lua_pop(l, 1); // Pop the error
 			}
 
-			free(message); // Free the node
+			if (message->data) free(message->data);
+			free(message);
+
+			// Re‑acquire lock and loop
+			uv_mutex_lock(&worker->mutex);
 		}
+
+		uv_mutex_unlock(&worker->mutex);
 
 		// Pop the error handler
 		lua_pop(l, 1);
 	}
-
-	uv_mutex_unlock(&worker->mutex);
 }
 
 int mumble_thread_new(lua_State *l) {
@@ -291,19 +325,11 @@ static int thread_controller_join(lua_State *l) {
 
 	uv_mutex_lock(&controller->mutex);
 	while (!controller->started) {
-		// Wait for worker to start
 		uv_cond_wait(&controller->cond, &controller->mutex);
 	}
-	MumbleThreadWorker *worker = controller->worker;
 	uv_mutex_unlock(&controller->mutex);
 
-	uv_mutex_lock(&worker->mutex);
-	while (!worker->finished) {
-		// Now wait for it to finish
-		uv_cond_wait(&worker->cond, &worker->mutex);
-	}
-	uv_mutex_unlock(&worker->mutex);
-
+	// Don't touch controller->worker here; it may already be destroyed by lua_close.
 	uv_thread_join(&controller->thread);
 
 	lua_pushvalue(l, 1);
@@ -336,6 +362,10 @@ static int thread_controller_send(lua_State *l) {
 	}
 	MumbleThreadWorker *worker = controller->worker;
 	uv_mutex_unlock(&controller->mutex);
+
+	if (!worker) {
+		return luaL_error(l, "thread worker failed to start");
+	}
 
 	switch (lua_type(l, 2)) {
 	case LUA_TSTRING:
@@ -396,23 +426,26 @@ int uv_thread_detach(uv_thread_t *tid) {
 static int thread_controller_gc(lua_State *l) {
 	MumbleThreadController *controller = luaL_checkudata(l, 1, METATABLE_THREAD_CONTROLLER);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_THREAD_CONTROLLER, controller);
-	if (controller->bytecode) {
-		free(controller->bytecode);
+
+	if (!uv_is_closing((uv_handle_t*)&controller->async_finish)) {
+		uv_close((uv_handle_t*)&controller->async_finish, NULL);
 	}
-	if (uv_is_active((uv_handle_t*) &controller->async_finish)) {
-		uv_close((uv_handle_t*) &controller->async_finish, NULL);
+	if (!uv_is_closing((uv_handle_t*)&controller->async_message)) {
+		uv_close((uv_handle_t*)&controller->async_message, NULL);
 	}
-	if (uv_is_active((uv_handle_t*) &controller->async_message)) {
-		uv_close((uv_handle_t*) &controller->async_message, NULL);
-	}
-	uv_mutex_destroy(&controller->mutex);
-	uv_cond_destroy(&controller->cond);
-	if (controller->message_queue) {
-		free(controller->message_queue);
-	}
+
 	if (controller->thread) {
 		uv_thread_detach(&controller->thread);
 	}
+
+	if (controller->bytecode) {
+		free(controller->bytecode);
+		controller->bytecode = NULL;
+	}
+
+	queue_free(&controller->message_queue);
+	uv_mutex_destroy(&controller->mutex);
+	uv_cond_destroy(&controller->cond);
 	return 0;
 }
 
@@ -508,13 +541,14 @@ static int thread_worker_tostring(lua_State *l) {
 static int thread_worker_gc(lua_State *l) {
 	MumbleThreadWorker *worker = luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_THREAD_WORKER, worker);
-	uv_loop_close(&worker->loop);
-	if (uv_is_active((uv_handle_t*) &worker->async_message)) {
+	uv_stop(&worker->loop);
+	if (!uv_is_closing((uv_handle_t*)&worker->async_message)) {
 		uv_close((uv_handle_t*) &worker->async_message, NULL);
 	}
-	if (worker->message_queue) {
-		free(worker->message_queue);
+	while (uv_loop_close(&worker->loop) == UV_EBUSY) {
+		uv_run(&worker->loop, UV_RUN_NOWAIT);
 	}
+	queue_free(&worker->message_queue);
 	uv_mutex_destroy(&worker->mutex);
 	uv_cond_destroy(&worker->cond);
 	return 0;

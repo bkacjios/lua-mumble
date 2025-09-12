@@ -271,6 +271,23 @@ QueueNode* queue_pop(LinkQueue *queue) {
 	return node;
 }
 
+void queue_free(LinkQueue **queue) {
+	if (!queue || !*queue) return;
+
+	QueueNode *node = (*queue)->front;
+	while (node) {
+		QueueNode *next = node->next;
+		if (node->data) {
+			free(node->data);
+		}
+		free(node);
+		node = next;
+	}
+
+	free(*queue);
+	*queue = NULL;
+}
+
 /* Function to add a node at the beginning of Linked List.
 	This function expects a pointer to the data to be added
 	and size of the data type */

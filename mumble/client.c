@@ -376,6 +376,7 @@ static int client_openAudio(lua_State *l) {
 	sound->playing = false;
 	sound->looping = false;
 	sound->refrence = LUA_NOREF;
+	sound->reclaim_ref = LUA_NOREF;
 	sound->loop_count = 0;
 	sound->volume = 1.0f;
 	sound->fade_volume = 1.0f;
@@ -388,6 +389,12 @@ static int client_openAudio(lua_State *l) {
 	sound->read_position = 0;
 	sound->write_position = 0;
 	sound->src_state = src_state;
+	atomic_store_explicit(&sound->used, 0, memory_order_relaxed);
+	atomic_store_explicit(&sound->head, 0, memory_order_relaxed);
+	atomic_store_explicit(&sound->tail, 0, memory_order_relaxed);
+	atomic_store_explicit(&sound->usecount, 0, memory_order_relaxed);
+	atomic_store_explicit(&sound->reclaimed, false, memory_order_relaxed);
+
 	uv_mutex_init(&sound->mutex);
 	return 1;
 }

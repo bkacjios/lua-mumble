@@ -34,16 +34,14 @@ static int audiostream_pause(lua_State *l) {
 
 static int audiostream_play(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
-	if (!sound->playing) {
-		sound->playing = true;
 
-		if (sound->refrence <= LUA_NOREF) {
-			// Push a copy of the audio stream and save a reference
-			lua_pushvalue(l, 1);
-			audio_transmission_reference(l, sound);
-		}
-	} else {
-		sf_seek(sound->file, 0, SEEK_SET);
+	audiostream_reset_playback_state(sound);
+	sound->playing = true;
+
+	// Ensure it's in the active list / registry
+	if (sound->refrence <= LUA_NOREF) {
+		lua_pushvalue(l, 1);
+		audio_transmission_reference(l, sound);
 	}
 	return 0;
 }
@@ -224,6 +222,9 @@ static int audiostream_fadeOut(lua_State *l) {
 static int audiostream_gc(lua_State *l) {
 	AudioStream *sound = luaL_checkudata(l, 1, METATABLE_AUDIOSTREAM);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_AUDIOSTREAM, sound);
+	if (atomic_load_explicit(&sound->usecount, memory_order_acquire) != 0) {
+		mumble_log(LOG_WARN, "%s: %p collected with non-zero usecount", METATABLE_AUDIOSTREAM, sound);
+	}
 	if (sound->file) {
 		sf_close(sound->file);
 		sound->file = NULL;

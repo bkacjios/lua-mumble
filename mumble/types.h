@@ -8,6 +8,7 @@
 #include <opus/opus.h>
 #include <openssl/evp.h>
 #include <samplerate.h>
+#include <stdatomic.h>
 
 #include <stdbool.h>
 
@@ -79,6 +80,7 @@ struct AudioStream {
 	float volume;
 	SF_INFO info;
 	int refrence;
+	int reclaim_ref;
 	int loop_count;
 	bool looping;
 	bool fade_stop;
@@ -91,7 +93,11 @@ struct AudioStream {
 	size_t read_position;
 	size_t write_position;
 	size_t buffer_size;
-	size_t used;
+	_Atomic size_t used;
+	_Atomic size_t head;
+	_Atomic size_t tail;
+	_Atomic int usecount;
+	_Atomic bool reclaimed;
 	bool end;
 	uv_mutex_t mutex;
 	SRC_STATE *src_state;
@@ -232,6 +238,7 @@ struct MumbleClient {
 	mumble_crypt*		crypt;
 
 	LinkNode*			stream_list;
+	LinkNode*			reclaim_list;
 
 	LinkNode*			channel_list;
 	LinkNode*			user_list;

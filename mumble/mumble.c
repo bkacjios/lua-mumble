@@ -384,8 +384,8 @@ void socket_read_event_tcp(uv_poll_t* handle, int status, int events) {
 		// Read the header if not fully read
 		if (packet.header_len < PACKET_HEADER_SIZE) {
 			int ret = SSL_read(client->ssl,
-							   packet.header + packet.header_len,
-							   PACKET_HEADER_SIZE - packet.header_len);
+			                   packet.header + packet.header_len,
+			                   PACKET_HEADER_SIZE - packet.header_len);
 
 			if (ret > 0) {
 				packet.header_len += ret;
@@ -425,8 +425,8 @@ void socket_read_event_tcp(uv_poll_t* handle, int status, int events) {
 		// Read the message body if the header is complete
 		if (packet.header_len == PACKET_HEADER_SIZE && packet.body_len < packet.length) {
 			int ret = SSL_read(client->ssl,
-							   packet.body + packet.body_len,
-							   packet.length - packet.body_len);
+			                   packet.body + packet.body_len,
+			                   packet.length - packet.body_len);
 			if (ret > 0) {
 				packet.body_len += ret;
 
@@ -550,6 +550,7 @@ static int mumble_client_new(lua_State *l) {
 	client->tcp_udp_tunnel = true;
 
 	client->stream_list = NULL;
+	client->reclaim_list = NULL;
 
 	uv_mutex_init(&client->main_mutex);
 	uv_mutex_init(&client->inner_mutex);
@@ -612,8 +613,8 @@ int mumble_client_connect(lua_State *l) {
 	}
 
 	if (!SSL_CTX_use_certificate_chain_file(client->ssl_context, certificate_file) ||
-			!SSL_CTX_use_PrivateKey_file(client->ssl_context, key_file, SSL_FILETYPE_PEM) ||
-			!SSL_CTX_check_private_key(client->ssl_context)) {
+	        !SSL_CTX_use_PrivateKey_file(client->ssl_context, key_file, SSL_FILETYPE_PEM) ||
+	        !SSL_CTX_check_private_key(client->ssl_context)) {
 		mumble_client_free(client);
 		lua_pushboolean(l, false);
 		lua_pushfstring(l, "could not load certificate and/or key file: %s", mumble_ssl_error(ERR_get_error()));
@@ -1090,39 +1091,38 @@ int mumble_hook_call_ret(MumbleClient *client, const char* hook, int nargs, int 
 				// If the user errors within the OnError hook, PANIC
 				lua_call(l, callargs, 0);
 			} else {
-				const int base = lua_gettop(l) - callargs;
-
+				// Place traceback immediately before the function we're calling
+				const int base = lua_gettop(l) - callargs; // index of function
 				lua_pushcfunction(l, mumble_traceback);
-				lua_insert(l, 1);
+				lua_insert(l, base); // ... err func args
 
-				// Call our callback with our arguments and our traceback function
-				if (lua_pcall(l, callargs, nresults, 1) != 0) {
+				// NOTE: nresults may be LUA_MULTRET
+				if (lua_pcall(l, callargs, nresults, base) != 0) {
 					// Call errored, call OnError hook
 					erroring = true;
 					mumble_log(LOG_ERROR, "%s", lua_tostring(l, -1));
 					mumble_hook_call(client, "OnError", 1);
 					erroring = false;
+
+					// Pop error message and remove the traceback function
+					lua_pop(l, 1);
+					lua_remove(l, base);
 				} else {
-					// Call success
-					const int nret = lua_gettop(l) - base;
+					// Success: results are on top, traceback still at 'base'
+					const int after = lua_gettop(l);
+					const int nret = after - base; // actual number of returns (works for LUA_MULTRET)
 
-					if (!returned) {
-						// Only return values of first called hook
-						returned = true;
-						nreturns = nret;
+					// Remove the traceback function first
+					lua_remove(l, base);
 
-						for (int i = 0; i < nreturns; i++) {
-							// Insert all return values at a safe location for later
-							lua_insert(l, top + argpos);
-						}
+					if (!returned && nret > 0) {
+						nreturns = nret; // keep how many we got
+						returned = true; // results are already at TOP
 					} else {
-						// We already had a hook return values, so ignore and pop these
+						// ignoring returns from subsequent hooks
 						lua_pop(l, nret);
 					}
 				}
-
-				// Pop the traceback function
-				lua_remove(l, 1);
 			}
 		}
 
@@ -1138,12 +1138,10 @@ exit:
 	// Call exit early, since mumble_hook_call removes the function called and its arguments from the stack
 	//lua_stackguard_exit(l);
 
-	// Remove original arguments from the stack
-	for (int i = top; i > argpos; i--) {
-		lua_remove(l, i);
+	// Remove original arguments from the stack and keep results on top
+	for (int i = 0; i < nargs; ++i) {
+		lua_remove(l, argpos + 1);
 	}
-
-	// Stack will now contain any returns that we inserted above
 
 	// Return how many results we pushed to the stack
 	return nreturns;
@@ -1311,10 +1309,10 @@ int mumble_push_address(lua_State* l, ProtobufCBinaryData address) {
 		if (!inet_ntop(AF_INET6, address.data, ipv6, sizeof(ipv6))) {
 			// Fallback
 			sprintf(ipv6, "%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
-					bytes[0], bytes[1], bytes[2], bytes[3],
-					bytes[4], bytes[5], bytes[5], bytes[7],
-					bytes[8], bytes[9], bytes[10], bytes[11],
-					bytes[12], bytes[13], bytes[14], bytes[15]);
+			        bytes[0], bytes[1], bytes[2], bytes[3],
+			        bytes[4], bytes[5], bytes[5], bytes[7],
+			        bytes[8], bytes[9], bytes[10], bytes[11],
+			        bytes[12], bytes[13], bytes[14], bytes[15]);
 		}
 
 		lua_pushboolean(l, true);
@@ -1931,6 +1929,37 @@ int luaopen_mumble(lua_State *l) {
 	return 1;
 }
 
+static void stop_then_close(uv_handle_t* h, void* arg) {
+	if (uv_is_closing(h)) return;
+
+	switch (h->type) {
+	case UV_TIMER:        uv_timer_stop((uv_timer_t*)h); break;
+	case UV_IDLE:         uv_idle_stop((uv_idle_t*)h); break;
+	case UV_PREPARE:      uv_prepare_stop((uv_prepare_t*)h); break;
+	case UV_CHECK:        uv_check_stop((uv_check_t*)h); break;
+	case UV_SIGNAL:       uv_signal_stop((uv_signal_t*)h); break;
+	case UV_POLL:         uv_poll_stop((uv_poll_t*)h); break;
+	case UV_FS_EVENT:     uv_fs_event_stop((uv_fs_event_t*)h); break;
+	case UV_FS_POLL:      uv_fs_poll_stop((uv_fs_poll_t*)h); break;
+	case UV_UDP:          uv_udp_recv_stop((uv_udp_t*)h); break;
+
+	case UV_TCP:
+	case UV_NAMED_PIPE:
+	case UV_TTY: {
+		// All are streams; stop reads before closing
+		uv_read_stop((uv_stream_t*)h);
+		break;
+	}
+
+	default:
+		// Other handle types: just close below.
+		break;
+	}
+
+	// Close
+	uv_close(h, NULL);
+}
+
 static void mumble_close() {
 	LinkNode* current = mumble_clients;
 
@@ -1943,9 +1972,12 @@ static void mumble_close() {
 		}
 	}
 
+	uv_loop_t* loop = uv_default_loop();
+	uv_walk(loop, stop_then_close, NULL);
+	uv_stop(loop);
+
 	printf(NEWLINE);
 	mumble_log(LOG_WARN, "exiting loop");
-	uv_stop(uv_default_loop());
 }
 
 void mumble_weak_table(lua_State *l) {

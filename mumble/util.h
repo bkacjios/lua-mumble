@@ -21,6 +21,7 @@ int luaL_isudata(lua_State *L, int ud, const char *tname);
 LinkQueue *queue_new();
 void queue_push(LinkQueue* queue, char* data, size_t size);
 QueueNode* queue_pop(LinkQueue *queue);
+void queue_free(LinkQueue **queue);
 
 void list_add(LinkNode** head_ref, uint32_t index, void *data);
 void list_remove(LinkNode **head_ref, uint32_t index);

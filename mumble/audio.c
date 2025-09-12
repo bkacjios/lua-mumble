@@ -1,11 +1,122 @@
 #define _GNU_SOURCE
 #include <pthread.h>
+#include <math.h>
 
+#include "audiostream.h"
 #include "mumble.h"
 #include "packet.h"
 #include "audio.h"
 #include "util.h"
 #include "log.h"
+
+static inline bool sound_try_pin(AudioStream *sound) {
+	// Don't pin if we are being reclaimed
+	if (atomic_load_explicit(&sound->reclaimed, memory_order_acquire)) return false;
+
+	// Add to the usecount
+	atomic_fetch_add_explicit(&sound->usecount, 1, memory_order_acq_rel);
+
+	// If it became reclaimed after increment, drop the pin
+	if (atomic_load_explicit(&sound->reclaimed, memory_order_acquire)) {
+		// Subtract from the usecount
+		atomic_fetch_sub_explicit(&sound->usecount, 1, memory_order_acq_rel);
+		// Failure
+		return false;
+	}
+
+	// Success
+	return true;
+}
+
+// On the *last* unpin of a reclaimed stream, we can ask the main thread to
+// release reclaim_ref so Lua can GC it safely.
+static inline void sound_unpin_schedule_unref_if_needed(AudioStream *sound) {
+	int prev = atomic_fetch_sub_explicit(&sound->usecount, 1, memory_order_acq_rel);
+	if (prev == 1 && atomic_load_explicit(&sound->reclaimed, memory_order_acquire)) {
+		// Queue for main-thread unref of reclaim_ref
+		MumbleClient *client = sound->client;
+		if (sound->reclaim_ref > LUA_NOREF) {
+			uv_mutex_lock(&client->inner_mutex);
+			// Use reclaim_ref as the node index for easy removal
+			list_add(&client->reclaim_list, sound->reclaim_ref, sound);
+			uv_mutex_unlock(&client->inner_mutex);
+		}
+	}
+}
+
+static inline void sound_clean_reclaimed(MumbleClient *client) {
+	// Handle any deferred unrefs safely on the main thread
+	while (true) {
+		uv_mutex_lock(&client->inner_mutex);
+		LinkNode *node = client->reclaim_list;
+		if (node != NULL) {
+			// Pop one by index so list_remove frees the node
+			int idx = node->index;
+			AudioStream *sound = (AudioStream*)node->data;
+			list_remove(&client->reclaim_list, idx);
+			uv_mutex_unlock(&client->inner_mutex);
+			// Now it's safe to release the Lua registry ref; GC may run.
+			if (sound->reclaim_ref > LUA_NOREF) {
+				mumble_registry_unref(client->l, client->audio_streams, &sound->reclaim_ref);
+			}
+		} else {
+			uv_mutex_unlock(&client->inner_mutex);
+			break;
+		}
+	}
+}
+
+static inline size_t ring_count(const AudioStream *s) {
+	return atomic_load_explicit(&s->used, memory_order_acquire);
+}
+
+static inline size_t ring_space(const AudioStream *s) {
+	// Full when used == buffer_size; empty when used == 0
+	size_t used = ring_count(s);
+	return (used >= s->buffer_size) ? 0 : (s->buffer_size - used);
+}
+
+static size_t ring_write(AudioStream *s, const float *src, size_t count) {
+	// single producer
+	size_t head  = atomic_load_explicit(&s->head, memory_order_relaxed);
+	size_t space = ring_space(s);
+	if (count > space) count = space;
+	if (count == 0) return 0;
+
+	size_t first = s->buffer_size - head;
+	if (first > count) first = count;
+
+	memcpy(s->buffer + head, src, first * sizeof(float));
+	if (count > first) {
+		memcpy(s->buffer, src + first, (count - first) * sizeof(float));
+	}
+
+	// Publish new head and occupancy (release orders publish written samples)
+	atomic_store_explicit(&s->head, (head + count) % s->buffer_size, memory_order_release);
+	atomic_fetch_add_explicit(&s->used, count, memory_order_release);
+	return count;
+}
+
+static size_t ring_read(AudioStream *s, float *dst, size_t count) {
+	// single consumer
+	size_t tail  = atomic_load_explicit(&s->tail, memory_order_relaxed);
+	size_t avail = ring_count(s); // acquire pairs with producer's release
+	if (count > avail) count = avail;
+	if (count == 0) return 0;
+
+	size_t first = s->buffer_size - tail;
+	if (first > count) first = count;
+
+	memcpy(dst, s->buffer + tail, first * sizeof(float));
+	if (count > first) {
+		memcpy(dst + first, s->buffer, (count - first) * sizeof(float));
+	}
+
+	// Advance tail and reduce occupancy (release so subsequent loads see progress)
+	atomic_store_explicit(&s->tail, (tail + count) % s->buffer_size, memory_order_release);
+	atomic_fetch_sub_explicit(&s->used, count, memory_order_release);
+	return count;
+}
 
 uint8_t util_set_varint(uint8_t buffer[], const uint64_t value) {
 	if (value < 0x80) {
@@ -62,14 +173,14 @@ uint64_t util_get_varint(uint8_t buffer[], int *len) {
 		switch (v & 0xFC) {
 		case 0xF0:
 			i = (uint64_t)buffer[1] << 24 | (uint64_t)buffer[2] << 16 |
-				(uint64_t)buffer[3] << 8 | (uint64_t)buffer[4];
+			    (uint64_t)buffer[3] << 8 | (uint64_t)buffer[4];
 			*len += 5;
 			break;
 		case 0xF4:
 			i = (uint64_t)buffer[1] << 56 | (uint64_t)buffer[2] << 48 |
-				(uint64_t)buffer[3] << 40 | (uint64_t)buffer[4] << 32 |
-				(uint64_t)buffer[5] << 24 | (uint64_t)buffer[6] << 16 |
-				(uint64_t)buffer[7] << 8 | (uint64_t)buffer[8];
+			    (uint64_t)buffer[3] << 40 | (uint64_t)buffer[4] << 32 |
+			    (uint64_t)buffer[5] << 24 | (uint64_t)buffer[6] << 16 |
+			    (uint64_t)buffer[7] << 8 | (uint64_t)buffer[8];
 			*len += 9;
 			break;
 		case 0xF8:
@@ -156,25 +267,94 @@ int voicepacket_getlength(const VoicePacket *packet) {
 }
 
 void audio_transmission_reference(lua_State *l, AudioStream *sound) {
-	sound->refrence = mumble_registry_ref(l, sound->client->audio_streams);
+	// If it was in reclamation, cancel that and reuse the held reclaim_ref.
+	bool was_reclaimed = atomic_load_explicit(&sound->reclaimed, memory_order_acquire);
+
+	if (was_reclaimed) {
+		mumble_log(LOG_CODE, "%s: %p was marked as reclaimed", METATABLE_AUDIOSTREAM, sound);
+		atomic_store_explicit(&sound->reclaimed, false, memory_order_release);
+
+		if (sound->reclaim_ref > LUA_NOREF) {
+			mumble_log(LOG_CODE, "%s: %p has a reclaimed ref: %d", METATABLE_AUDIOSTREAM, sound, sound->reclaim_ref);
+			sound->refrence = sound->reclaim_ref;
+			sound->reclaim_ref = LUA_NOREF;
+
+			// Remove from reclaim_list if it was queued
+			uv_mutex_lock(&sound->client->inner_mutex);
+			list_remove(&sound->client->reclaim_list, sound->refrence);
+			uv_mutex_unlock(&sound->client->inner_mutex);
+		}
+	}
+
+	// Ensure we have a valid active reference
+	if (sound->refrence <= LUA_NOREF) {
+		mumble_log(LOG_CODE, "%s: %p pushing sound to audio stream registry", METATABLE_AUDIOSTREAM, sound);
+		sound->refrence = mumble_registry_ref(l, sound->client->audio_streams);
+	}
+
+	// Put it on the active list (id = refrence)
 	uv_mutex_lock(&sound->client->inner_mutex);
 	list_add(&sound->client->stream_list, sound->refrence, sound);
 	uv_mutex_unlock(&sound->client->inner_mutex);
 }
 
-void audio_transmission_unreference(lua_State*l, AudioStream *sound) {
-	uv_mutex_lock(&sound->client->inner_mutex);
-	list_remove(&sound->client->stream_list, sound->refrence);
-	uv_mutex_unlock(&sound->client->inner_mutex);
-	mumble_registry_unref(l, sound->client->audio_streams, &sound->refrence);
+void audiostream_reset_playback_state(AudioStream *sound) {
 	sound->playing = false;
+	sound->end = false;
 	sound->fade_volume = 1.0f;
 	sound->fade_frames = 0;
 	sound->fade_frames_left = 0;
 	sound->fade_stop = false;
+
+	// Clear the buffer
+	atomic_store_explicit(&sound->used, 0, memory_order_relaxed);
+	atomic_store_explicit(&sound->head, 0, memory_order_relaxed);
+	atomic_store_explicit(&sound->tail, 0, memory_order_relaxed);
+
+	// Reset resampler state if present
+	if (sound->src_state) {
+		int err = src_reset(sound->src_state);
+		if (err != 0) {
+			mumble_log(LOG_WARN, "error resetting audio file resampler state: %s", src_strerror(err));
+		}
+	}
+
+	// Rewind
 	if (sound->file) {
 		sf_seek(sound->file, 0, SEEK_SET);
 	}
+}
+
+static void audio_transmission_unreference_locked(lua_State *l, AudioStream *sound) {
+	uv_mutex_lock(&sound->client->inner_mutex);
+	if (sound->refrence > LUA_NOREF) {
+		list_remove(&sound->client->stream_list, sound->refrence);
+	}
+	uv_mutex_unlock(&sound->client->inner_mutex);
+
+	// Mark reclaimed, will no longer be pinnable
+	atomic_store_explicit(&sound->reclaimed, true, memory_order_release);
+
+	// Transfer the active ref to reclaim_ref so Lua won't GC too early
+	if (sound->refrence > LUA_NOREF) {
+		sound->reclaim_ref = sound->refrence;
+		sound->refrence = LUA_NOREF;
+	}
+
+	audiostream_reset_playback_state(sound);
+
+	// If no one is holding a pin, queue immediately for reclaim
+	if (atomic_load_explicit(&sound->usecount, memory_order_acquire) == 0 && sound->reclaim_ref > LUA_NOREF) {
+		uv_mutex_lock(&sound->client->inner_mutex);
+		list_add(&sound->client->reclaim_list, sound->reclaim_ref, sound);
+		uv_mutex_unlock(&sound->client->inner_mutex);
+	}
+}
+
+void audio_transmission_unreference(lua_State *l, AudioStream *sound) {
+	uv_mutex_lock(&sound->mutex);
+	audio_transmission_unreference_locked(l, sound);
+	uv_mutex_unlock(&sound->mutex);
 }
 
 float* convert_mono_to_multi(const float* input_buffer, sf_count_t frames_read, int channels) {
@@ -249,10 +429,12 @@ int resample_audio(SRC_STATE *src_state, const float *input_buffer, float **outp
 	return src_data.output_frames_gen;
 }
 
-int process_audio(AudioStream* sound, float **output_data, size_t available_space, size_t *frames_out) {
+int process_audio(AudioStream* sound, float **output_data, size_t available_space, size_t *frames_out, bool *eof_out) {
 	*frames_out = 0;
+	*eof_out = false;
 	int input_rate = sound->info.samplerate;
 	int input_channels = sound->info.channels;
+
 	double resample_ratio = (double)AUDIO_SAMPLE_RATE / input_rate;
 
 	// How many frames are available to be written to in our 48k stereo buffer
@@ -260,13 +442,14 @@ int process_audio(AudioStream* sound, float **output_data, size_t available_spac
 	// How many input frames we should read before resampling to 48k and mixing to stereo
 	sf_count_t input_frames = (sf_count_t)((double)available_output_frames / resample_ratio);
 	// How many frames we estimate will be output after resampling to 48k
-	sf_count_t output_frames = (sf_count_t)((double)input_frames * resample_ratio);
 
 	float *input_buffer = (float *)malloc(input_frames * input_channels * sizeof(float));
 	if (!input_buffer) return -1;
 
 	sf_count_t frames_read = sf_readf_float(sound->file, input_buffer, input_frames);
+
 	if (frames_read <= 0) {
+		*eof_out = true;
 		free(input_buffer);
 		return 0;
 	}
@@ -289,7 +472,10 @@ int process_audio(AudioStream* sound, float **output_data, size_t available_spac
 		input_buffer = stereo_buffer;
 	}
 
-	int resampled_frames = resample_audio(sound->src_state, input_buffer, output_data, frames_read, output_frames, resample_ratio, frames_read < input_frames);
+	sf_count_t actual_output_frames = (sf_count_t)ceil((double)frames_read * resample_ratio);
+
+	bool flush = (frames_read > 0) && (frames_read < input_frames);
+	int resampled_frames = resample_audio(sound->src_state, input_buffer, output_data, frames_read, actual_output_frames, resample_ratio, flush);
 	if (!*output_data) {
 		free(input_buffer);
 		return -1;
@@ -301,6 +487,12 @@ int process_audio(AudioStream* sound, float **output_data, size_t available_spac
 	}
 
 	*frames_out = resampled_frames;
+
+	// We only mark EOF if the source really hit the end (read less than requested),
+	// not if the resampler chose to emit 0 this cycle.
+	if (frames_read < input_frames) {
+		*eof_out = true;
+	}
 	return 0;
 }
 
@@ -313,89 +505,69 @@ void mumble_audio_buffer_thread(void *arg) {
 		uv_mutex_lock(&client->main_mutex);
 		bool running = client->audio_buffer_thread_running;
 		uv_mutex_unlock(&client->main_mutex);
-
-		if (!running) {
-			break;
-		}
+		if (!running) break;
 
 		uv_mutex_lock(&client->inner_mutex);
-		LinkNode* current = client->stream_list;
-		uv_mutex_unlock(&client->inner_mutex);
+		LinkNode *current = client->stream_list;
 
 		while (current) {
-			uv_mutex_lock(&client->inner_mutex);
 			AudioStream *sound = current->data;
 			current = current->next;
-			uv_mutex_unlock(&client->inner_mutex);
 
-			if (sound) {
+			if (sound && sound_try_pin(sound)) {
+				uv_mutex_unlock(&client->inner_mutex);
+
 				uv_mutex_lock(&sound->mutex);
 				bool playing = sound->playing;
-				bool end = sound->end;
-				size_t buffer_size = sound->buffer_size;
-				size_t available_space = sound->buffer_size - sound->used;
-				size_t first_chunk = sound->buffer_size - sound->write_position;
+				bool end     = sound->end;
+				size_t bsz   = sound->buffer_size;
 				uv_mutex_unlock(&sound->mutex);
 
 				if (playing && !end) {
-					// Only buffer when it's half empty
-					if (available_space <= buffer_size / 2) {
-						continue;
-					}
+					size_t used_samples  = ring_count(sound);
+					size_t space_samples = ring_space(sound);
 
-					mumble_log(LOG_CODE, "sound->buffer_size (samples): %lu", buffer_size);
-					mumble_log(LOG_CODE, "available_space (samples): %lu", available_space);
+					if (used_samples < (bsz / 2)) {
+						uint64_t start = uv_hrtime();
+						size_t frames_read = 0;
+						float *output_audio = NULL;
+						bool eof = false;
 
-					uint64_t start = uv_hrtime();
+						int rc = process_audio(sound, &output_audio,
+						                       space_samples * sizeof(float),
+						                       &frames_read, &eof);
 
-					size_t frames_read;
-					float* output_audio = NULL;
-					// Process the audio data.
-					// Make sure process_audio is aware that available_space is in samples (convert to bytes if necessary inside process_audio)
-					process_audio(sound, &output_audio, available_space * sizeof(float), &frames_read);
-
-					float process_time_ms = (uv_hrtime() - start) / 1e6;
-					mumble_log(LOG_CODE, "processed in %.3f ms", (uv_hrtime() - start) / 1e6);
-
-					if (process_time_ms > AUDIO_BUFFER_SIZE) {
-						// It took longer to process the buffer than the buffer size itself, causing a stall in the playback thread
-						mumble_log(LOG_WARN, "audio processing took %.3f ms (buffer size is %d ms)", process_time_ms, AUDIO_BUFFER_SIZE);
-					} else {
-						mumble_log(LOG_CODE, "audio processing took %.3f ms", process_time_ms);
-					}
-
-					// Calculate the total number of samples to copy
-					size_t copy_size = frames_read * AUDIO_PLAYBACK_CHANNELS;
-
-					mumble_log(LOG_CODE, "frames_read: %lu", frames_read);
-					mumble_log(LOG_CODE, "copy_size (samples): %lu", copy_size);
-
-					uv_mutex_lock(&sound->mutex);
-					sound->end = frames_read <= 0;
-					mumble_log(LOG_CODE, "sound->end: %s", sound->end ? "true" : "false");
-					if (frames_read > 0 && output_audio) {
-						if (first_chunk >= copy_size) {
-							// Simple case: Copy all at once (convert sample count to byte count for memcpy)
-							memcpy(sound->buffer + sound->write_position, output_audio, copy_size * sizeof(float));
+						float ms = (uv_hrtime() - start) / 1e6;
+						if (ms > AUDIO_BUFFER_SIZE) {
+							// A stutter will occur, so show a warning
+							mumble_log(LOG_WARN,
+							           "audio processing took %.3f ms (buffer size is %d ms)",
+							           ms, AUDIO_BUFFER_SIZE);
 						} else {
-							// Copy first part until the end of the buffer
-							memcpy(sound->buffer + sound->write_position, output_audio, first_chunk * sizeof(float));
-							// Copy second part from the beginning of the buffer
-							memcpy(sound->buffer, output_audio + first_chunk, (copy_size - first_chunk) * sizeof(float));
+							mumble_log(LOG_CODE, "audio processing took %.3f ms", ms);
 						}
-						// Update the write pointer in terms of float elements
-						sound->write_position = (sound->write_position + copy_size) % sound->buffer_size;
-						sound->used += copy_size;
-						free(output_audio);
+
+						if (rc == 0 && output_audio && frames_read > 0) {
+							size_t copy_samples = frames_read * AUDIO_PLAYBACK_CHANNELS;
+							ring_write(sound, output_audio, copy_samples);
+						}
+						if (output_audio) free(output_audio);
+
+						if (eof) {
+							uv_mutex_lock(&sound->mutex);
+							sound->end = true;
+							uv_mutex_unlock(&sound->mutex);
+						}
 					}
-					available_space = sound->buffer_size - sound->used;
-					mumble_log(LOG_CODE, "available_space AFTER (samples): %lu", available_space);
-					uv_mutex_unlock(&sound->mutex);
 				}
+
+				sound_unpin_schedule_unref_if_needed(sound);
+				uv_mutex_lock(&client->inner_mutex);
 			}
 		}
 
-		// Sleep at the same rate we are outputting audio
+		uv_mutex_unlock(&client->inner_mutex);
+
 		uv_sleep(client->audio_frames);
 	}
 }
@@ -412,7 +584,7 @@ void mumble_audio_playback_thread(void* arg) {
 		uv_mutex_unlock(&client->main_mutex);
 
 		if (!running) break; // shutdown
-		
+
 		uint64_t now = uv_hrtime();
 
 		if (now >= client->audio_playback_next) {
@@ -456,11 +628,15 @@ static void handle_audio_stream_end(lua_State *l, MumbleClient *client, AudioStr
 	} else {
 		mumble_registry_pushref(l, client->audio_streams, sound->refrence);
 		mumble_hook_call(client, "OnAudioStreamEnd", 1);
-		audio_transmission_unreference(l, sound);
+		audio_transmission_unreference_locked(l, sound);
 	}
 }
 
 static void process_audio_file(lua_State *l, MumbleClient *client, AudioStream *sound, uint32_t sample_size, sf_count_t *biggest_read, bool *didLoop) {
+	if (atomic_load_explicit(&sound->reclaimed, memory_order_acquire)) {
+		return; // Already stopped; skip processing
+	}
+
 	if (sample_size > PCM_BUFFER) {
 		// Our sample size is somehow too large to fit within the input buffer
 		return;
@@ -468,35 +644,29 @@ static void process_audio_file(lua_State *l, MumbleClient *client, AudioStream *
 
 	float input_buffer[PCM_BUFFER];
 
-	// Calculate available frames
-	sf_count_t frames_available = sound->used / AUDIO_PLAYBACK_CHANNELS;
-	sf_count_t frames_to_read = (frames_available < sample_size) ? frames_available : sample_size;
+	// Calculate available frames from the lock-free ring
+	size_t samples_avail = ring_count(sound);
+	sf_count_t frames_available = (sf_count_t)(samples_avail / AUDIO_PLAYBACK_CHANNELS);
+
+	// Cap by requested sample_size
+	sf_count_t frames_to_read = (frames_available < (sf_count_t)sample_size)
+	                            ? frames_available
+	                            : (sf_count_t)sample_size;
 
 	sf_count_t read = 0;
 
 	if (frames_to_read > 0) {
-		size_t samples_to_read = frames_to_read * AUDIO_PLAYBACK_CHANNELS;
-
-		// Calculate first and second chunk sizes
-		size_t first_chunk = (sound->buffer_size - sound->read_position < samples_to_read) ?
-							 (sound->buffer_size - sound->read_position) : samples_to_read;
-		size_t second_chunk = samples_to_read - first_chunk;
-
-		// Read first chunk from buffer if available
-		if (first_chunk > 0) {
-			memcpy(input_buffer, sound->buffer + sound->read_position, first_chunk * sizeof(float));
+		// Convert frames to samples and cap to input_buffer capacity
+		size_t samples_to_read = (size_t)frames_to_read * AUDIO_PLAYBACK_CHANNELS;
+		if (samples_to_read > PCM_BUFFER) {
+			samples_to_read = PCM_BUFFER;
 		}
 
-		// Read second chunk if wrap-around occurs
-		if (second_chunk > 0) {
-			memcpy(input_buffer + first_chunk, sound->buffer, second_chunk * sizeof(float));
-		}
+		// Pull from the ring directly into input_buffer (lock-free)
+		size_t got = ring_read(sound, input_buffer, samples_to_read);
 
-		// Update read position safely
-		sound->read_position = (sound->read_position + samples_to_read) % sound->buffer_size;
-		sound->used -= samples_to_read;
-
-		read = frames_to_read;  // Store actual frames read
+		// Convert samples actually read to frames actually read
+		read = (sf_count_t)(got / AUDIO_PLAYBACK_CHANNELS);
 	}
 
 	if (sound->fade_frames > 0) {
@@ -507,7 +677,6 @@ static void process_audio_file(lua_State *l, MumbleClient *client, AudioStream *
 				sound->fade_volume = sound->fade_to_volume + (sound->fade_from_volume - sound->fade_to_volume) * ((float) sound->fade_frames_left / sound->fade_frames);
 			} else if (sound->fade_stop) {
 				// Fake end of stream
-				read = 0;
 				sound->fade_volume = 0.0f;
 				sound->end = true;
 			}
@@ -528,9 +697,9 @@ static void process_audio_file(lua_State *l, MumbleClient *client, AudioStream *
 	if (sound->end && read < sample_size) {
 		// We reached the end of the stream
 		mumble_log(LOG_CODE,
-			"reached end of audio stream: %" PRId64 " (%" PRIu32 ")",
-			(int64_t)read,
-			sample_size);
+		           "reached end of audio stream: %" PRId64 " (%" PRIu32 ")",
+		           (int64_t)read,
+		           sample_size);
 		handle_audio_stream_end(l, client, sound, didLoop);
 	}
 
@@ -540,16 +709,21 @@ static void process_audio_file(lua_State *l, MumbleClient *client, AudioStream *
 }
 
 static void audio_transmission_bitrate_warning(MumbleClient *client, size_t length) {
+	uv_mutex_lock(&client->inner_mutex);
 	LinkNode* current = client->stream_list;
+	uv_mutex_unlock(&client->inner_mutex);
 
-	if (current) {
-		// Cleanup any active audio transmissions
-		while (current != NULL) {
-			uv_mutex_lock(&client->inner_mutex);
-			AudioStream *sound = current->data;
-			current = current->next;
-			uv_mutex_unlock(&client->inner_mutex);
+	while (current != NULL) {
+		uv_mutex_lock(&client->inner_mutex);
+		AudioStream *sound = current->data;
+		current = current->next;
+		bool pinned = false;
+		if (sound) pinned = sound_try_pin(sound);
+		uv_mutex_unlock(&client->inner_mutex);
+
+		if (pinned) {
 			audio_transmission_unreference(client->l, sound);
+			sound_unpin_schedule_unref_if_needed(sound);
 		}
 	}
 
@@ -577,11 +751,11 @@ static void send_legacy_audio(MumbleClient *client, uint8_t *encoded, opus_int32
 
 	if (client->tcp_udp_tunnel) {
 		mumble_log(LOG_TRACE, "[TCP] Sending legacy audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)",
-				   len, LEGACY_UDP_OPUS, client->audio_target, client->session, audio_sequence);
+		           len, LEGACY_UDP_OPUS, client->audio_target, client->session, audio_sequence);
 		packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, NULL, len);
 	} else {
 		mumble_log(LOG_TRACE, "[UDP] Sending legacy audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)",
-				   len, LEGACY_UDP_OPUS, client->audio_target, client->session, audio_sequence);
+		           len, LEGACY_UDP_OPUS, client->audio_target, client->session, audio_sequence);
 		packet_sendudp(client, packet_buffer, len);
 	}
 
@@ -610,11 +784,11 @@ static void send_protobuf_audio(MumbleClient *client, uint8_t *encoded, opus_int
 
 	if (client->tcp_udp_tunnel) {
 		mumble_log(LOG_TRACE, "[TCP] Sending protobuf TCP audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)",
-				   len, LEGACY_UDP_OPUS, client->audio_target, client->session, audio_sequence);
+		           len, LEGACY_UDP_OPUS, client->audio_target, client->session, audio_sequence);
 		packet_sendex(client, PACKET_UDPTUNNEL, packet_buffer, NULL, len);
 	} else {
 		mumble_log(LOG_TRACE, "[UDP] Sending protobuf UDP audio packet (size=%u, id=%u, target=%u, session=%u, sequence=%u)",
-				   len, LEGACY_UDP_OPUS, client->audio_target, client->session, audio_sequence);
+		           len, LEGACY_UDP_OPUS, client->audio_target, client->session, audio_sequence);
 		packet_sendudp(client, packet_buffer, len);
 	}
 
@@ -774,10 +948,10 @@ void mumble_audio_encode_thread(void *arg) {
 
 		// Encode audio
 		work->encoded_len = opus_encode_float(client->encoder,
-											 (float *)work->pcm,
-											 work->frame_size,
-											 work->encoded,
-											 PAYLOAD_SIZE_MAX);
+		                                      (float *)work->pcm,
+		                                      work->frame_size,
+		                                      work->encoded,
+		                                      PAYLOAD_SIZE_MAX);
 
 		work->encode_time = (uv_hrtime() - start) / 1e6;
 
@@ -796,26 +970,29 @@ static void audio_encode_event(lua_State *l, MumbleClient *client) {
 
 	bool didLoop = false;
 
-	uv_mutex_lock(&client->inner_mutex);
-	LinkNode *current = client->stream_list;
-	uv_mutex_unlock(&client->inner_mutex);
-
+	// clear the mix buffer for this frame
 	memset(client->audio_output, 0, sizeof(client->audio_output));
 
 	// Handle any playing audio files
+	uv_mutex_lock(&client->inner_mutex);
+	LinkNode *current = client->stream_list;
+
 	while (current != NULL) {
-		uv_mutex_lock(&client->inner_mutex);
 		AudioStream *sound = current->data;
 		current = current->next;
-		uv_mutex_unlock(&client->inner_mutex);
-		if (sound != NULL) {
+		if (sound && sound_try_pin(sound)) {
+			uv_mutex_unlock(&client->inner_mutex);
 			if (sound->playing) {
 				uv_mutex_lock(&sound->mutex);
 				process_audio_file(l, client, sound, output_frames, &biggest_read, &didLoop);
 				uv_mutex_unlock(&sound->mutex);
 			}
+			sound_unpin_schedule_unref_if_needed(sound);
+			uv_mutex_lock(&client->inner_mutex);
 		}
 	}
+
+	uv_mutex_unlock(&client->inner_mutex);
 
 	// Hook allows for feeding raw PCM data into an audio buffer, mixing it into other playing audio
 	lua_pushinteger(l, AUDIO_SAMPLE_RATE);
@@ -894,7 +1071,8 @@ static void audio_encode_event(lua_State *l, MumbleClient *client) {
 		}
 
 		float *resampled_audio = NULL;
-		int resampled_frames = resample_audio(context->src_state, input_buffer, &resampled_audio, input_frames, output_frames, resample_ratio, false);
+		sf_count_t actual_output_frames = (sf_count_t)ceil((double)input_frames * resample_ratio);
+		int resampled_frames = resample_audio(context->src_state, input_buffer, &resampled_audio, input_frames, actual_output_frames, resample_ratio, false);
 		free(input_buffer);
 		if (resampled_frames > 0) {
 			streamed_audio = true;
@@ -937,10 +1115,10 @@ static void audio_send_event(MumbleClient *client) {
 		// We have something to send
 		if (client->legacy) {
 			send_legacy_audio(client, work->encoded, work->encoded_len,
-							  work->end_frame, work->audio_sequence);
+			                  work->end_frame, work->audio_sequence);
 		} else {
 			send_protobuf_audio(client, work->encoded, work->encoded_len,
-								work->end_frame, work->audio_sequence);
+			                    work->end_frame, work->audio_sequence);
 		}
 		// We can finally free our work
 		free(work);
@@ -949,6 +1127,8 @@ static void audio_send_event(MumbleClient *client) {
 
 void mumble_audio_playback_async(uv_async_t* handle) {
 	MumbleClient* client = (MumbleClient*)handle->data;
+
+	sound_clean_reclaimed(client);
 
 	// This playback async callback is called every frame duration
 	if (client->audio_playback_async_pending) {
