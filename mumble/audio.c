@@ -512,7 +512,6 @@ void mumble_audio_buffer_thread(void *arg) {
 
 		while (current) {
 			AudioStream *sound = current->data;
-			current = current->next;
 
 			if (sound && sound_try_pin(sound)) {
 				uv_mutex_unlock(&client->inner_mutex);
@@ -562,8 +561,15 @@ void mumble_audio_buffer_thread(void *arg) {
 				}
 
 				sound_unpin_schedule_unref_if_needed(sound);
+
 				uv_mutex_lock(&client->inner_mutex);
+				LinkNode *n = client->stream_list;
+				while (n && n->data != sound) n = n->next;
+				current = n ? n->next : client->stream_list;
+				continue;
 			}
+
+			current = current->next;
 		}
 
 		uv_mutex_unlock(&client->inner_mutex);
