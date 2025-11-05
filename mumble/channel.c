@@ -385,7 +385,9 @@ int channel_call(lua_State *l) {
 			LinkNode* next_channel = channel->client->channel_list;
 			while (next_channel != NULL) {
 				MumbleChannel *chan = next_channel->data;
-				if (chan != NULL && chan->channel_id != chan->parent && chan->parent == channel->channel_id && strcmp(pch, chan->name) == 0) {
+				if (chan != NULL && chan->name != NULL
+					&& chan->channel_id != chan->parent && chan->parent == channel->channel_id
+					&& strcmp(pch, chan->name) == 0) {
 					current = chan;
 				}
 				next_channel = next_channel->next;
