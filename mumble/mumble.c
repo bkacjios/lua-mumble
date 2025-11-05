@@ -1192,6 +1192,7 @@ MumbleUser* mumble_user_get(MumbleClient* client, uint32_t session) {
 		lua_setmetatable(l, -2);
 
 		list_add(&client->user_list, session, user);
+		mumble_log(LOG_TRACE, "added user session: %u (user=%p)", session, user);
 
 		lua_pushinteger(l, session);
 		lua_pushvalue(l, -2); // Push a copy of the new user metatable
@@ -1273,6 +1274,7 @@ MumbleChannel* mumble_channel_get(MumbleClient* client, uint32_t channel_id) {
 		luaL_getmetatable(l, METATABLE_CHAN);
 		lua_setmetatable(l, -2);
 
+		mumble_log(LOG_TRACE, "added channel: %u (channel=%p)", channel_id, channel);
 		list_add(&client->channel_list, channel_id, channel);
 
 		lua_pushinteger(l, channel_id);
@@ -1287,7 +1289,7 @@ MumbleChannel* mumble_channel_get(MumbleClient* client, uint32_t channel_id) {
 }
 
 void mumble_channel_remove(MumbleClient* client, uint32_t channel_id) {
-	mumble_log(LOG_TRACE, "removing channel_id: %u", channel_id);
+	mumble_log(LOG_TRACE, "removing channel: %u", channel_id);
 	lua_State* l = client->l;
 	mumble_pushref(l, client->channels);
 	lua_pushinteger(l, channel_id);
