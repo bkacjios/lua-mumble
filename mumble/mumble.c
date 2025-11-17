@@ -361,12 +361,13 @@ void handle_ssl_read_error(MumbleClient* client, int ret) {
 }
 
 void socket_read_event_tcp(uv_poll_t* handle, int status, int events) {
+	MumbleClient* client = (MumbleClient*) handle->data;
+	
 	if (status < 0) {
 		mumble_disconnect(client, uv_strerror(status), false);
 		return;
 	}
 
-	MumbleClient* client = (MumbleClient*) handle->data;
 	lua_State* l = client->l;
 
 	if (events & UV_READABLE && client->connected) {
