@@ -507,11 +507,23 @@ void mumble_connected_tcp(uv_connect_t *req, int status) {
 }
 
 static int mumble_client_new(lua_State *l) {
-	// 1 = metatable
+	// The __call passes our metatable with it
+	// Remove it since we don't need it and it messes up the arument positions
+	lua_remove(l, 1);
+
+	// Arguments now start at 1
+	// Get client version
+	lua_Integer major = luaL_optinteger(l, 1, MUMBLE_VERSION_MAJOR);
+	lua_Integer minor = luaL_optinteger(l, 2, MUMBLE_VERSION_MINOR);
+	lua_Integer patch = luaL_optinteger(l, 3, MUMBLE_VERSION_PATCH);
 
 	MumbleClient *client = lua_newuserdata(l, sizeof(MumbleClient));
 	luaL_getmetatable(l, METATABLE_CLIENT);
 	lua_setmetatable(l, -2);
+
+	client->version_major = major;
+	client->version_minor = minor;
+	client->version_patch = patch;
 
 	lua_newtable(l);
 	client->hooks = mumble_ref(l);
@@ -533,10 +545,6 @@ static int mumble_client_new(lua_State *l) {
 	client->connecting = false;
 	client->connected = false;
 	client->synced = false;
-
-	client->version_major = luaL_optinteger(l, 2, MUMBLE_VERSION_MAJOR);
-	client->version_minor = luaL_optinteger(l, 3, MUMBLE_VERSION_MINOR);
-	client->version_patch = luaL_optinteger(l, 4, MUMBLE_VERSION_PATCH);
 
 	client->legacy = MUMBLE_LEGACY_CLIENT;
 	client->audio_sequence = 0;
