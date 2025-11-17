@@ -362,7 +362,7 @@ void handle_ssl_read_error(MumbleClient* client, int ret) {
 
 void socket_read_event_tcp(uv_poll_t* handle, int status, int events) {
 	if (status < 0) {
-		mumble_log(LOG_ERROR, "tcp read event error: %s", uv_strerror(status));
+		mumble_disconnect(client, uv_strerror(status), false);
 		return;
 	}
 
