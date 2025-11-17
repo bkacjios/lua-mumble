@@ -9,8 +9,10 @@
 #define MUMBLE_VERSION_MINOR	(uint64_t) 5
 #define MUMBLE_VERSION_PATCH 	(uint64_t) 735
 
-#define MUMBLE_VERSION_V1 MUMBLE_VERSION_MAJOR << 16 | MUMBLE_VERSION_MINOR << 8 | MUMBLE_VERSION_PATCH
-#define MUMBLE_VERSION_V2 MUMBLE_VERSION_MAJOR << 48 | MUMBLE_VERSION_MINOR << 32 | MUMBLE_VERSION_PATCH << 16
+#define MUMBLE_VERSION_V1 client->version_major << 16 | client->version_minor << 8 | client->version_patch
+#define MUMBLE_VERSION_V2 client->version_major << 48 | client->version_minor << 32 | client->version_patch << 16
+
+#define MUMBLE_LEGACY_CLIENT client->version_major <= 1 && client->version_minor < 5
 
 #define CLIENT_TYPE_USER 0
 #define CLIENT_TYPE_BOT  1

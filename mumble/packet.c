@@ -1377,10 +1377,11 @@ void packet_user_stats(MumbleClient *client, MumblePacket *packet) {
 		{
 			if (stats->version->has_version_v1) {
 				lua_pushinteger(l, stats->version->version_v1);
-				lua_setfield(l, -2, "version");
-			} else if (stats->version->has_version_v2) {
+				lua_setfield(l, -2, "version_v1");
+			}
+			if (stats->version->has_version_v2) {
 				lua_pushinteger(l, stats->version->version_v2);
-				lua_setfield(l, -2, "version");
+				lua_setfield(l, -2, "version_v2");
 			}
 			lua_pushstring(l, stats->version->release);
 			lua_setfield(l, -2, "release");
@@ -1531,10 +1532,11 @@ void packet_suggest_config(MumbleClient *client, MumblePacket *packet) {
 	lua_newtable(l);
 	if (config->has_version_v1) {
 		lua_pushinteger(l, config->version_v1);
-		lua_setfield(l, -2, "version");
-	} else if (config->has_version_v2) {
+		lua_setfield(l, -2, "version_v1");
+	}
+	if (config->has_version_v2) {
 		lua_pushinteger(l, config->version_v2);
-		lua_setfield(l, -2, "version");
+		lua_setfield(l, -2, "version_v2");
 	}
 	if (config->has_positional) {
 		mumble_log(LOG_WARN, "%s[%d] server recommends posisional audio", METATABLE_CLIENT, client->self);

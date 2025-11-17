@@ -178,6 +178,10 @@ struct MumbleClient {
 	lua_State*			l;
 	int					self;
 
+	uint64_t			version_major;
+	uint64_t			version_minor;
+	uint64_t			version_patch;
+
 	uv_connect_t		tcp_connect_req;
 	uv_tcp_t			socket_tcp;
 	uv_os_fd_t			socket_tcp_fd;

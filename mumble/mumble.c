@@ -512,7 +512,6 @@ static int mumble_client_new(lua_State *l) {
 	MumbleClient *client = lua_newuserdata(l, sizeof(MumbleClient));
 	luaL_getmetatable(l, METATABLE_CLIENT);
 	lua_setmetatable(l, -2);
-	lua_remove(l, -2);
 
 	lua_newtable(l);
 	client->hooks = mumble_ref(l);
@@ -534,7 +533,12 @@ static int mumble_client_new(lua_State *l) {
 	client->connecting = false;
 	client->connected = false;
 	client->synced = false;
-	client->legacy = MUMBLE_VERSION_MAJOR <= 1 && MUMBLE_VERSION_MINOR < 5;
+
+	client->version_major = luaL_optinteger(l, 2, MUMBLE_VERSION_MAJOR);
+	client->version_minor = luaL_optinteger(l, 3, MUMBLE_VERSION_MINOR);
+	client->version_patch = luaL_optinteger(l, 4, MUMBLE_VERSION_PATCH);
+
+	client->legacy = MUMBLE_LEGACY_CLIENT;
 	client->audio_sequence = 0;
 	client->audio_target = 0;
 	client->audio_frames = AUDIO_DEFAULT_FRAMES;

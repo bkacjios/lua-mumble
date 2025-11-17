@@ -48,8 +48,8 @@ If you want a debug build, add `-DCMAKE_BUILD_TYPE=Debug` to the cmake arguments
 -- The mumble library is returned by a require call
 local mumble = require("mumble")
 
--- Create a new mumble client
-mumble.client = mumble.client()
+-- Create a new mumble client (Defaults to version 1.5.735 as defined in defines.h)
+mumble.client = mumble.client([Number version_major = 1, Number version_minor = 5, Number version_patch = 735])
 
 -- Main event loop that handles all events, ping, and audio processing
 -- This will block the script until SIGINT or mumble.stop(), so call this *after* you create your hooks
@@ -203,6 +203,9 @@ Number volume = mumble.client:getVolume()
 -- Returns if the client is tunneling UDP voice data through the TCP connection
 -- This will be true until the first "OnPongUDP" call
 Boolean tunneludp = mumble.client:isTunnelingUDP()
+
+-- Returns if the client is a legacy client or not
+Boolean isLegacy = mumble.client:isLegacy()
 
 -- Attempts to change the bots comment
 mumble.client:setComment(String comment)

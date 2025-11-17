@@ -96,8 +96,12 @@ static int client_auth(lua_State *l) {
 
 	version.has_version_v1 = true;
 	version.version_v1 = MUMBLE_VERSION_V1;
-	version.has_version_v2 = true;
-	version.version_v2 = MUMBLE_VERSION_V2;
+	if (!client->legacy) {
+		version.has_version_v2 = true;
+		version.version_v2 = MUMBLE_VERSION_V2;
+	} else {
+		version.has_version_v2 = false;
+	}
 	version.release = MODULE_NAME " " GIT_VERSION;
 	version.os = unameData.sysname;
 	version.os_version = unameData.release;
@@ -982,6 +986,12 @@ static int client_isTunnelingUDP(lua_State *l) {
 	return 1;
 }
 
+static int client_isLegacy(lua_State *l) {
+	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
+	lua_pushboolean(l, client->legacy);
+	return 1;
+}
+
 static int client_gc(lua_State *l) {
 	MumbleClient *client = luaL_checkudata(l, 1, METATABLE_CLIENT);
 	mumble_log(LOG_DEBUG, "%s: %p garbage collected", METATABLE_CLIENT, client);
@@ -1069,6 +1079,7 @@ const luaL_Reg mumble_client[] = {
 	{"getMe", client_getMe},
 	{"getSelf", client_getMe},
 	{"isTunnelingUDP", client_isTunnelingUDP},
+	{"isLegacy", client_isLegacy},
 	{"__gc", client_gc},
 	{"__tostring", client_tostring},
 	{"__index", client_index},
