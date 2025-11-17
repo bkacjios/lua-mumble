@@ -5,14 +5,17 @@
 #include "banentry.h"
 
 int mumble_banentry_new(lua_State *l) {
+	lua_remove(l, 1);
+
 	MumbleProto__BanList__BanEntry *entry = lua_newuserdata(l, sizeof(MumbleProto__BanList__BanEntry));
+	luaL_getmetatable(l, METATABLE_BANENTRY);
+	lua_setmetatable(l, -2);
+
 	mumble_proto__ban_list__ban_entry__init(entry);
 
 	entry->address.data = (uint8_t *) luaL_checklstring(l, 1, &entry->address.len);
 	entry->mask = luaL_checkinteger(l, 2);
 
-	luaL_getmetatable(l, METATABLE_BANENTRY);
-	lua_setmetatable(l, -2);
 	return 1;
 }
 

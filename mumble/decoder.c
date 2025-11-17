@@ -6,8 +6,10 @@
 
 int mumble_decoder_new(lua_State *l) {
 	// Argument 1 = mumble.decoder table
-	opus_int32 samplerate = luaL_optinteger(l, 2, AUDIO_SAMPLE_RATE);
-	int channels = luaL_optinteger(l, 3, AUDIO_PLAYBACK_CHANNELS);
+	lua_remove(l, 1);
+
+	opus_int32 samplerate = luaL_optinteger(l, 1, AUDIO_SAMPLE_RATE);
+	int channels = luaL_optinteger(l, 2, AUDIO_PLAYBACK_CHANNELS);
 
 	MumbleOpusDecoder *wrapper = lua_newuserdata(l, sizeof(MumbleOpusDecoder));
 	wrapper->decoder = NULL;

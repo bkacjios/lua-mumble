@@ -6,8 +6,10 @@
 
 int mumble_encoder_new(lua_State *l) {
 	// Argument 1 = mumble.encoder table
-	opus_int32 samplerate = luaL_optinteger(l, 2, AUDIO_SAMPLE_RATE);
-	int channels = luaL_optinteger(l, 3, AUDIO_PLAYBACK_CHANNELS);
+	lua_remove(l, 1);
+
+	opus_int32 samplerate = luaL_optinteger(l, 1, AUDIO_SAMPLE_RATE);
+	int channels = luaL_optinteger(l, 2, AUDIO_PLAYBACK_CHANNELS);
 
 	OpusEncoder *encoder = lua_newuserdata(l, opus_encoder_get_size(channels));
 	luaL_getmetatable(l, METATABLE_ENCODER);

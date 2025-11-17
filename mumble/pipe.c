@@ -119,8 +119,10 @@ static void mumble_pipe_on_read(uv_stream_t *handle, ssize_t nread, const uv_buf
 }
 
 int mumble_pipe_new(lua_State *l) {
-	const char* filepath = luaL_checkstring(l, 2);
-	luaL_checktype(l, 3, LUA_TFUNCTION);
+	lua_remove(l, 1);
+
+	const char* filepath = luaL_checkstring(l, 1);
+	luaL_checktype(l, 2, LUA_TFUNCTION);
 
 	int error = mkfifo(filepath, 0666);
 
