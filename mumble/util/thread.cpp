@@ -10,8 +10,6 @@
 
 #include <cstdlib>
 #include <cstring>
-#include <pthread.h>
-#include <unistd.h>
 
 MumbleThreadController::MumbleThreadController(lua_State *l) : l(l) {
 }
@@ -47,9 +45,17 @@ void MumbleThreadWorker::stop() {
 
 #if UV_VERSION_MAJOR < 1 || (UV_VERSION_MAJOR == 1 && UV_VERSION_MINOR < 50)
 // This was added in libuv 1.50
+#ifdef _WIN32
+#include <windows.h>
+int uv_thread_detach(uv_thread_t *tid) {
+	return CloseHandle(*tid) ? 0 : -1;
+}
+#else
+#include <pthread.h>
 int uv_thread_detach(uv_thread_t *tid) {
 	return pthread_detach(*tid);
 }
+#endif
 
 #endif
 

@@ -1,7 +1,6 @@
 #include "util/util.h"
 
 
-#include <arpa/inet.h>
 #include <cctype>
 #include <cstdio>
 

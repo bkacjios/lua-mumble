@@ -14,9 +14,9 @@
 #include "net/packet.h"
 #include "net/varint.h"
 #include "util/log.h"
+#include "util/platform.h"
 #include "util/util.h"
 
-#include <arpa/inet.h>
 #include <cerrno>
 #include <cmath>
 #include <cstdio>

@@ -10,6 +10,7 @@
 #include "net/voicepacket.h"
 #include "util/buffer.h"
 #include "util/log.h"
+#include "util/platform.h"
 
 #include <cerrno>
 #include <cinttypes>
@@ -17,10 +18,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
-#include <pthread.h>
 
 void MumbleClient::audioBufferThread(void *arg) {
-	pthread_setname_np(pthread_self(), "buffer");
+	platform_thread_setname("buffer");
 
 	MumbleClient* client = (MumbleClient*) arg;
 
@@ -89,7 +89,7 @@ void MumbleClient::audioBufferThread(void *arg) {
 }
 
 void MumbleClient::audioPlaybackThread(void* arg) {
-	pthread_setname_np(pthread_self(), "playback");
+	platform_thread_setname("playback");
 
 	MumbleClient* client = (MumbleClient*)arg;
 
@@ -135,12 +135,7 @@ void MumbleClient::audioPlaybackThread(void* arg) {
 		}
 
 		// Sleep until client->audio_playback_next
-		struct timespec ts;
-		uint64_t wake_time = client->audio_playback_next;
-		ts.tv_sec = wake_time / 1000000000;
-		ts.tv_nsec = wake_time % 1000000000;
-
-		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, NULL);
+		platform_sleep_until(client->audio_playback_next);
 	}
 }
 
@@ -376,7 +371,7 @@ void MumbleClient::encodeAudio(sf_count_t frame_size, bool end_frame) {
 }
 
 void MumbleClient::audioEncodeThread(void *arg) {
-	pthread_setname_np(pthread_self(), "encode");
+	platform_thread_setname("encode");
 
 	MumbleClient *client = (MumbleClient *)arg;
 

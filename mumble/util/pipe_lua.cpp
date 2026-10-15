@@ -6,13 +6,6 @@
 #include "lua/registry.h"
 #include "util/log.h"
 
-#include <cerrno>
-#include <cstdlib>
-#include <cstring>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
 int mumble_pipe_new(lua_State *l) {
 	lua_remove(l, 1);
 

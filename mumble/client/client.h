@@ -8,10 +8,10 @@
 #include "proto/Mumble.pb-c.h"
 #include "proto/MumbleUDP.pb-c.h"
 #include "util/buffer.h"
+#include "util/platform.h"
 #include "util/util.h"
 
 #include <atomic>
-#include <netdb.h>
 #include <optional>
 #include <openssl/ssl.h>
 #include <opus/opus.h>

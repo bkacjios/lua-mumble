@@ -8,11 +8,10 @@
 #include "gitversion.h"
 #include "net/voicepacket.h"
 #include "util/buffer.h"
+#include "util/platform.h"
 
-#include <arpa/inet.h>
 #include <cerrno>
 #include <cstring>
-#include <sys/utsname.h>
 
 void MumbleClient::authenticate(const char *username, const char *password, const std::vector<const char*> &tokens) {
 	MumbleProto__Version version = MUMBLE_PROTO__VERSION__INIT;
@@ -27,8 +26,8 @@ void MumbleClient::authenticate(const char *username, const char *password, cons
 	auth.has_client_type = true;
 	auth.client_type = CLIENT_TYPE_BOT;
 
-	struct utsname unameData;
-	uname(&unameData);
+	uv_utsname_t uname;
+	uv_os_uname(&uname);
 
 	version.has_version_v1 = true;
 	version.version_v1 = versionV1();
@@ -37,8 +36,8 @@ void MumbleClient::authenticate(const char *username, const char *password, cons
 		version.version_v2 = versionV2();
 	}
 	version.release = (char*) MODULE_NAME " " GIT_VERSION;
-	version.os = unameData.sysname;
-	version.os_version = unameData.release;
+	version.os = uname.sysname;
+	version.os_version = uname.release;
 
 	send(PACKET_VERSION, &version);
 	send(PACKET_AUTHENTICATE, &auth);

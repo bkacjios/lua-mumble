@@ -75,6 +75,7 @@ jobs:
           liblua5.2-dev \
           liblua5.3-dev \
           liblua5.4-dev \
+          protobuf-compiler \
           protobuf-c-compiler \
           libprotobuf-c-dev \
           libopus-dev \

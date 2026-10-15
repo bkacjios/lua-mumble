@@ -3,8 +3,8 @@
 #include "defines.h"
 #include "lua/luainc.h"
 #include "util/log.h"
+#include "util/platform.h"
 
-#include <arpa/inet.h>
 #include <cctype>
 #include <cstdio>
 

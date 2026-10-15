@@ -11,8 +11,6 @@
 
 #include <cstdlib>
 #include <cstring>
-#include <pthread.h>
-#include <unistd.h>
 
 // The message to send to the other side of a thread, from a string or a buffer at index 2
 static std::string check_message(lua_State *l) {
@@ -153,7 +151,7 @@ static int thread_worker_onMessage(lua_State *l) {
 
 static int thread_worker_sleep(lua_State *l) {
 	luaL_checkudata(l, 1, METATABLE_THREAD_WORKER);
-	usleep(luaL_checkinteger(l, 2) * 1000);
+	uv_sleep(luaL_checkinteger(l, 2));
 	lua_pushvalue(l, 1);
 	return 1;
 }

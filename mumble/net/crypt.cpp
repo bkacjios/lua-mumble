@@ -4,9 +4,9 @@
 // Mumble source tree or at <https://www.mumble.info/LICENSE>.
 
 #include "net/crypt.h"
+#include "util/platform.h"
 
 
-#include <arpa/inet.h>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -250,13 +250,17 @@ bool CryptState::decrypt(const uint8_t *source, uint8_t *dst, size_t crypted_len
 	return true;
 }
 
-#if defined(__LP64__)
+#if defined(__LP64__) || defined(_WIN64)
 
 #define BLOCKSIZE 2
 #define SHIFTBITS 63
 typedef uint64_t subblock;
 
+#if defined(_MSC_VER)
+#define SWAP64(x) _byteswap_uint64(x)
+#else
 #define SWAP64(x) __builtin_bswap64(x)
+#endif
 
 #define SWAPPED(x) SWAP64(x)
 

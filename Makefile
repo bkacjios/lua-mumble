@@ -67,9 +67,18 @@ uninstall:
 clean:
 	rm -f $(OBJECTS) $(DEPS) $(PROTO_BUILT) gitversion.h
 
-# Generate .pb-c.c and .pb-c.h from .proto files using protoc-c
+# protoc-c is deprecated in favour of protoc with the protoc-gen-c plugin, so use that when we have both
+PROTOC = $(shell command -v protoc)
+PROTOC_GEN_C = $(shell command -v protoc-gen-c)
+ifneq ($(and $(PROTOC),$(PROTOC_GEN_C)),)
+PROTOC_C = $(PROTOC) --plugin=protoc-gen-c=$(PROTOC_GEN_C)
+else
+PROTOC_C = protoc-c
+endif
+
+# Generate .pb-c.c and .pb-c.h from .proto files
 proto/%.pb-c.c proto/%.pb-c.h: proto/%.proto
-	protoc-c --c_out=. $<
+	$(PROTOC_C) --c_out=. $<
 
 # Ensure protobuf header generation completes before compiling C++ files
 $(BUILD_DIR)/proto/%.o: proto/%.pb-c.c

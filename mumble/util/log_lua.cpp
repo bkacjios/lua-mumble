@@ -6,7 +6,6 @@
 #include <cstdarg>
 #include <cstdio>
 #include <ctime>
-#include <sys/time.h>
 
 #define lua_format_string(l, start_index) \
 	int num_args = lua_gettop(l) - (start_index) + 1; \

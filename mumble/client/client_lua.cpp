@@ -18,10 +18,8 @@
 #include "util/buffer.h"
 #include "util/log.h"
 
-#include <arpa/inet.h>
 #include <cstdlib>
 #include <cstring>
-#include <sys/utsname.h>
 
 /*--------------------------------
 	MUMBLE CLIENT META METHODS

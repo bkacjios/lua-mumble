@@ -16,9 +16,9 @@ find_package(PkgConfig REQUIRED)
 find_package(Threads REQUIRED)
 pkg_check_modules(PKG_DEPS REQUIRED ${DEPENDENCIES})
 
-# Compiler flags
-set(CMAKE_C_FLAGS "-fPIC -I. -Wall")
-set(CMAKE_CXX_FLAGS "-fPIC -I. -Wall")
+# Compiler flags, added to any given on the command line
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -I. -Wall")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -I. -Wall")
 include_directories(${CMAKE_SOURCE_DIR}/mumble)
 if("${LUAVER}" STREQUAL "luajit")
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DLUAJIT")
@@ -49,6 +49,15 @@ include_directories(${PKG_DEPS_INCLUDE_DIRS})
 link_directories(${PKG_DEPS_LIBRARY_DIRS})
 add_definitions(${PKG_DEPS_CFLAGS_OTHER})
 
+# protoc-c is deprecated in favour of protoc with the protoc-gen-c plugin, so use that when we have both
+find_program(PROTOC protoc)
+find_program(PROTOC_GEN_C protoc-gen-c)
+if(PROTOC AND PROTOC_GEN_C)
+	set(PROTOC_C_COMMAND ${PROTOC} --plugin=protoc-gen-c=${PROTOC_GEN_C})
+else()
+	set(PROTOC_C_COMMAND protoc-c)
+endif()
+
 # Proto files compilation step
 foreach(proto_file IN LISTS PROTO_SOURCES)
 	get_filename_component(proto_name ${proto_file} NAME_WE)
@@ -56,7 +65,7 @@ foreach(proto_file IN LISTS PROTO_SOURCES)
 	# Ensure the proto files are generated before compiling C++ files
 	add_custom_command(
 		OUTPUT "${BUILD_PROTO_DIR}/${proto_name}.pb-c.c" "${BUILD_PROTO_DIR}/${proto_name}.pb-c.h"
-		COMMAND protoc-c --c_out=${BUILD_PROTO_DIR} -I${PROTO_PATH} ${proto_file}
+		COMMAND ${PROTOC_C_COMMAND} --c_out=${BUILD_PROTO_DIR} -I${PROTO_PATH} ${proto_file}
 		DEPENDS ${proto_file}
 		COMMENT "Generating C files from proto ${proto_file}"
 	)
