@@ -49,7 +49,8 @@ void MumbleClient::audioBufferThread(void *arg) {
 				// so the main thread can't reset them out from under us
 				uv_mutex_lock(&sound->decode_mutex);
 
-				if (playing && !end && !sound->end) {
+				// Only files are read here, a command's output arrives on the main thread
+				if (playing && !end && !sound->end && sound->file) {
 					size_t used_samples  = sound->ringCount();
 
 					if (used_samples < (bsz / 2)) {
@@ -199,6 +200,9 @@ bool MumbleClient::processAudioFile(AudioStream *sound, uint32_t sample_size, sf
 		// Convert samples actually read to frames actually read
 		read = (sf_count_t)(got / AUDIO_PLAYBACK_CHANNELS);
 	}
+
+	// Refill from our command's output now that there's room
+	sound->pump();
 
 	bool faded_out = false;
 

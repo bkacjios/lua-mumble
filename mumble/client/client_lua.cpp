@@ -200,6 +200,91 @@ static int client_openAudio(lua_State *l) {
 	return 1;
 }
 
+// Raise an error unless the value at a Lua stack index is a non-empty list of strings
+static void check_command(lua_State *l, int index, int arg) {
+	if (!lua_istable(l, index) || lua_objlen(l, index) == 0) {
+		luaL_argerror(l, arg, "commands must be non-empty lists of strings");
+	}
+	int count = (int) lua_objlen(l, index);
+	for (int i = 1; i <= count; i++) {
+		lua_rawgeti(l, index, i);
+		if (lua_type(l, -1) != LUA_TSTRING) {
+			luaL_argerror(l, arg, "commands must be non-empty lists of strings");
+		}
+		lua_pop(l, 1);
+	}
+}
+
+static AudioProcess::Command read_command(lua_State *l, int index) {
+	AudioProcess::Command command;
+	int count = (int) lua_objlen(l, index);
+	for (int i = 1; i <= count; i++) {
+		lua_rawgeti(l, index, i);
+		size_t length;
+		const char *arg = lua_tolstring(l, -1, &length);
+		command.emplace_back(arg, length);
+		lua_pop(l, 1);
+	}
+	return command;
+}
+
+static int client_openAudioProcess(lua_State *l) {
+	MumbleClient *client = luaL_checkclass<MumbleClient>(l, 1, METATABLE_CLIENT);
+	luaL_checktype(l, 2, LUA_TTABLE);
+	int samplerate = luaL_optinteger(l, 3, AUDIO_SAMPLE_RATE);
+	int channels = luaL_optinteger(l, 4, AUDIO_PLAYBACK_CHANNELS);
+	luaL_argcheck(l, samplerate > 0, 3, "sample rate must be positive");
+	luaL_argcheck(l, channels > 0, 4, "channels must be positive");
+
+	// Either one command, { "program", "arg", ... }, or a pipeline of them, { { ... }, { ... } }
+	lua_rawgeti(l, 2, 1);
+	bool pipeline = lua_istable(l, -1);
+	lua_pop(l, 1);
+
+	// Check everything before building anything, so an error can't leak it
+	int count = pipeline ? (int) lua_objlen(l, 2) : 1;
+	if (pipeline) {
+		for (int i = 1; i <= count; i++) {
+			lua_rawgeti(l, 2, i);
+			check_command(l, lua_gettop(l), 2);
+			lua_pop(l, 1);
+		}
+	} else {
+		check_command(l, 2, 2);
+	}
+
+	AudioStream *stream = lua_newclass<AudioStream>(l, client);
+	bool failed;
+	{
+		// Scoped, so these are freed before we return to Lua
+		std::vector<AudioProcess::Command> commands;
+		if (pipeline) {
+			for (int i = 1; i <= count; i++) {
+				lua_rawgeti(l, 2, i);
+				commands.push_back(read_command(l, lua_gettop(l)));
+				lua_pop(l, 1);
+			}
+		} else {
+			commands.push_back(read_command(l, 2));
+		}
+
+		std::string error = stream->openProcess(commands, samplerate, channels);
+		failed = !error.empty();
+		if (failed) lua_pushstring(l, error.c_str());
+	}
+
+	if (failed) {
+		stream->~AudioStream();
+		lua_pushnil(l);
+		lua_insert(l, -2);
+		return 2;
+	}
+
+	luaL_getmetatable(l, METATABLE_AUDIOSTREAM);
+	lua_setmetatable(l, -2);
+	return 1;
+}
+
 static int client_getAudioStreams(lua_State *l) {
 	MumbleClient *client = luaL_checkclass<MumbleClient>(l, 1, METATABLE_CLIENT);
 	LuaRegistry::push(l, client->audio_streams);
@@ -504,6 +589,7 @@ const luaL_Reg mumble_client[] = {
 	{"sendPluginData", client_sendPluginData},
 	{"transmit", client_transmit},
 	{"openAudio", client_openAudio},
+	{"openAudioProcess", client_openAudioProcess},
 	{"getAudioStreams", client_getAudioStreams},
 	{"setAudioPacketSize", client_setAudioPacketSize},
 	{"getAudioPacketSize", client_getAudioPacketSize},

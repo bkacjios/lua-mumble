@@ -49,8 +49,16 @@ static int audiostream_stop(lua_State *l) {
 	return 0;
 }
 
+// File only methods return nil for streams playing a command's output
+#define audiostream_checkfile(sound) \
+	if (!(sound)->file) { \
+		lua_pushnil(l); \
+		return 1; \
+	}
+
 static int audiostream_seek(lua_State *l) {
 	AudioStream *sound = luaL_checkclass<AudioStream>(l, 1, METATABLE_AUDIOSTREAM);
+	audiostream_checkfile(sound);
 	static const char * const options[] = {"set", "cur", "end", NULL};
 	static const int whence[] = {SEEK_SET, SEEK_CUR, SEEK_END};
 
@@ -62,6 +70,7 @@ static int audiostream_seek(lua_State *l) {
 
 static int audiostream_getLength(lua_State *l) {
 	AudioStream *sound = luaL_checkclass<AudioStream>(l, 1, METATABLE_AUDIOSTREAM);
+	audiostream_checkfile(sound);
 
 	enum what {SAMPLES, FRAMES, SECONDS};
 	static const char * const op[] = {"samples", "frames", "seconds", NULL};
@@ -86,6 +95,7 @@ static int audiostream_getLength(lua_State *l) {
 
 static int audiostream_getInfo(lua_State *l) {
 	AudioStream *sound = luaL_checkclass<AudioStream>(l, 1, METATABLE_AUDIOSTREAM);
+	audiostream_checkfile(sound);
 
 	lua_newtable(l);
 	{
@@ -107,36 +117,44 @@ static int audiostream_getInfo(lua_State *l) {
 
 static int audiostream_getTitle(lua_State *l) {
 	AudioStream *sound = luaL_checkclass<AudioStream>(l, 1, METATABLE_AUDIOSTREAM);
+	audiostream_checkfile(sound);
 	lua_pushstring(l, sf_get_string(sound->file, SF_STR_TITLE));
 	return 1;
 }
 
 static int audiostream_getArtist(lua_State *l) {
 	AudioStream *sound = luaL_checkclass<AudioStream>(l, 1, METATABLE_AUDIOSTREAM);
+	audiostream_checkfile(sound);
 	lua_pushstring(l, sf_get_string(sound->file, SF_STR_ARTIST));
 	return 1;
 }
 
 static int audiostream_getCopyright(lua_State *l) {
 	AudioStream *sound = luaL_checkclass<AudioStream>(l, 1, METATABLE_AUDIOSTREAM);
+	audiostream_checkfile(sound);
 	lua_pushstring(l, sf_get_string(sound->file, SF_STR_COPYRIGHT));
 	return 1;
 }
 
 static int audiostream_getSoftware(lua_State *l) {
 	AudioStream *sound = luaL_checkclass<AudioStream>(l, 1, METATABLE_AUDIOSTREAM);
+	audiostream_checkfile(sound);
 	lua_pushstring(l, sf_get_string(sound->file, SF_STR_SOFTWARE));
 	return 1;
 }
 
 static int audiostream_getComments(lua_State *l) {
 	AudioStream *sound = luaL_checkclass<AudioStream>(l, 1, METATABLE_AUDIOSTREAM);
+	audiostream_checkfile(sound);
 	lua_pushstring(l, sf_get_string(sound->file, SF_STR_COMMENT));
 	return 1;
 }
 
 static int audiostream_setLooping(lua_State *l) {
 	AudioStream *sound = luaL_checkclass<AudioStream>(l, 1, METATABLE_AUDIOSTREAM);
+	if (sound->isProcess()) {
+		return luaL_error(l, "a command's output can't loop");
+	}
 	switch (lua_type(l, 2)) {
 	case LUA_TNUMBER:
 		sound->setLoopCount(luaL_checkinteger(l, 2));

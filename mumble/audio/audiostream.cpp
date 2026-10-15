@@ -24,6 +24,98 @@ std::string AudioStream::open(const char *path, int quality) {
 		return std::string("failed to open audio file: ") + path + " (" + sf_strerror(NULL) + ")";
 	}
 
+	return allocate(quality);
+}
+
+std::string AudioStream::openProcess(const std::vector<AudioProcess::Command> &commands, int samplerate, int channels) {
+	this->commands = commands;
+	process_samplerate = samplerate;
+	process_channels = channels;
+
+	std::string error = allocate(SRC_SINC_MEDIUM_QUALITY);
+	if (!error.empty()) {
+		return error;
+	}
+
+	command.reset(new AudioProcess(
+		[this](const char *data, size_t length) { onProcessData(data, length); },
+		[this]() { onProcessEnd(); }
+	));
+
+	mumble_log(LOG_DEBUG, "%s: %p playing the output of %zu command(s), as %d Hz with %d channel(s)",
+	           METATABLE_AUDIOSTREAM, this, commands.size(), samplerate, channels);
+	return command->start(commands);
+}
+
+void AudioStream::onProcessData(const char *data, size_t length) {
+	partial.append(data, length);
+
+	// Only whole frames, keeping the start of the next one until the rest of it arrives
+	size_t frame_bytes = process_channels * sizeof(float);
+	size_t frames = partial.size() / frame_bytes;
+	if (frames == 0) return;
+
+	std::vector<float> input(frames * process_channels);
+	memcpy(input.data(), partial.data(), frames * frame_bytes);
+	partial.erase(0, frames * frame_bytes);
+
+	std::vector<float> stereo = Pcm::toStereo(input.data(), frames, process_channels);
+	std::vector<float> output;
+	int resampled = resampler->process(stereo.data(), frames, (double) AUDIO_SAMPLE_RATE / process_samplerate, false, output);
+	if (resampled > 0) {
+		queueProcessAudio(output.data(), resampled * AUDIO_PLAYBACK_CHANNELS);
+	}
+}
+
+void AudioStream::onProcessEnd() {
+	// Drain what the resampler is still holding
+	std::vector<float> output;
+	int resampled = resampler->process(NULL, 0, (double) AUDIO_SAMPLE_RATE / process_samplerate, true, output);
+	if (resampled > 0) {
+		queueProcessAudio(output.data(), resampled * AUDIO_PLAYBACK_CHANNELS);
+	}
+
+	mumble_log(LOG_DEBUG, "%s: %p command output ended, %zu samples left to play",
+	           METATABLE_AUDIOSTREAM, this, ringCount() + pending.size());
+
+	if (pending.empty()) {
+		end = true;
+	} else {
+		// We end once pump() has moved the rest into our ring
+		draining = true;
+	}
+}
+
+void AudioStream::queueProcessAudio(const float *samples, size_t count) {
+	size_t written = pending.empty() ? ringWrite(samples, count) : 0;
+	pending.insert(pending.end(), samples + written, samples + count);
+
+	if (!pending.empty()) {
+		// Our ring is full, so let the commands wait until we've played some of it
+		command->pause();
+	}
+}
+
+void AudioStream::pump() {
+	if (!command) return;
+
+	if (!pending.empty()) {
+		size_t written = ringWrite(pending.data(), pending.size());
+		pending.erase(pending.begin(), pending.begin() + written);
+	}
+
+	if (pending.empty()) {
+		if (draining) {
+			mumble_log(LOG_DEBUG, "%s: %p the last of its command output is in its buffer", METATABLE_AUDIOSTREAM, this);
+			draining = false;
+			end = true;
+		} else if (ringCount() < buffer_size / 2) {
+			command->resume();
+		}
+	}
+}
+
+std::string AudioStream::allocate(int quality) {
 	buffer_size = AUDIO_SAMPLE_RATE * (AUDIO_BUFFER_SIZE / 1000.0) * AUDIO_PLAYBACK_CHANNELS;
 	buffer = (float*) malloc(buffer_size * sizeof(float));
 	if (buffer == NULL) {
@@ -47,7 +139,22 @@ bool AudioStream::resume() {
 }
 
 void AudioStream::start(lua_State *l) {
-	resetPlaybackState();
+	if (command && !process_played) {
+		// Keep what our command has buffered since it started
+		process_played = true;
+	} else {
+		resetPlaybackState();
+		if (command) {
+			// Run our command again, from the start
+			mumble_log(LOG_DEBUG, "%s: %p running its commands again", METATABLE_AUDIOSTREAM, this);
+			std::string error = command->start(commands);
+			if (!error.empty()) {
+				mumble_log(LOG_ERROR, "%s: %p %s", METATABLE_AUDIOSTREAM, this, error.c_str());
+				// Nothing will arrive, so end straight away
+				end = true;
+			}
+		}
+	}
 	playing = true;
 	reference(l);
 }
@@ -64,7 +171,8 @@ void AudioStream::pause() {
 }
 
 void AudioStream::stop(lua_State *l) {
-	if (playing) {
+	// Paused streams are still referenced too, and must be released so they can be collected
+	if (refrence > LUA_NOREF) {
 		unreference(l);
 	}
 }
@@ -74,6 +182,10 @@ bool AudioStream::isLooping() const {
 }
 
 sf_count_t AudioStream::seek(sf_count_t offset, int whence) {
+	if (!file) {
+		return -1;
+	}
+
 	uv_mutex_lock(&decode_mutex);
 	sf_count_t position = sf_seek(file, offset, whence);
 	if (position >= 0) {
@@ -123,6 +235,8 @@ AudioStream::~AudioStream() {
 	if (usecount.load(std::memory_order_acquire) != 0) {
 		mumble_log(LOG_WARN, "%s: %p destroyed with non-zero usecount", METATABLE_AUDIOSTREAM, this);
 	}
+	// Kills our command, if we have one
+	command.reset();
 	if (file) {
 		sf_close(file);
 		file = nullptr;
@@ -261,6 +375,12 @@ void AudioStream::resetPlaybackState() {
 	fade_frames = 0;
 	fade_frames_left = 0;
 	fade_stop = false;
+
+	// Stop our command, which runs again the next time we start
+	if (command) {
+		command->kill();
+		partial.clear();
+	}
 
 	// Clear the buffer
 	pending.clear();

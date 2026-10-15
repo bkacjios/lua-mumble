@@ -4,6 +4,7 @@
 
 #include "net/crypt.h"
 
+#include <csignal>
 #include <optional>
 
 // Every audio packet except the first and last should carry the tone at about the expected level
@@ -424,6 +425,169 @@ TEST(udp_mode_switches_back_once_both_sides_get_packets) {
 	decrypt_packets(f.client, 4);
 	f.client->updateUDPMode(4);
 	CHECK(!f.client->tcp_udp_tunnel);
+}
+
+/*
+ * Audio processes
+ */
+
+// A command that writes `seconds` of our test tone as raw float PCM
+static std::string tone_command(double seconds, int samplerate = 48000, int channels = 2) {
+	char script[256];
+	snprintf(script, sizeof(script),
+	         "import math, struct, sys; r = %d; c = %d; "
+	         "sys.stdout.buffer.write(b''.join(struct.pack('<f', %f * math.sin(2 * math.pi * 440 * i / r)) * c for i in range(int(r * %f))))",
+	         samplerate, channels, TONE, seconds);
+	return std::string("{ 'python3', '-c', \"") + script + "\" }";
+}
+
+TEST(audio_process_streams_every_frame) {
+	ClientFixture f;
+	f.lua("stream = assert(client:openAudioProcess(" + tone_command(0.5) + "))");
+	f.run(0.1); // Let it buffer before we play
+	f.lua("stream:play()");
+	f.run(0.8);
+
+	std::vector<SentAudio> audio = f.audio();
+	CHECK(audio.size() >= 23 && audio.size() <= 27);
+	check_levels(audio, TONE_RMS);
+	CHECK_EQ(f.gaps(), 0);
+	CHECK_EQ(f.terminators(), 1);
+	CHECK_EQ(f.number("ends"), 1.0);
+}
+
+TEST(audio_process_resamples_and_mixes_to_stereo) {
+	ClientFixture f;
+	f.lua("stream = assert(client:openAudioProcess(" + tone_command(0.5, 22050, 1) + ", 22050, 1))");
+	f.run(0.1);
+	f.lua("stream:play()");
+	f.run(0.8);
+
+	std::vector<SentAudio> audio = f.audio();
+	CHECK(audio.size() >= 23 && audio.size() <= 27);
+	check_levels(audio, TONE_RMS);
+	CHECK_EQ(f.number("ends"), 1.0);
+}
+
+TEST(audio_process_pipeline) {
+	ClientFixture f;
+	// The tone goes through cat, so we only hear it if the commands are piped together
+	f.lua("stream = assert(client:openAudioProcess({ " + tone_command(0.5) + ", { 'cat' } }))");
+	f.run(0.1);
+	f.lua("stream:play()");
+	f.run(0.8);
+
+	std::vector<SentAudio> audio = f.audio();
+	CHECK(audio.size() >= 23 && audio.size() <= 27);
+	check_levels(audio, TONE_RMS);
+	CHECK_EQ(f.number("ends"), 1.0);
+}
+
+TEST(audio_process_long_output_waits_for_us) {
+	ClientFixture f;
+	// Far more than our buffer holds, so the command has to wait while we play
+	f.lua("stream = assert(client:openAudioProcess(" + tone_command(3) + "))");
+	f.run(0.5);
+	f.lua("stream:play()");
+	f.run(1.0);
+
+	std::vector<SentAudio> audio = f.audio();
+	CHECK(audio.size() >= 45);
+	check_levels(audio, TONE_RMS);
+	CHECK_EQ(f.gaps(), 0);
+	CHECK(f.boolean("stream:isPlaying()"));
+}
+
+TEST(audio_process_pauses_while_full) {
+	ClientFixture f;
+	// Endless output, which would pile up in memory if we kept reading it
+	f.lua("stream = assert(client:openAudioProcess({ 'cat', '/dev/zero' }))");
+	f.run(0.5);
+
+	lua_getglobal(f.L, "stream");
+	AudioStream *stream = (AudioStream*) lua_touserdata(f.L, -1);
+	lua_pop(f.L, 1);
+
+	// Our ring is full, and we stopped reading after at most one more read's worth
+	CHECK_EQ(stream->ringSpace(), (size_t) 0);
+	CHECK(stream->pending.size() < 65536);
+	f.lua("stream:stop()");
+}
+
+TEST(audio_process_stop_kills_it_and_play_runs_it_again) {
+	ClientFixture f;
+	char pidfile[] = "/tmp/mumble-process-test-XXXXXX";
+	close(mkstemp(pidfile));
+	f.lua(std::string("stream = assert(client:openAudioProcess({ 'sh', '-c', 'echo $$ > ") + pidfile + "; exec cat /dev/zero' }))");
+	f.lua("stream:play()");
+	f.run(0.2);
+	f.lua("stream:stop()");
+	f.run(0.2);
+
+	// Our command was killed
+	FILE *file = fopen(pidfile, "r");
+	int pid = 0;
+	if (file) {
+		CHECK(fscanf(file, "%d", &pid) == 1);
+		fclose(file);
+	}
+	CHECK(pid > 0);
+	CHECK(::kill(pid, 0) != 0);
+
+	// Playing again runs it again
+	f.lua("stream:play()");
+	f.run(0.2);
+	CHECK(f.boolean("stream:isPlaying()"));
+	file = fopen(pidfile, "r");
+	int again = 0;
+	if (file) {
+		CHECK(fscanf(file, "%d", &again) == 1);
+		fclose(file);
+	}
+	CHECK(again > 0 && again != pid);
+	f.lua("stream:stop()");
+	unlink(pidfile);
+}
+
+TEST(audio_stream_paused_then_stopped_is_released) {
+	ClientFixture f;
+	char pidfile[] = "/tmp/mumble-process-test-XXXXXX";
+	close(mkstemp(pidfile));
+	f.lua(std::string("stream = assert(client:openAudioProcess({ 'sh', '-c', 'echo $$ > ") + pidfile + "; exec cat /dev/zero' }))");
+	f.lua("weak = setmetatable({ stream }, { __mode = 'v' }) stream:play()");
+	f.run(0.2);
+	f.lua("stream:pause() stream:stop()");
+	f.run(0.2);
+
+	// Its command was killed
+	FILE *file = fopen(pidfile, "r");
+	int pid = 0;
+	if (file) {
+		CHECK(fscanf(file, "%d", &pid) == 1);
+		fclose(file);
+	}
+	CHECK(pid > 0);
+	CHECK(::kill(pid, 0) != 0);
+	unlink(pidfile);
+
+	// And nothing keeps it alive any more
+	f.lua("stream = nil collectgarbage() collectgarbage()");
+	f.lua("assert(weak[1] == nil, 'paused then stopped stream was never released')");
+}
+
+TEST(audio_process_errors) {
+	ClientFixture f;
+	f.lua("stream, err = client:openAudioProcess({ 'no-such-program-for-mumble' })");
+	f.lua("assert(stream == nil and err:find('failed to run no-such-program-for-mumble', 1, true), err)");
+	f.lua("assert(not pcall(client.openAudioProcess, client, {}))");
+	f.lua("assert(not pcall(client.openAudioProcess, client, { 'cat', 12 }))");
+	f.lua("assert(not pcall(client.openAudioProcess, client, { { 'cat' }, {} }))");
+
+	// A command's output has no file behind it
+	f.lua("stream = assert(client:openAudioProcess({ 'cat' }))");
+	f.lua("assert(stream:getLength('seconds') == nil and stream:getInfo() == nil and stream:getTitle() == nil)");
+	f.lua("assert(stream:seek('set', 0) == nil)");
+	f.lua("assert(not pcall(stream.setLooping, stream, true))");
 }
 
 TEST(audio_oversized_packets_stop_streams) {

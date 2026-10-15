@@ -1,5 +1,6 @@
 #pragma once
 
+#include "audio/audioprocess.h"
 #include "audio/resampler.h"
 #include "lua/luainc.h"
 
@@ -19,6 +20,11 @@ public:
 
 	// Open an audio file, resampled with the given libsamplerate quality. Returns an error message on failure.
 	std::string open(const char *path, int quality);
+	// Play the raw float PCM the last of a pipeline of commands writes to stdout. Returns an error message on failure.
+	// The commands start straight away, buffering ahead until we play, and run again whenever we're played after stopping.
+	std::string openProcess(const std::vector<AudioProcess::Command> &commands, int samplerate, int channels);
+	// Whether we play a command's output, rather than a file
+	bool isProcess() const { return command != nullptr; }
 
 	// Resume if we were paused, returns false if we aren't active
 	bool resume();
@@ -49,6 +55,19 @@ public:
 	void unreference(lua_State *l);
 	void unreferenceLocked(lua_State *l);
 	void resetPlaybackState();
+
+	// Move audio held back from our command into our ring, as it makes room, and keep our command reading
+	void pump();
+
+private:
+	// Make our ring and resampler. Returns an error message on failure.
+	std::string allocate(int quality);
+	void onProcessData(const char *data, size_t length);
+	void onProcessEnd();
+	// Write our command's resampled audio to our ring, holding back what doesn't fit
+	void queueProcessAudio(const float *samples, size_t count);
+
+public:
 
 	// Read, downmix and resample audio from our file to fill up to available_space bytes.
 	// Returns the number of stereo frames written to output, or -1 on error.
@@ -89,6 +108,16 @@ public:
 	std::unique_ptr<Resampler> resampler;
 	// Resampled audio that didn't fit in our ring yet, guarded by decode_mutex
 	std::vector<float> pending;
+
+	// The commands we play the output of, when we aren't a file
+	std::unique_ptr<AudioProcess> command;
+	std::vector<AudioProcess::Command> commands;
+	int process_samplerate = 0;
+	int process_channels = 0;
+	// The start of a frame from our command that hasn't fully arrived yet
+	std::string partial;
+	// Whether we've been played since our command started, so playing again runs it again
+	bool process_played = false;
 	// Our file ran out, and we only need to write what's pending before we end. Guarded by decode_mutex.
 	bool draining = false;
 };

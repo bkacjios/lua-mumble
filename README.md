@@ -174,6 +174,18 @@ mumble.client:transmit(Number codec, String encoded_audio_packet, Boolean speaki
 -- Allowed resample quality values: ["best", "medium", "fastest", "zero", "linear"]
 mumble.audiostream audiostream, [ String error ] = mumble.client:openAudio(String audio file path, String resampleQuality = "medium")
 
+-- Play what a command writes to stdout, as raw 32bit float PCM, as an audio stream
+-- Commands are a program and its arguments, run without a shell, so arguments are passed along as is
+-- Pass a list of commands to pipe each one's stdout into the next one's stdin, and the last one's output is played
+-- The commands start straight away, buffering ahead, and wait whenever the stream's buffer is full
+-- The stream ends once the last command stops writing, and stopping it kills the commands, which run again if it's played again
+-- getLength(), getInfo(), seek() and the tag getters return nil, and it can't loop
+-- If audiostream = nil, it will pass along an error string as to why the commands couldn't run
+mumble.audiostream audiostream, [ String error ] = mumble.client:openAudioProcess(Table command or Table commands, [Number samplerate = 48000, Number channels = 2])
+
+-- Example: play a file through ffmpeg
+client:openAudioProcess({ "ffmpeg", "-loglevel", "error", "-i", "song.flac", "-f", "f32le", "-ar", "48000", "-ac", "2", "-" }):play()
+
 -- Creates a buffer that you can write raw, 32bit float, PCM data that will be output by the client as soon as it can.
 -- Creating multiple buffers will result in each buffer being mixed together during transmission, for simultaneous audio streaming.
 -- You should only ever use buffer:writeFloat(), but the other buffer methods are always available for whatever reason.

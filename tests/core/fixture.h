@@ -38,6 +38,13 @@ public:
 	static void open(MumbleClient *client) {
 		uv_async_init(uv_default_loop(), &client->audio_playback_async, MumbleClient::onAudioPlaybackAsync);
 		client->openHandle((uv_handle_t*) &client->audio_playback_async);
+
+		// We drive the playback ticks ourselves, so the playback thread mustn't add its own
+		uv_mutex_lock(&client->main_mutex);
+		client->audio_playback_thread_running = false;
+		uv_mutex_unlock(&client->main_mutex);
+		uv_thread_join(&client->audio_playback_thread);
+		client->audio_playback_thread = 0;
 	}
 
 	// One playback tick after waiting frame_ms, exactly as the playback thread and
@@ -207,6 +214,8 @@ public:
 		while (next < end) {
 			next += std::chrono::milliseconds(scheduled);
 			std::this_thread::sleep_until(next);
+			// Read anything audio processes have written
+			uv_run(uv_default_loop(), UV_RUN_NOWAIT);
 			// Like the playback thread, schedule the next wait before the main thread runs this tick
 			uint32_t waited = scheduled;
 			scheduled = client->audio_frames;
