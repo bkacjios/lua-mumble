@@ -6,7 +6,7 @@ config/
 *.so
 *.lua
 !examples/*.lua
-!tests/*.lua
+!tests/**/*.lua
 *.log
 *.pem
 *.d
