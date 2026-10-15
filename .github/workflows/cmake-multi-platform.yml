@@ -80,7 +80,11 @@ jobs:
           libopus-dev \
           libsndfile1-dev \
           libsamplerate0-dev \
-          libuv1-dev
+          libuv1-dev \
+          luajit \
+          lua5.1 \
+          lua5.2 \
+          lua5.3
 
     - name: Install Dependencies (Windows)
       if: matrix.os == 'windows-latest'
@@ -136,7 +140,7 @@ jobs:
 
     - name: Test
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
-      run: ctest --build-config ${{ matrix.build_type }}
+      run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
 
     - name: Zip Build Files
       run: |

@@ -9,11 +9,6 @@
 #define MUMBLE_VERSION_MINOR	(uint64_t) 5
 #define MUMBLE_VERSION_PATCH 	(uint64_t) 735
 
-#define MUMBLE_VERSION_V1 client->version_major << 16 | client->version_minor << 8 | client->version_patch
-#define MUMBLE_VERSION_V2 client->version_major << 48 | client->version_minor << 32 | client->version_patch << 16
-
-#define MUMBLE_LEGACY_CLIENT client->version_major <= 1 && client->version_minor < 5
-
 #define CLIENT_TYPE_USER 0
 #define CLIENT_TYPE_BOT  1
 
@@ -50,15 +45,16 @@
 
 #define PAYLOAD_SIZE_MAX (1024 * 8 - 1)
 
-#define PING_TIME 30000
+// How often we ping the server in ms, matching Mumble's default
+#define PING_TIME 5000
 
 // How big a protobuf packet header is
 // 2 bytes for type ID
 // 4 bytes for message length
 #define PACKET_HEADER_SIZE (sizeof(uint16_t) + sizeof(uint32_t))
 
-// How many dropped UDP pings will result in falling back to TCP tunnel
-#define UDP_TCP_FALLBACK 2
+// How long after connecting UDP must be working, or we fall back to tunneling voice through TCP (like Mumble)
+#define UDP_TCP_FALLBACK_MS 20000
 
 #define UDP_BUFFER_MAX 1024
 
@@ -83,29 +79,6 @@
 #else
 #define LOG_LEVEL LOG_ERROR
 #endif
-
-#define LUA_COMPAT_MODULE
-#define LUA_COMPAT_5_1
-
-#if defined(LUA_VERSION_NUM) && LUA_VERSION_NUM == 502 && !defined(LUAJIT)
-#define lua_objlen lua_rawlen
-#endif
-
-#if LUA_VERSION_NUM >= 502
-#define luaL_register(L, libname, l) \
-    ((libname) == NULL ? luaL_setfuncs(L, (l), 0) : \
-    (lua_newtable(L), luaL_setfuncs(L, (l), 0), lua_pushvalue(L, -1), lua_setglobal(L, (libname))))
-#endif
-
-#if LUA_VERSION_NUM >= 503
-#define luaL_optlong(L, n, d) ((long)luaL_opt(L, luaL_checkinteger, (n), (lua_Integer)(d)))
-#define luaL_checkint(L, n) ((int)luaL_checkinteger(L, (n)))
-#define lua_objlen(L, idx) lua_rawlen(L, (idx))
-#define lua_dump(L, writer, data) lua_dump(L, writer, data, 1)
-#endif
-
-#define lua_stackguard_entry(L) int __lua_stackguard_entry = lua_gettop(L);
-#define lua_stackguard_exit(L) assert(__lua_stackguard_entry == lua_gettop(L));
 
 #ifdef _WIN32
 #define NEWLINE "\r\n"

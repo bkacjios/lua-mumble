@@ -4,6 +4,8 @@ A lua module to connect to a mumble server and interact with it
 
 ## Build requirements
 
+A C++17 compiler (such as `g++` or `clang++`) is required. The generated protobuf code is still compiled as C.
+
 ### Ubuntu
 ```bash
 sudo apt-get install cmake pkgconf libluajit-5.1-dev protobuf-c-compiler libprotobuf-c-dev libssl-dev libopus-dev libuv1-dev libsndfile1-dev libsamplerate0-dev
@@ -39,6 +41,16 @@ make uninstall
 ```
 
 If you want a debug build, add `-DCMAKE_BUILD_TYPE=Debug` to the cmake arguments
+
+## Running tests
+
+```bash
+cd build
+make
+ctest --output-on-failure
+```
+
+`core` runs the C++ unit tests in `tests/core`. The Lua API tests in `tests/lua` run with the interpreter matching `LUAVER` (such as `luajit` or `lua5.1`), and are skipped if it isn't installed.
 
 ## Scripting documentation
 
@@ -113,6 +125,9 @@ Table clients = {
 -- Returns true or false depending if we could start connecting or not.
 -- If connected is false, an error string will also be returned.
 -- Since this method is non-blocking, you can use the "OnConnect" hook to determine when the client has fully connected.
+-- A client can connect again after it disconnects, including from inside the "OnDisconnect" hook.
+-- While the last connection is still closing, the connect waits for it, and any error is reported to "OnDisconnect".
+-- Connecting while already connecting or connected returns false and "already connected".
 Boolean connecting, [ String error ] = mumble.client:connect(String host, Number port, String certificate file path, String key file path)
 
 -- Authenticate as a user.
@@ -748,6 +763,8 @@ mumble.thread.controller = mumble.thread.controller:join()
 ```
 
 ### mumble.thread.worker
+
+Workers run in their own Lua state, with a `mumble` module that leaves out everything tied to the main thread's event loop. `mumble.client`, `mumble.timer`, `mumble.pipe`, `mumble.thread`, `mumble.loop`, `mumble.stop` and `mumble.getConnections` raise an error when used inside a worker. Use `worker:loop()` and messages to the controller instead.
 
 ```lua
 -- Sleep the worker thread for however many milliseconds.
@@ -1633,7 +1650,7 @@ ___
 
 Called just before a TCP ping is sent to the server.
 This updates the users statistics found on their information panel.
-The mumble.client will automatically ping the server every 30 seconds within mumble.loop()
+The mumble.client will automatically ping the server every 5 seconds within mumble.loop()
 
 ``` lua
 Table event = {
@@ -1655,7 +1672,9 @@ ___
 ### `OnPingUDP (mumble.client client, Table event)`
 
 Called just before a UDP ping is sent to the server.
-The mumble.client will automatically ping the server every 30 seconds within mumble.loop()
+The mumble.client will automatically ping the server every 5 seconds within mumble.loop(), while sending voice over UDP.
+Like Mumble, voice falls back to being tunneled through TCP when UDP isn't working 20 seconds after connecting,
+and switches back once the server and the client are both receiving each other's UDP packets again.
 
 ``` lua
 Table event = {
